@@ -28,7 +28,9 @@ export function createApp({ db, verifyToken, publicConfig }: AppDeps) {
       try {
         await db.execute(sql`select 1`);
         return c.json({ ok: true, db: "up" as const });
-      } catch {
+      } catch (err) {
+        // Log the reason (never the connection string) so a failing health check is diagnosable from host logs.
+        console.error("Health check: database query failed:", err instanceof Error ? err.message : err);
         return c.json({ ok: false, db: "down" as const }, 503);
       }
     })
