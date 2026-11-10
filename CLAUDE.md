@@ -4,7 +4,7 @@
 `/api/examples` routes, `ExampleList` component, E2E item flow) exists only to exercise the stack end to end.
 Replace it as real features land.
 
-pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres). Deployed to Railway as a
+pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres). Deployed to Render as a
 single container (the API also serves the built web app) via GitHub Actions. The image contains only the esbuild
 bundle of the API and the static web build: no `node_modules`, non-root user. A dependency that can't be bundled
 (native addons, files read from disk at runtime) needs a Dockerfile change.
@@ -86,9 +86,11 @@ Conventions:
 - Auth: clients sign in with Supabase and send `Authorization: Bearer <access_token>`. `requireAuth` verifies it and sets `c.var.user`.
 - Keep routes chained on the Hono instance, otherwise `ApiType` loses route types and the web client breaks.
 
-## Deploy (GitHub Actions)
+## Deploy (GitHub Actions → Render)
 
 - `ci.yml` runs on PRs. Job `check`: lint, typecheck, migration drift check, unit + component tests, docker build. Job `e2e`: local Supabase, DB-backed API tests, Playwright (report uploaded as an artifact).
-- `deploy.yml` runs on push to main: CI → `supabase db push` → `railway up`.
-- Secrets (GitHub environment `production`): `SUPABASE_DB_URL` (session pooler URL, since GitHub runners are IPv4-only) and `RAILWAY_TOKEN` (project token). Optional variable: `RAILWAY_SERVICE` (default `api`).
-- Railway service env: `DATABASE_URL` (Supabase pooler URL), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. Turn off Railway's own GitHub auto-deploy so Actions is the only deploy path.
+- `deploy.yml` runs on push to main: CI → `supabase db push` → `scripts/render-deploy.mjs`, which asks Render to build and deploy that commit and waits until it is live (the job fails if the deploy fails).
+- `render.yaml` defines the service: Docker runtime, health check on `/api/health`, auto-deploy off so Actions is the only deploy path. Render keeps the old version serving until the new one passes its health check.
+- Secrets (GitHub environment `production`): `SUPABASE_DB_URL` (session pooler URL; GitHub runners are IPv4-only), `RENDER_API_KEY`, `RENDER_SERVICE_ID`.
+- Render service env vars: `DATABASE_URL` (Supabase session pooler URL), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. `PORT` is set to 10000 in `render.yaml`.
+- The image is host-neutral (listens on `PORT`, three env vars, health check). Only `render.yaml` and the deploy step are Render-specific.

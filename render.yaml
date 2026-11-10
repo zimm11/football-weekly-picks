@@ -1,0 +1,26 @@
+# Render Blueprint: one Docker web service (the API, which also serves the web app).
+# Create it once from the Render dashboard (New > Blueprint); after that, deploys are triggered
+# only by .github/workflows/deploy.yml, after CI passes and migrations are applied.
+services:
+  - type: web
+    name: football-weekly-picks
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Free instances sleep after 15 minutes without traffic and take about a minute to wake.
+    # Change to a paid plan for an always-on service.
+    plan: free
+    # Pick the region closest to the Supabase project. It cannot be changed after creation.
+    region: oregon
+    branch: main
+    autoDeployTrigger: "off"
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "10000"
+      # Secrets: Render asks for these when the Blueprint is first created.
+      - key: DATABASE_URL # Supabase session pooler connection string
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false

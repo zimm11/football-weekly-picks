@@ -39,8 +39,13 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v5
-      - name: Deploy to Railway
-        run: npx --yes @railway/cli up --service "$RAILWAY_SERVICE" --ci
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+      # Render builds the Dockerfile at this commit. The step waits until the release is live and fails if it isn't.
+      - name: Deploy to Render
+        run: node scripts/render-deploy.mjs
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || 'api' }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          COMMIT_SHA: ${{ github.sha }}
