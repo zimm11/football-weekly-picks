@@ -10,8 +10,6 @@ const envSchema = z.object({
     .refine((url) => !/\s/.test(url), "contains a line break, tab or space; re-paste it as a single line"),
   SUPABASE_URL: z.url(),
   SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
-  /** Directory of the built web app. When set, the API also serves the SPA (production). */
-  WEB_DIST_DIR: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

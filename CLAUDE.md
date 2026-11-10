@@ -4,10 +4,11 @@
 `/api/examples` routes, `ExampleList` component, E2E item flow) exists only to exercise the stack end to end.
 Replace it as real features land.
 
-pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres). Deployed to Render as a
-single container (the API also serves the built web app) via GitHub Actions. The image contains only the esbuild
-bundle of the API and the static web build: no `node_modules`, non-root user. A dependency that can't be bundled
-(native addons, files read from disk at runtime) needs a Dockerfile change.
+pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres). Deployed to Render via
+GitHub Actions as two services: the web app is a client-side SPA on a Render static site (CDN), and the API is a
+Docker container. The static site proxies `/api/*` to the API, so the browser sees one origin. The API image
+contains only the esbuild bundle: no `node_modules`, non-root user. A dependency that can't be bundled (native
+addons, files read from disk at runtime) needs a Dockerfile change.
 
 ## Layout
 
@@ -25,7 +26,7 @@ bundle of the API and the static web build: no `node_modules`, non-root user. A 
 - `pnpm db:start` / `pnpm db:stop` / `pnpm db:status` — local Supabase stack (needs Docker). `pnpm db:reset` rebuilds from migrations + seed.
 - `pnpm sb <args>` — any other Supabase CLI command. Never call `supabase` directly; it would target the default-port stack.
 - `pnpm dev` — API and web dev servers (web proxies `/api` to the API)
-- `pnpm build` — production builds: web to `apps/web/dist`, API bundled by esbuild to `apps/api/dist/index.js`
+- `pnpm build` — production builds: web to `apps/web/dist` (the static site), API bundled by esbuild to `apps/api/dist/index.js` (the Docker image)
 - `pnpm env:local` — write `.env` from the running local Supabase stack
 - `pnpm check` — lint + typecheck + unit/component tests
 - `pnpm test:e2e` — Playwright E2E (needs `pnpm db:start`; starts web + API itself, or reuses `pnpm dev`)
@@ -95,9 +96,12 @@ Conventions:
 
 ## Deploy (GitHub Actions → Render)
 
-- `ci.yml` runs on PRs. Job `check`: lint, typecheck, migration drift check, unit + component tests, docker build. Job `e2e`: local Supabase, DB-backed API tests, Playwright (report uploaded as an artifact).
-- `deploy.yml` runs on push to main: CI → connection-string check → `supabase db push` → `scripts/render-deploy.mjs`, which asks Render to build and deploy that commit and waits until it is live (the job fails if the deploy fails).
-- `render.yaml` defines the service: Docker runtime, health check on `/api/health`, auto-deploy off so Actions is the only deploy path. Render keeps the old version serving until the new one passes its health check.
-- Secrets (GitHub environment `production`): `SUPABASE_DB_URL` (session pooler URL; GitHub runners are IPv4-only), `RENDER_API_KEY`, `RENDER_SERVICE_ID`.
-- Render service env vars: `DATABASE_URL` (Supabase session pooler URL), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. `PORT` is set to 10000 in `render.yaml`.
-- The image is host-neutral (listens on `PORT`, three env vars, health check). Only `render.yaml` and the deploy step are Render-specific.
+- `ci.yml` runs on PRs. Job `check`: lint, typecheck, migration drift check, unit + component tests, web build, API docker build. Job `e2e`: local Supabase, DB-backed API tests, Playwright (report uploaded as an artifact).
+- `deploy.yml` runs on push to main: CI → connection-string check → `supabase db push` → `scripts/render-deploy.mjs` for the API, then again for the static site. Each run asks Render to build and deploy that commit and waits until it is live (the job fails if the deploy fails). The API deploys first, so the API must stay backward-compatible with the web build that is still live.
+- `render.yaml` defines both services, with auto-deploy off so Actions is the only deploy path:
+  - `football-weekly-picks-ui` (static site, the public URL): builds `apps/web/dist` on Render; `/assets/*` cached as immutable; rewrites `/api/*` to the API and every other path without a file to `/index.html`.
+  - `football-weekly-picks` (Docker, API only): health check on `/api/health`; Render keeps the old version serving until the new one passes it. Its onrender.com URL is hard-coded in the static site's `/api/*` rewrite.
+- Secrets (GitHub environment `production`): `SUPABASE_DB_URL` (session pooler URL; GitHub runners are IPv4-only), `RENDER_API_KEY`, `RENDER_SERVICE_ID` (the API service), `RENDER_STATIC_SITE_ID` (the static site).
+- API service env vars on Render: `DATABASE_URL` (Supabase session pooler URL), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. `PORT` is set to 10000 in `render.yaml`.
+- The web build needs no env vars (it fetches `/api/config` at runtime). Supabase Auth's Site URL and redirect URLs must point at the static site's URL.
+- The image is host-neutral (listens on `PORT`, three env vars, health check), and `apps/web/dist` works on any static host that can proxy `/api/*`. Only `render.yaml` and the deploy step are Render-specific.
