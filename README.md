@@ -2,7 +2,7 @@
 
 ## Local setup
 
-Requires Node 24+, pnpm, and a Docker runtime (Docker Desktop or OrbStack).
+Requires Node 26, pnpm, and a Docker runtime (Docker Desktop or OrbStack).
 
 ```sh
 pnpm install

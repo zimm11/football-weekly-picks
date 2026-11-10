@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
-    "start": "node --enable-source-maps dist/index.js",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --sourcemap --outfile=dist/index.js --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\""
+    "build": "esbuild src/vercel.ts --bundle --platform=node --format=esm --target=node24 --sourcemap=inline --outfile=../../api/_app.mjs --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\""
   },
   "exports": {
     "./app": "./src/app.ts"

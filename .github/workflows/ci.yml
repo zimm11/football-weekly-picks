@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast feedback: static checks, unit tests, component tests (real Chromium), image build. No database.
+  # Fast feedback: static checks, unit tests, component tests (real Chromium). No database.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -40,10 +40,7 @@ jobs:
       - name: Unit + component tests
         run: pnpm test
 
-      - name: Build production image
-        run: docker build -t picks:ci .
-
-  # Full stack: local Supabase, DB-backed API tests, Playwright E2E.
+  # Full stack: local Supabase, DB-backed API tests, the production build, Playwright E2E.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -64,6 +61,12 @@ jobs:
 
       - name: DB-backed API tests
         run: pnpm --filter @picks/api test
+
+      - name: Build the Vercel deployment output
+        run: pnpm build:vercel
+
+      - name: Smoke-test the built API function
+        run: pnpm smoke:vercel
 
       - name: Install Playwright browsers
         run: pnpm playwright:install

@@ -4,14 +4,13 @@
 `/api/examples` routes, `ExampleList` component, E2E item flow) exists only to exercise the stack end to end.
 Replace it as real features land.
 
-pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres). Deployed to Railway as a
-single container (the API also serves the built web app) via GitHub Actions. The image contains only the esbuild
-bundle of the API and the static web build: no `node_modules`, non-root user. A dependency that can't be bundled
-(native addons, files read from disk at runtime) needs a Dockerfile change.
+pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres), deployed to Vercel
+from GitHub Actions. On Vercel the web app is static files on the CDN and the API is one function.
 
 ## Layout
 
-- `apps/api` — Hono API. `src/app.ts` holds all routes (`createApp` takes deps, so tests inject fakes). `src/index.ts` is the Node entrypoint.
+- `apps/api` — Hono API. `src/app.ts` holds all routes (`createApp` takes deps, so tests inject fakes). Two entrypoints build the same app: `src/index.ts` (local Node server) and `src/vercel.ts` (production).
+- `api/index.js` + `vercel.json` — Vercel wiring. `/api/*` is rewritten to this one function, which re-exports `api/_app.mjs`, the esbuild bundle of `src/vercel.ts` (generated, gitignored). Everything else falls back to the web app's `index.html`.
 - `apps/web` — Vite + React. `src/api.ts` has the typed Hono client (`hc<ApiType>`) and the Supabase client. `src/components/` holds presentational components.
 - `e2e/` — Playwright end-to-end tests and config.
 - `scripts/` — `ports.mjs` (per-worktree ports), `supabase.mjs` (CLI wrapper), `supabase-env.mjs` (writes `.env`).
@@ -25,7 +24,8 @@ bundle of the API and the static web build: no `node_modules`, non-root user. A 
 - `pnpm db:start` / `pnpm db:stop` / `pnpm db:status` — local Supabase stack (needs Docker). `pnpm db:reset` rebuilds from migrations + seed.
 - `pnpm sb <args>` — any other Supabase CLI command. Never call `supabase` directly; it would target the default-port stack.
 - `pnpm dev` — API and web dev servers (web proxies `/api` to the API)
-- `pnpm build` — production builds: web to `apps/web/dist`, API bundled by esbuild to `apps/api/dist/index.js`
+- `pnpm build` — web to `apps/web/dist`, API bundled by esbuild to `api/_app.mjs`
+- `pnpm build:vercel` then `pnpm smoke:vercel` — build the exact Vercel deployment output (`.vercel/output`, no Vercel account needed) and run the built function against local Supabase. **Run both after changing API dependencies, entrypoints, or `vercel.json`.**
 - `pnpm env:local` — write `.env` from the running local Supabase stack
 - `pnpm check` — lint + typecheck + unit/component tests
 - `pnpm test:e2e` — Playwright E2E (needs `pnpm db:start`; starts web + API itself, or reuses `pnpm dev`)
@@ -86,9 +86,12 @@ Conventions:
 - Auth: clients sign in with Supabase and send `Authorization: Bearer <access_token>`. `requireAuth` verifies it and sets `c.var.user`.
 - Keep routes chained on the Hono instance, otherwise `ApiType` loses route types and the web client breaks.
 
-## Deploy (GitHub Actions)
+## Deploy (GitHub Actions → Vercel)
 
-- `ci.yml` runs on PRs. Job `check`: lint, typecheck, migration drift check, unit + component tests, docker build. Job `e2e`: local Supabase, DB-backed API tests, Playwright (report uploaded as an artifact).
-- `deploy.yml` runs on push to main: CI → `supabase db push` → `railway up`.
-- Secrets (GitHub environment `production`): `SUPABASE_DB_URL` (session pooler URL, since GitHub runners are IPv4-only) and `RAILWAY_TOKEN` (project token). Optional variable: `RAILWAY_SERVICE` (default `api`).
-- Railway service env: `DATABASE_URL` (Supabase pooler URL), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. Turn off Railway's own GitHub auto-deploy so Actions is the only deploy path.
+- `ci.yml` runs on PRs. Job `check`: lint, typecheck, migration drift check, unit + component tests. Job `e2e`: local Supabase, DB-backed API tests, Vercel build + smoke test of the built function, Playwright (report uploaded as an artifact).
+- `deploy.yml` runs on push to main: CI → `supabase db push` → `vercel pull` / `vercel build --prod` / `vercel deploy --prebuilt --prod`. Vercel's own Git deploys are off (`git.deploymentEnabled: false` in `vercel.json`), so Actions is the only deploy path.
+- Secrets (GitHub environment `production`): `SUPABASE_DB_URL` (session pooler URL, port 5432; GitHub runners are IPv4-only), `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+- Vercel project env vars (Production): `DATABASE_URL` (Supabase **transaction** pooler URL, port 6543), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. Put the function region next to the Supabase region.
+- Why the API is pre-bundled: Vercel's default per-file compile cannot resolve the workspace packages (`@picks/db`, `@picks/shared`) at runtime. The function must stay a single bundled file. A dependency that can't be bundled (native addons, files read from disk at runtime) needs a different approach.
+- Serverless limits: no long-lived connections or background work after the response; each instance keeps a small Postgres pool (`max: 3`).
+- No preview deployments yet: a preview would run PR code against the production database before its migrations are applied. Add them together with Supabase branching or a staging project.
