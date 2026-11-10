@@ -36,6 +36,11 @@ if (/^\s|\s$/.test(raw)) {
   );
 }
 const value = raw.trim();
+if (/\s/.test(value)) {
+  note(
+    "The value contains a line break, tab or space inside it. The app would send it as part of the password, so re-paste it as one line.",
+  );
+}
 if (/^["']|["']$/.test(value)) note("The value is wrapped in quotes. Store it without quotes.");
 if (/^[A-Z_]+=/.test(value))
   note("The value starts with a variable name (e.g. `DATABASE_URL=`). Store only the URL.");
@@ -121,13 +126,11 @@ if (!quiet && password) {
   if (/\s/.test(password)) note("The password contains whitespace.");
 }
 
-const sql = postgres({
-  host: url.hostname,
-  port: Number(url.port || 5432),
-  user: decodeURIComponent(url.username),
-  password,
-  database: url.pathname.slice(1) || "postgres",
-  ssl: url.hostname === "127.0.0.1" || url.hostname === "localhost" ? false : "require",
+// Connect the way the app does: hand postgres-js the URL itself, so a pass here means the app will connect too.
+// (WHATWG URL, used above for display, silently drops tabs and line breaks; postgres-js keeps them.)
+const local = url.hostname === "127.0.0.1" || url.hostname === "localhost";
+const sql = postgres(value, {
+  ssl: local ? false : "require",
   connect_timeout: 10,
   max: 1,
   onnotice: () => {},

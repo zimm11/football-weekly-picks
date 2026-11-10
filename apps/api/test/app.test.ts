@@ -2,6 +2,7 @@ import { createDb, examples } from "@picks/db";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
+import { loadEnv } from "../src/env";
 
 const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: "test" };
 const TEST_USER = "00000000-0000-4000-8000-000000000001";
@@ -74,5 +75,25 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       body: JSON.stringify({ title: "" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("loadEnv", () => {
+  const base = {
+    DATABASE_URL: "postgresql://u:p@db.example.com:5432/postgres",
+    SUPABASE_URL: "https://x.supabase.co",
+    SUPABASE_PUBLISHABLE_KEY: "pk",
+  };
+
+  it("accepts a single-line DATABASE_URL and trims surrounding whitespace", () => {
+    expect(loadEnv({ ...base, DATABASE_URL: ` ${base.DATABASE_URL}\n` }).DATABASE_URL).toBe(
+      base.DATABASE_URL,
+    );
+  });
+
+  it("rejects a DATABASE_URL with a line break inside it", () => {
+    expect(() => loadEnv({ ...base, DATABASE_URL: "postgresql://u:p\nq@db.example.com/postgres" })).toThrow(
+      /line break/,
+    );
   });
 });
