@@ -28,6 +28,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Migrations run BEFORE the new code ships, so they must be backward-compatible
       # with the currently running version (add columns first, drop them in a later deploy).
+      # Describes the connection string (never the password) and tests it, so a bad secret fails here with
+      # a clear explanation instead of an opaque error from the migration tool.
+      - name: Check database connection string
+        run: node scripts/check-db-url.mjs --quiet
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       - name: Apply migrations
         run: pnpm supabase db push --remote="$SUPABASE_DB_URL"
         env:
