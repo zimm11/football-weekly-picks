@@ -14,7 +14,7 @@ bundle of the API and the static web build: no `node_modules`, non-root user. A 
 - `apps/api` — Hono API. `src/app.ts` holds all routes (`createApp` takes deps, so tests inject fakes). `src/index.ts` is the Node entrypoint.
 - `apps/web` — Vite + React. `src/api.ts` has the typed Hono client (`hc<ApiType>`) and the Supabase client. `src/components/` holds presentational components.
 - `e2e/` — Playwright end-to-end tests and config.
-- `scripts/` — `ports.mjs` (per-worktree ports), `supabase.mjs` (CLI wrapper), `supabase-env.mjs` (writes `.env`).
+- `scripts/` — `ports.mjs` (per-worktree ports), `supabase.mjs` (CLI wrapper), `supabase-env.mjs` (writes `.env`), `check-db-url.mjs` (checks a connection string without printing the password: `pbpaste | node scripts/check-db-url.mjs`), `render-deploy.mjs` (deploy step).
 - `packages/db` — Drizzle schema (`src/schema.ts`, the **source of truth** for the DB) and the `createDb` client.
 - `packages/shared` — Zod schemas and types shared by API, web, and the future mobile app.
 - `supabase/` — Supabase CLI config, generated SQL migrations, and `seed.sql` (local only).
@@ -96,7 +96,7 @@ Conventions:
 ## Deploy (GitHub Actions → Render)
 
 - `ci.yml` runs on PRs. Job `check`: lint, typecheck, migration drift check, unit + component tests, docker build. Job `e2e`: local Supabase, DB-backed API tests, Playwright (report uploaded as an artifact).
-- `deploy.yml` runs on push to main: CI → `supabase db push` → `scripts/render-deploy.mjs`, which asks Render to build and deploy that commit and waits until it is live (the job fails if the deploy fails).
+- `deploy.yml` runs on push to main: CI → connection-string check → `supabase db push` → `scripts/render-deploy.mjs`, which asks Render to build and deploy that commit and waits until it is live (the job fails if the deploy fails).
 - `render.yaml` defines the service: Docker runtime, health check on `/api/health`, auto-deploy off so Actions is the only deploy path. Render keeps the old version serving until the new one passes its health check.
 - Secrets (GitHub environment `production`): `SUPABASE_DB_URL` (session pooler URL; GitHub runners are IPv4-only), `RENDER_API_KEY`, `RENDER_SERVICE_ID`.
 - Render service env vars: `DATABASE_URL` (Supabase session pooler URL), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. `PORT` is set to 10000 in `render.yaml`.
