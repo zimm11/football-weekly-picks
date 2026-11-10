@@ -3,6 +3,17 @@
     "playwright": {
       "command": "pnpm",
       "args": ["dlx", "@playwright/mcp@latest", "--headless", "--isolated"]
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp"
+    },
+    "render": {
+      "type": "http",
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${RENDER_API_KEY}"
+      }
     }
   }
 }

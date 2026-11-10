@@ -33,6 +33,12 @@ bundle of the API and the static web build: no `node_modules`, non-root user. A 
 - `pnpm test:all` — everything
 - `pnpm format` — Biome auto-fix
 
+## MCP servers (`.mcp.json`)
+- `playwright` — drive a browser against the running app.
+- `supabase` — the hosted Supabase project (signs in through the browser; run `/mcp` to authenticate). This is the **production** database: read freely, but schema changes still go through migrations, never ad-hoc SQL.
+- `render` — the Render service: deploys, logs, env vars. Needs `RENDER_API_KEY` exported in the shell that starts Claude Code.
+- GitHub needs no MCP server: use the `gh` CLI.
+
 ## Ports and worktrees
 
 Every git worktree runs its own isolated stack, so agents can work in parallel.
