@@ -1,0 +1,33 @@
+{
+  "name": "@picks/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "start": "node --enable-source-maps dist/index.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --sourcemap --outfile=dist/index.js --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\""
+  },
+  "exports": {
+    "./app": "./src/app.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "@hono/zod-validator": "^0.9.1",
+    "@picks/db": "workspace:*",
+    "@picks/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.119.0",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.17",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  }
+}
