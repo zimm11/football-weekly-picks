@@ -1,16 +1,47 @@
-# Render Blueprint: one Docker web service (the API, which also serves the web app).
-# Create it once from the Render dashboard (New > Blueprint); after that, deploys are triggered
-# only by .github/workflows/deploy.yml, after CI passes and migrations are applied.
+# Render Blueprint: two services.
+#   football-weekly-picks-ui  Static site (the Vite build of the React SPA) on Render's CDN. This is the public URL.
+#   football-weekly-picks      Docker web service: the API only.
+# The static site proxies /api/* to the API, so the browser sees a single origin (no CORS, same-origin auth header).
+# Create both once from the Render dashboard (New > Blueprint). After that, deploys are triggered only by
+# .github/workflows/deploy.yml, after CI passes and migrations are applied.
 services:
+  - type: web
+    name: football-weekly-picks-ui
+    runtime: static
+    branch: main
+    autoDeployTrigger: "off"
+    # npx pins the same pnpm version as package.json's packageManager, without a global install.
+    buildCommand: >-
+      npx --yes pnpm@12.18.0 install --frozen-lockfile --filter "@picks/web..." &&
+      npx --yes pnpm@12.18.0 --filter @picks/web build
+    staticPublishPath: ./apps/web/dist
+    envVars:
+      - key: NODE_VERSION
+        value: "26"
+    headers:
+      # Vite puts a content hash in every file name under /assets, so these can be cached forever.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    # Rewrites apply only when no static file exists at the path. Order matters: /api first, then the SPA fallback.
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://football-weekly-picks.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
   - type: web
     name: football-weekly-picks
     runtime: docker
     dockerfilePath: ./Dockerfile
     # Free instances sleep after 15 minutes without traffic and take about a minute to wake.
-    # Change to a paid plan for an always-on service.
+    # Only /api calls wait for the wake-up; the static site itself never sleeps.
+    # Change to a paid plan for an always-on API.
     plan: free
-    # Pick the region closest to the Supabase project. It cannot be changed after creation.
-    region: oregon
+    # Pick the region closest to the Supabase project (us-east-1). It cannot be changed after creation.
+    region: virginia
     branch: main
     autoDeployTrigger: "off"
     healthCheckPath: /api/health

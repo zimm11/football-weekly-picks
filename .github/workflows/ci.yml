@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast feedback: static checks, unit tests, component tests (real Chromium), image build. No database.
+  # Fast feedback: static checks, unit tests, component tests (real Chromium), web build, API image build. No database.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -40,7 +40,10 @@ jobs:
       - name: Unit + component tests
         run: pnpm test
 
-      - name: Build production image
+      - name: Build web app (deployed as a static site)
+        run: pnpm --filter @picks/web build
+
+      - name: Build API image
         run: docker build -t picks:ci .
 
   # Full stack: local Supabase, DB-backed API tests, Playwright E2E.

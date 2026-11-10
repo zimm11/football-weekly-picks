@@ -49,10 +49,17 @@ jobs:
         with:
           node-version: 26
           package-manager-cache: false # this job has no dependencies, and pnpm isn't installed here
-      # Render builds the Dockerfile at this commit. The step waits until the release is live and fails if it isn't.
-      - name: Deploy to Render
+      # Each step asks Render to build this commit, waits until it is live, and fails if it isn't.
+      # The API goes first, so the new web build never calls an endpoint the live API doesn't have yet.
+      - name: Deploy API (Docker web service)
         run: node scripts/render-deploy.mjs
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          COMMIT_SHA: ${{ github.sha }}
+      - name: Deploy web app (static site)
+        run: node scripts/render-deploy.mjs
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_STATIC_SITE_ID }}
           COMMIT_SHA: ${{ github.sha }}
