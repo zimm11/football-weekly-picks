@@ -1,0 +1,2 @@
+-- Local dev seed data. Applied by `pnpm db:reset` (never runs in production).
+-- Add rows here once real tables exist. E2E tests create their own users and data.

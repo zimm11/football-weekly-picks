@@ -1,0 +1,37 @@
+{
+  "name": "football-weekly-picks",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "db:start": "node scripts/supabase.mjs start",
+    "db:stop": "node scripts/supabase.mjs stop",
+    "db:status": "node scripts/supabase.mjs status",
+    "db:reset": "node scripts/supabase.mjs db reset",
+    "db:generate": "pnpm --filter @picks/db generate",
+    "db:migrate:custom": "pnpm --filter @picks/db generate:custom",
+    "test:e2e": "pnpm --filter @picks/e2e e2e",
+    "test:e2e:ui": "pnpm --filter @picks/e2e e2e:ui",
+    "test:all": "pnpm test && pnpm test:e2e",
+    "env:local": "node scripts/supabase-env.mjs > .env",
+    "playwright:install": "pnpm --filter @picks/e2e exec playwright install --with-deps chromium webkit",
+    "sb": "node scripts/supabase.mjs",
+    "ports": "node scripts/ports.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.6",
+    "@types/node": "^26.6.6",
+    "supabase": "^3.0.0",
+    "typescript": "^7.0.2"
+  }
+}
