@@ -48,6 +48,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 26
+          package-manager-cache: false # this job has no dependencies, and pnpm isn't installed here
       # Render builds the Dockerfile at this commit. The step waits until the release is live and fails if it isn't.
       - name: Deploy to Render
         run: node scripts/render-deploy.mjs
