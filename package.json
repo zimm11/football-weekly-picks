@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@12.18.0",
   "engines": {
-    "node": "26.x"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
@@ -26,15 +26,12 @@
     "env:local": "node scripts/supabase-env.mjs > .env",
     "playwright:install": "pnpm --filter @picks/e2e exec playwright install --with-deps chromium webkit",
     "sb": "node scripts/supabase.mjs",
-    "ports": "node scripts/ports.mjs",
-    "build:vercel": "node scripts/vercel-build.mjs",
-    "smoke:vercel": "node scripts/vercel-smoke.mjs"
+    "ports": "node scripts/ports.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",
     "@types/node": "^26.6.6",
     "supabase": "^3.0.0",
-    "typescript": "^7.0.2",
-    "vercel": "^65.12.1"
+    "typescript": "^7.0.2"
   }
 }

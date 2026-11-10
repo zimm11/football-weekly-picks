@@ -37,22 +37,10 @@ jobs:
     needs: migrate
     runs-on: ubuntu-latest
     environment: production
-    env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 26
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Build here and upload the result, so Vercel runs exactly what CI built and tested.
-      - name: Pull Vercel project settings
-        run: pnpm exec vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-      - name: Build
-        run: pnpm exec vercel build --prod --token="$VERCEL_TOKEN"
-      - name: Deploy to Vercel
-        run: pnpm exec vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - name: Deploy to Railway
+        run: npx --yes @railway/cli up --service "$RAILWAY_SERVICE" --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || 'api' }}
