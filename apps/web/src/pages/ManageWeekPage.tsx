@@ -10,6 +10,7 @@ import { WeekResultsTable } from "../components/WeekResultsTable";
 import { rememberSeason } from "../lib/seasonSelection";
 import { notifyDone, notifyError } from "../notify";
 import { Link, useFlash } from "../router";
+import { MessageComposer } from "./MessagesPage";
 import { useLoad } from "./useLoad";
 import { useNow } from "./useNow";
 import { WeekHeading } from "./WeekPage";
@@ -27,17 +28,40 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
   // Carries the schedule-import warning from the league page when this week was just created.
   const flash = useFlash();
   const [importWarning, setImportWarning] = useState(flash?.kind === "alert" ? flash.text : "");
+  const [announcement, setAnnouncement] = useState<{ title: string; body: string }>();
   const [busy, setBusy] = useState(false);
   const [confirm, confirmDialog] = useConfirm();
 
   /** Runs admin actions in order; each answers with the updated week. Stops at the first failure. */
-  async function act(calls: ApiCall[], done = "") {
+  async function act(calls: ApiCall[], done = "", announce = false) {
     setBusy(true);
     setImportWarning("");
     try {
-      for (const call of calls) week.setData(await unwrap<WeekView>(call()));
+      let updated = week.data;
+      for (const call of calls) {
+        updated = await unwrap<WeekView>(call());
+        week.setData(updated);
+      }
+      const winners = updated?.results?.entries.filter((entry) => entry.isWinner) ?? [];
+      const resultPreview = winners.length
+        ? `Winner${winners.length === 1 ? "" : "s"}: ${winners.map((entry) => `${entry.displayName} (${entry.points} points)`).join(", ")}. `
+        : "";
       // Announced in the banner above the save bar, so it reads from whichever button was pressed.
       if (done) notifyDone(done);
+      if (
+        announce &&
+        updated &&
+        (await confirm({
+          title: "Post a league message?",
+          detail: `${resultPreview}Create a thread to let your league know. ${updated.status === "final" ? "The final results will be shown with your draft." : "You can edit the message before posting."}`,
+          action: "Write message",
+        }))
+      ) {
+        setAnnouncement({
+          title: `${updated.year} Week ${updated.number}: ${updated.status === "open" ? "Picks are open" : "Results are final"}`,
+          body: done,
+        });
+      }
     } catch (err) {
       notifyError(messageOf(err));
     }
@@ -86,7 +110,8 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
       detail: "Everyone's picks and the winner will be revealed.",
       action: "Finalize week",
     });
-    if (ok) act([() => api.weeks[":weekId"].finalize.$post({ param })], "Week finalized. Results are in.");
+    if (ok)
+      act([() => api.weeks[":weekId"].finalize.$post({ param })], "Week finalized. Results are in.", true);
   }
 
   async function removeGame(current: WeekView, gameId: string) {
@@ -102,6 +127,71 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
   return (
     <LeagueLayout leagueId={view.leagueId} leagueName={view.leagueName} active="league">
       {confirmDialog}
+      {announcement && (
+        <Card aria-label="League announcement">
+          <h3 className="text-2xl">Post a league message</h3>
+          {view.status === "final" && view.results && (
+            <section aria-label="Final results" className="grid gap-2 rounded-md border bg-background p-3">
+              <h4 className="font-display text-xl font-bold uppercase">Final results</h4>
+              <p className="m-0 text-sm text-muted-foreground">
+                Reference these results while writing your message.
+              </p>
+              <ol
+                className="m-0 grid max-h-64 list-none gap-2 overflow-y-auto p-0"
+                aria-label="Player results"
+              >
+                {view.results.entries.map((entry) => (
+                  <li
+                    key={entry.userId}
+                    className="grid grid-cols-[1fr_auto] gap-x-3 border-b pb-2 last:border-0 last:pb-0"
+                  >
+                    <span className="min-w-0 break-words font-medium">
+                      {entry.rank}. {entry.displayName}
+                      {entry.isWinner && <span className="ml-2 font-display font-bold text-win">Winner</span>}
+                    </span>
+                    <strong>{entry.points} pts</strong>
+                    <span className="col-span-2 text-sm text-muted-foreground">
+                      {count(entry.wins, "win")} · {count(entry.losses, "loss", "losses")} ·{" "}
+                      {count(entry.pushes, "push", "pushes")} · Tiebreaker guess:{" "}
+                      {entry.tiebreakerGuess ?? "—"}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <a className="flex min-h-11 items-center text-sm" href="#final-week-results">
+                See all picks and game scores ↓
+              </a>
+            </section>
+          )}
+          <MessageComposer
+            initialTitle={announcement.title}
+            initialBody={announcement.body}
+            onSubmit={async (json) => {
+              await unwrap(
+                api.leagues[":leagueId"].messages.$post({ param: { leagueId: view.leagueId }, json }),
+              );
+              setAnnouncement(undefined);
+              notifyDone("Thread created.");
+              window.dispatchEvent(new Event("messages-changed"));
+            }}
+          />
+          <Button
+            variant="outline"
+            onClick={async () => {
+              if (
+                await confirm({
+                  title: "Discard message?",
+                  detail: "The week is already updated. This message will not be posted.",
+                  action: "Discard",
+                })
+              )
+                setAnnouncement(undefined);
+            }}
+          >
+            Skip message
+          </Button>
+        </Card>
+      )}
       <WeekHeading
         view={view}
         now={now}
@@ -128,10 +218,10 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
                 type="button"
                 disabled={busy || view.games.length === 0}
                 onClick={() =>
-                  act([() => api.weeks[":weekId"].open.$post({ param })], "Week opened for picks.")
+                  act([() => api.weeks[":weekId"].open.$post({ param })], "Week opened for picks.", true)
                 }
               >
-                Open week for picks
+                {busy ? "Opening…" : "Open week for picks"}
               </Button>
               <Button type="button" variant="outline" disabled={busy} onClick={() => importSchedule(view)}>
                 {view.games.length ? "Refresh from ESPN" : "Import from ESPN"}
@@ -156,7 +246,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
                 disabled={busy || missingScores > 0 || view.games.length === 0}
                 onClick={closeWeek}
               >
-                Finalize week
+                {busy ? "Finalizing…" : "Finalize week"}
               </Button>
               <Button
                 type="button"
@@ -220,12 +310,14 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
       )}
 
       {view.status === "final" && view.results ? (
-        <WeekResultsTable
-          games={view.games}
-          results={view.results}
-          tiebreakerGameId={view.tiebreakerGameId}
-          currentUserId={userId}
-        />
+        <div id="final-week-results" className="scroll-mt-4">
+          <WeekResultsTable
+            games={view.games}
+            results={view.results}
+            tiebreakerGameId={view.tiebreakerGameId}
+            currentUserId={userId}
+          />
+        </div>
       ) : (
         <div className="grid gap-3">
           <Eyebrow>Games</Eyebrow>
@@ -249,4 +341,8 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
       )}
     </LeagueLayout>
   );
+}
+
+function count(n: number, one: string, many = `${one}s`) {
+  return `${n} ${n === 1 ? one : many}`;
 }

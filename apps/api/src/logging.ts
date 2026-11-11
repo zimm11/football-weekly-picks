@@ -52,7 +52,11 @@ const messages: Record<string, string> = {
   "08001": "Database connection could not be established.",
   "08006": "Database connection failed.",
 };
-const applicationMessages = new Set(["League insert returned no row", "Season upsert returned no row"]);
+const applicationMessages = new Set([
+  "Thread insert returned no row",
+  "League insert returned no row",
+  "Season upsert returned no row",
+]);
 const operationMessages = {
   health: "Database health check failed.",
   request: "Unexpected API request failure.",
@@ -87,7 +91,7 @@ export function logError(
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /(?:apps\/api\/src\/|\/app\/api\/)(app|auth|context|env|index|leagues|logging|nfl|weeks)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /(?:apps\/api\/src\/|\/app\/api\/)(app|auth|context|env|index|leagues|logging|messages|nfl|weeks)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;

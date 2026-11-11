@@ -77,7 +77,12 @@ export type Route =
   | { page: "login" }
   | { page: "how-to-play" }
   | { page: "join"; code: string }
-  | { page: "league"; leagueId: string; tab: "picks" | "results" | "standings" | "league" }
+  | {
+      page: "league";
+      leagueId: string;
+      tab: "picks" | "results" | "standings" | "league" | "messages";
+      threadId?: string;
+    }
   | { page: "week"; weekId: string }
   | { page: "manage-week"; weekId: string }
   | { page: "not-found" };
@@ -94,9 +99,12 @@ export function matchRoute(path: string): Route {
   }
   const [third] = rest;
   if (first === "leagues" && second && rest.length === 1) {
-    if (third === "results" || third === "standings" || third === "league") {
+    if (third === "results" || third === "standings" || third === "league" || third === "messages") {
       return { page: "league", leagueId: second, tab: third };
     }
+  }
+  if (first === "leagues" && second && third === "messages" && rest.length === 2) {
+    return { page: "league", leagueId: second, tab: "messages", threadId: rest[1] };
   }
   if (first === "weeks" && second && rest.length === 1 && third === "manage") {
     return { page: "manage-week", weekId: second };

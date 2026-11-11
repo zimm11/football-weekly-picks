@@ -185,6 +185,7 @@ test("upcoming picks take priority over unfinished past weeks and season changes
     await page.getByLabel("Home spread", { exact: true }).fill("3.5");
     await page.getByRole("button", { name: "Add game" }).click();
     await page.getByRole("button", { name: "Open week for picks" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
     await page.getByRole("link", { name: "League", exact: true }).click();
   }
   await page.getByRole("link", { name: "Picks", exact: true }).click();
@@ -221,6 +222,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(page.getByRole("row", { name: /KC at ATL/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Open week for picks" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
 
   // Picks are made on their own screen. The admin takes the Chiefs as their POW; saving stays on the sheet.
   await page.getByRole("link", { name: "Make your own picks" }).click();
@@ -275,6 +277,23 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
 
   await page.getByRole("button", { name: "Finalize week" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Finalize week" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Winner: Commish");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Write message" }).click();
+  const announcementResults = page.getByRole("region", { name: "Final results", exact: true });
+  await expect(announcementResults).toContainText("Commish");
+  await expect(announcementResults).toContainText("Pat");
+  await expect(announcementResults).toContainText("Winner");
+  await expect(announcementResults).toContainText("Tiebreaker guess: 44");
+  await page
+    .getByLabel("Message", { exact: true })
+    .fill("Congratulations Commish! Great POW pick this week.");
+  await page.getByRole("link", { name: "See all picks and game scores" }).click();
+  await expect(page.getByRole("table", { name: "Week results" })).toBeVisible();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue(
+    "Congratulations Commish! Great POW pick this week.",
+  );
+  await page.getByRole("button", { name: "Create thread" }).click();
+  await expect(page.getByRole("heading", { name: "Post a league message" })).not.toBeVisible();
   await expect(page.getByText("Winner: Commish")).toBeVisible();
 
   // Now the player can see everyone's picks, and the standings credit the winner.

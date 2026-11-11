@@ -218,7 +218,13 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
               {(route.page === "leagues" || route.page === "login") && <LeaguesPage />}
               {route.page === "join" && <JoinPage code={route.code} />}
               {route.page === "league" && (
-                <LeaguePage key={route.leagueId} leagueId={route.leagueId} userId={userId} tab={route.tab} />
+                <LeaguePage
+                  key={route.leagueId}
+                  leagueId={route.leagueId}
+                  userId={userId}
+                  tab={route.tab}
+                  threadId={route.threadId}
+                />
               )}
               {route.page === "week" && <WeekPage weekId={route.weekId} userId={userId} />}
               {route.page === "manage-week" && <ManageWeekPage weekId={route.weekId} userId={userId} />}

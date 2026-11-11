@@ -24,6 +24,7 @@ import { readSeason, rememberSeason } from "../lib/seasonSelection";
 import { notifyDone, notifyError } from "../notify";
 import { Link, navigate, requestLeave } from "../router";
 import { rowLink } from "./LeaguesPage";
+import { MessagesPage } from "./MessagesPage";
 import { useLoad } from "./useLoad";
 import { WeekLoader } from "./WeekPage";
 
@@ -40,7 +41,17 @@ const TIME_ZONES: Record<string, string> = {
 const zoneName = (timeZone: string) => TIME_ZONES[timeZone] ?? timeZone;
 
 /** The league hub. Each tab is its own address, so the back button and shared links land where expected. */
-export function LeaguePage({ leagueId, userId, tab }: { leagueId: string; userId: string; tab: LeagueTab }) {
+export function LeaguePage({
+  leagueId,
+  userId,
+  tab,
+  threadId,
+}: {
+  leagueId: string;
+  userId: string;
+  tab: LeagueTab;
+  threadId?: string;
+}) {
   const league = useLoad(
     () => unwrap<LeagueDetail>(api.leagues[":leagueId"].$get({ param: { leagueId } })),
     leagueId,
@@ -85,51 +96,57 @@ export function LeaguePage({ leagueId, userId, tab }: { leagueId: string; userId
       leagueName={detail.name}
       active={tab}
       seasonSelector={
-        <div className="grid gap-3">
-          <Field label="Season" className="w-full sm:w-72">
-            <NativeSelect
-              value={startingSeason ? "new" : year}
-              onChange={(event) => {
-                if (event.target.value === "new") setStartingSeason(true);
-                else chooseYear(Number(event.target.value));
-              }}
-            >
-              {years.map((value) => (
-                <option key={value} value={value}>
-                  {value} NFL season{detail.weeks.some((week) => week.year === value) ? "" : " · Not started"}
-                </option>
-              ))}
-              {detail.role === "admin" && <option value="new">Start a new season…</option>}
-            </NativeSelect>
-          </Field>
-          {startingSeason && detail.role === "admin" && (
-            <Card aria-label="Start a new season">
-              <h3 className="text-2xl">Start a new season</h3>
-              <p className="m-0 text-sm text-muted-foreground">
-                Use the year the NFL season starts. Your league and members carry over. The season is created
-                when you prepare its first week.
-              </p>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  chooseYear(Number(new FormData(event.currentTarget).get("year")));
+        tab !== "messages" && (
+          <div className="grid gap-3">
+            <Field label="Season" className="w-full sm:w-72">
+              <NativeSelect
+                value={startingSeason ? "new" : year}
+                onChange={(event) => {
+                  if (event.target.value === "new") setStartingSeason(true);
+                  else chooseYear(Number(event.target.value));
                 }}
-                className="flex flex-wrap items-end gap-3"
               >
-                <Field label="New season year" className="w-40">
-                  <Input name="year" type="number" required min={2020} max={2100} defaultValue={nextYear} />
-                </Field>
-                <Button type="submit">Use season</Button>
-                <Button type="button" variant="outline" onClick={() => setStartingSeason(false)}>
-                  Cancel
-                </Button>
-              </form>
-            </Card>
-          )}
-        </div>
+                {years.map((value) => (
+                  <option key={value} value={value}>
+                    {value} NFL season
+                    {detail.weeks.some((week) => week.year === value) ? "" : " · Not started"}
+                  </option>
+                ))}
+                {detail.role === "admin" && <option value="new">Start a new season…</option>}
+              </NativeSelect>
+            </Field>
+            {startingSeason && detail.role === "admin" && (
+              <Card aria-label="Start a new season">
+                <h3 className="text-2xl">Start a new season</h3>
+                <p className="m-0 text-sm text-muted-foreground">
+                  Use the year the NFL season starts. Your league and members carry over. The season is
+                  created when you prepare its first week.
+                </p>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    chooseYear(Number(new FormData(event.currentTarget).get("year")));
+                  }}
+                  className="flex flex-wrap items-end gap-3"
+                >
+                  <Field label="New season year" className="w-40">
+                    <Input name="year" type="number" required min={2020} max={2100} defaultValue={nextYear} />
+                  </Field>
+                  <Button type="submit">Use season</Button>
+                  <Button type="button" variant="outline" onClick={() => setStartingSeason(false)}>
+                    Cancel
+                  </Button>
+                </form>
+              </Card>
+            )}
+          </div>
+        )
       }
     >
       {league.error && <Notice kind="alert">{league.error}</Notice>}
+      {tab === "messages" && (
+        <MessagesPage key={threadId ?? "board"} leagueId={leagueId} threadId={threadId} />
+      )}
       {tab === "picks" && <PicksTab key={year} league={seasonLeague} userId={userId} />}
       {(tab === "results" || tab === "standings") && (
         <SeasonTab key={`${year}:${tab}`} league={seasonLeague} year={year} userId={userId} show={tab} />

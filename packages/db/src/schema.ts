@@ -175,3 +175,50 @@ export const tiebreakerGuesses = pgTable(
   },
   (t) => [primaryKey({ columns: [t.weekId, t.userId] })],
 ).enableRLS();
+
+/** A league-wide conversation, independent of the selected season. */
+export const messageThreads = pgTable(
+  "message_threads",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    leagueId: uuid()
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    authorId: userRef(),
+    title: text().notNull(),
+    /** Sequential post count; also the unread watermark. Updated under a row lock. */
+    version: integer().notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: createdAt(),
+  },
+  (t) => [index("message_threads_league_idx").on(t.leagueId, t.updatedAt)],
+).enableRLS();
+
+/** The opening message and subsequent replies, ordered within a thread. */
+export const messagePosts = pgTable(
+  "message_posts",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    threadId: uuid()
+      .notNull()
+      .references(() => messageThreads.id, { onDelete: "cascade" }),
+    authorId: userRef(),
+    body: text().notNull(),
+    position: integer().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique("message_posts_thread_position_key").on(t.threadId, t.position)],
+).enableRLS();
+
+/** Highest post actually viewed by a player; older tabs cannot move it backwards. */
+export const messageReads = pgTable(
+  "message_reads",
+  {
+    threadId: uuid()
+      .notNull()
+      .references(() => messageThreads.id, { onDelete: "cascade" }),
+    userId: userRef(),
+    version: integer().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.threadId, t.userId] })],
+).enableRLS();

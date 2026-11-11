@@ -1,26 +1,54 @@
-import { FootballIcon, ListChecksIcon, TrophyIcon, UsersThreeIcon } from "@phosphor-icons/react";
+import {
+  ChatCircleIcon,
+  FootballIcon,
+  ListChecksIcon,
+  TrophyIcon,
+  UsersThreeIcon,
+} from "@phosphor-icons/react";
+import type { MessageThread } from "@picks/shared";
 import { cn } from "cn";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { api, unwrap } from "../api";
 import { Link } from "../router";
 
-export type LeagueTab = "picks" | "results" | "standings" | "league";
+export type LeagueTab = "picks" | "results" | "standings" | "league" | "messages";
 
 const TABS = [
   { tab: "picks", label: "Picks", path: "", icon: FootballIcon },
   { tab: "results", label: "Results", path: "/results", icon: ListChecksIcon },
   { tab: "standings", label: "Standings", path: "/standings", icon: TrophyIcon },
+  { tab: "messages", label: "Messages", path: "/messages", icon: ChatCircleIcon },
   { tab: "league", label: "League", path: "/league", icon: UsersThreeIcon },
 ] as const;
 
 /** Height of the phone tab bar. Anything else pinned to the bottom edge sits this far above it. */
 export const TAB_BAR_OFFSET = "bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] md:bottom-0";
 
-/** The four places inside a league: a bar along the bottom of a phone, a row under the league name on wider screens. */
+/** The five places inside a league: a bar along the bottom of a phone, a row under the league name on wider screens. */
 export function LeagueNav({ leagueId, active }: { leagueId: string; active: LeagueTab }) {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () =>
+      unwrap<MessageThread[]>(api.leagues[":leagueId"].messages.$get({ param: { leagueId } })).then(
+        (rows) => {
+          if (alive) setUnread(rows.filter((t) => t.unread).length);
+        },
+        () => {},
+      );
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener("messages-changed", refresh);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("messages-changed", refresh);
+    };
+  }, [leagueId]);
   return (
     <nav
       aria-label="League"
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t bg-chrome pb-safe md:static md:flex md:gap-1 md:border-t-0 md:border-b md:bg-transparent md:pb-0"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-chrome pb-safe md:static md:flex md:gap-1 md:border-t-0 md:border-b md:bg-transparent md:pb-0"
     >
       {TABS.map(({ tab, label, path, icon: Icon }) => (
         <Link
@@ -34,7 +62,14 @@ export function LeagueNav({ leagueId, active }: { leagueId: string; active: Leag
           )}
         >
           <Icon aria-hidden className="size-6 md:size-5" weight={tab === active ? "fill" : "regular"} />
-          {label}
+          <span>
+            {label}
+            {tab === "messages" && unread > 0 && (
+              <span role="img" className="ml-1 text-primary" aria-label={`${unread} unread threads`}>
+                •
+              </span>
+            )}
+          </span>
         </Link>
       ))}
     </nav>
