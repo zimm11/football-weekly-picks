@@ -34,6 +34,15 @@ jobs:
             exit 1
           fi
 
+      - name: Schema diagram is up to date
+        run: |
+          pnpm db:erd
+          if [ -n "$(git status --porcelain docs/schema.md)" ]; then
+            echo "::error::docs/schema.md is out of date. Run 'pnpm db:erd' and commit the result."
+            git diff docs/schema.md
+            exit 1
+          fi
+
       - name: Install Chromium for component tests
         run: pnpm --filter @picks/web exec playwright install --with-deps chromium
 

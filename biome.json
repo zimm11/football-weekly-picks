@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!supabase/migrations/meta", "!**/*.sql"]
+    "includes": ["**", "!**/dist", "!supabase/migrations/meta", "!**/*.sql", "!docs/schema.md"]
   },
   "formatter": {
     "indentStyle": "space",

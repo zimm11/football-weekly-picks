@@ -8,8 +8,10 @@
     "./schema": "./src/schema.ts"
   },
   "scripts": {
-    "generate": "drizzle-kit generate",
+    "generate": "node scripts/generate.mjs",
+    "erd": "node scripts/erd.mjs",
     "generate:custom": "drizzle-kit generate --custom",
+    "test": "node --test scripts/generate.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

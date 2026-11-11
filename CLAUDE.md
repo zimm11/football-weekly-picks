@@ -1,8 +1,7 @@
 # Football Weekly Picks
 
-**Status: infrastructure skeleton. No business logic yet.** Anything marked `PLACEHOLDER` (the `examples` table,
-`/api/examples` routes, `ExampleList` component, E2E item flow) exists only to exercise the stack end to end.
-Replace it as real features land.
+An NFL pick'em league: each week players pick every game against the spread, mark one Pick of the Week (POW),
+and guess the Monday night total as a tiebreaker. A league admin sets up and closes each week. See "Domain rules".
 
 pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres). Deployed to Render via
 GitHub Actions as two services: the web app is a client-side SPA on a Render static site (CDN), and the API is a
@@ -12,13 +11,13 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 
 ## Layout
 
-- `apps/api` — Hono API. `src/app.ts` holds all routes (`createApp` takes deps, so tests inject fakes). `src/index.ts` is the Node entrypoint.
-- `apps/web` — Vite + React. `src/api.ts` has the typed Hono client (`hc<ApiType>`) and the Supabase client. `src/components/` holds presentational components.
+- `apps/api` — Hono API. `src/app.ts` builds the app (`createApp` takes deps, so tests inject fakes); routes live in `src/leagues.ts` (leagues, invites, standings) and `src/weeks.ts` (week setup, games, picks, results); `src/context.ts` has the access checks; `src/nfl.ts` is the schedule/odds/results provider (ESPN's public scoreboard feed). `src/index.ts` is the Node entrypoint.
+- `apps/web` — Vite + React. `src/api.ts` has the typed Hono client (`hc<ApiType>`) and the Supabase client. `src/components/` holds presentational components, `src/pages/` the containers that fetch, `src/router.tsx` a small History API router.
 - `e2e/` — Playwright end-to-end tests and config.
 - `scripts/` — `ports.mjs` (per-worktree ports), `supabase.mjs` (CLI wrapper), `supabase-env.mjs` (writes `.env`), `check-db-url.mjs` (checks a connection string without printing the password: `pbpaste | node scripts/check-db-url.mjs`), `render-deploy.mjs` (deploy step).
 - `packages/db` — Drizzle schema (`src/schema.ts`, the **source of truth** for the DB) and the `createDb` client.
-- `packages/shared` — Zod schemas and types shared by API, web, and the future mobile app.
-- `supabase/` — Supabase CLI config, generated SQL migrations, and `seed.sql` (local only).
+- `packages/shared` — Zod schemas and types shared by API, web, and the future mobile app. `src/rules.ts` is the rules engine (point values, locks, scoring, tiebreakers) as pure functions; change league rules there.
+- `supabase/` — Supabase CLI config, generated SQL migrations, and `seed.sql` (local only: four test accounts, a league, and one closed week; the README lists the logins). Update the seed when a schema change would break it.
 
 ## Commands (run from repo root)
 
@@ -27,12 +26,26 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 - `pnpm sb <args>` — any other Supabase CLI command. Never call `supabase` directly; it would target the default-port stack.
 - `pnpm dev` — API and web dev servers (web proxies `/api` to the API)
 - `pnpm build` — production builds: web to `apps/web/dist` (the static site), API bundled by esbuild to `apps/api/dist/index.js` (the Docker image)
+- `pnpm db:erd` — regenerate `docs/schema.md` from the Drizzle schema (`pnpm db:generate` does this too)
 - `pnpm env:local` — write `.env` from the running local Supabase stack
 - `pnpm check` — lint + typecheck + unit/component tests
 - `pnpm test:e2e` — Playwright E2E (needs `pnpm db:start`; starts web + API itself, or reuses `pnpm dev`)
 - `pnpm test:e2e:ui` — Playwright UI mode, for debugging
 - `pnpm test:all` — everything
 - `pnpm format` — Biome auto-fix
+
+## Domain rules
+
+- **Structure:** league → seasons (by year) → weeks (1–18, regular season only) → games → picks. A league keeps its members across seasons. Whoever creates a league is its admin; others join through its invite link (`/join/<code>`).
+- **Week lifecycle:** `draft` (admin only: import games and spreads from the provider, then add/remove games, edit spreads and point values) → `open` (players pick; spreads are fixed unless the admin edits them) → `final` (scored; everyone's picks revealed). The admin pulls results from the provider or types scores in, then closes the week; a closed week can be reopened to correct it.
+- **Picks are private until the week is final.** No endpoint returns another player's picks, points or standings contribution for a week that isn't `final`.
+- **Points:** Thursday and Monday 3; Sunday night, Tuesday, Wednesday, Friday, Saturday 2; other Sunday games 1; Thanksgiving and Christmas Day 4. A winning POW adds 5. A push scores nothing and is neither a win nor a loss. Spreads are stored as the home team's line.
+- **Locks (league time zone):** at 6am on game day, existing picks on that day's games freeze and none of those games can become, stop being, or lose the POW. A missing pick can still be added until kickoff. A game with a result entered is closed to picks whatever the clock says. A player with no POW gets their pick on the week's tiebreaker (Monday night) game as their POW; from 6am on Sunday that is enforced, so such a player can no longer choose any other game as POW. The tiebreaker game is the admin's explicit choice if they made one, otherwise the last Monday game (else the last game), worked out from the slate on every read.
+- **Screens:** `/leagues/:id` is the hub (weeks, standings, and the admin's league tools). `/weeks/:id` is what every player sees: the pick sheet while open, results once final; saving picks returns to the league. `/weeks/:id/manage` is admin-only week management (games, spreads, results, open/close). Keep picking and managing on separate screens.
+- **Membership and history:** removing a player marks the membership (`removed_at`) instead of deleting it. Each closed week is scored for the people who were in the league when it was played: a player removed after the week's last kickoff stays in it, and one who joined after it isn't added. Don't score past weeks from the current member list.
+- **Pick submissions** run in one transaction that locks the week row and takes a per-player advisory lock, so the lock rules can't be raced. Keep reads, validation and writes inside it.
+- **Weekly winner:** most points, then most games won, then closest guess at the tiebreaker game's total (on equal distance, the guess that didn't go over).
+- **Season standings:** total points, then POWs won, wins, Monday night wins, Sunday night wins.
 
 ## MCP servers (`.mcp.json`)
 
@@ -54,15 +67,16 @@ Every git worktree runs its own isolated stack, so agents can work in parallel.
 ## Database changes
 
 1. Edit `packages/db/src/schema.ts`.
-2. `pnpm db:generate --name <short_description>` writes SQL to `supabase/migrations/`. Review it.
+2. `pnpm db:generate --name <short_description>` writes SQL to `supabase/migrations/` and refreshes the schema diagram in `docs/schema.md`. Review the SQL.
 3. `pnpm db:reset` rebuilds the local DB from migrations + seed.
-4. Commit the schema change, the migration SQL, and `supabase/migrations/meta/`.
+4. Commit the schema change, the migration SQL, `supabase/migrations/meta/`, and `docs/schema.md`.
 
 - For SQL Drizzle can't express (triggers, functions, grants): `pnpm db:migrate:custom --name <desc>`, then fill in the empty file.
 - **Renames:** when a change could be either a rename or a drop + add, `drizzle-kit generate` asks interactively, and agents can't answer the prompt. Agents should not attempt a column or table rename on their own. Stop and ask the human to run `pnpm db:generate` in a terminal and pick "rename". (A hand-written custom migration doesn't help, because drizzle-kit diffs against its snapshot in `migrations/meta/`, not the live DB.)
 - **Never edit a migration that has been merged to main.** Add a new one.
 - Migrations deploy before the new code ships, so keep them backward-compatible (expand, then contract).
-- CI fails if `schema.ts` changes without a matching migration.
+- CI fails if `schema.ts` changes without a matching migration, or if `docs/schema.md` is out of date.
+- `docs/schema.md` (ER diagram + table reference) is generated by `packages/db/scripts/erd.mjs`; never edit it by hand. Its descriptions are the `/** ... */` comments above tables and columns in `schema.ts`, so document new tables and columns there. A comment-only change needs `pnpm db:erd`.
 
 ## Testing
 
