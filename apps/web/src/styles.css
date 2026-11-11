@@ -1,362 +1,164 @@
-:root {
-  color-scheme: light dark;
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --text: #16202a;
-  --muted: #5d6b7a;
-  --border: #d9dee5;
-  --accent: #1d6f42;
-  --accent-text: #ffffff;
-  --win: #1d6f42;
-  --win-bg: #e2f3e8;
-  --loss: #b3261e;
-  --loss-bg: #fbe9e7;
-  --pow: #a45c00;
-  --pow-bg: #fff1d6;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.45;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "@fontsource/barlow-condensed/600.css";
+@import "@fontsource/barlow-condensed/700.css";
+@import "@fontsource/barlow-condensed/800.css";
+
+/* The app has one look, and it is dark. `class="dark"` on <html> keeps shadcn's `dark:` variants switched on. */
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Scoreboard capitals: headings, team names, buttons. */
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-heading: var(--font-display);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --color-chrome: var(--chrome);
+  --color-pow: var(--pow);
+  --color-pow-foreground: var(--pow-foreground);
+  --color-win: var(--win);
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 3px;
 }
 
-@media (prefers-color-scheme: dark) {
+:root {
+  color-scheme: dark;
+  /* Navy field, electric blue for your pick and the main action. */
+  --background: #070d1f;
+  --foreground: #f1f4fb;
+  --chrome: #030817;
+  --card: #101a36;
+  --card-foreground: #f1f4fb;
+  --popover: #131f41;
+  --popover-foreground: #f1f4fb;
+  --primary: #4d7cff;
+  --primary-foreground: #04102e;
+  --secondary: #1a2750;
+  --secondary-foreground: #f1f4fb;
+  --muted: #16224a;
+  --muted-foreground: #94a0bd;
+  --accent: #1a2750;
+  --accent-foreground: #f1f4fb;
+  --border: #24315a;
+  --input: #33437a;
+  --ring: #4d7cff;
+  /* Red belongs to the Pick of the Week and nothing else, so errors and removals are coral. */
+  --pow: #ff3d5e;
+  --pow-foreground: #ffffff;
+  --destructive: #ffa37a;
+  --win: #3ddc97;
+  --radius: 2px;
+  /* Toasts float above the phone's tab bar and a pinned save bar; on wider screens only the save bar. */
+  --toast-bottom: calc(9.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (width >= 48rem) {
   :root {
-    --bg: #11161c;
-    --surface: #1a212a;
-    --text: #e8edf2;
-    --muted: #9aa8b6;
-    --border: #2f3944;
-    --accent: #4cc27f;
-    --accent-text: #08130c;
-    --win: #6fd69b;
-    --win-bg: #173524;
-    --loss: #ff8a80;
-    --loss-bg: #40201d;
-    --pow: #ffc35c;
-    --pow-bg: #3b2c0f;
+    --toast-bottom: 5.5rem;
   }
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground m-0 text-base leading-normal antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display m-0 font-bold tracking-wide uppercase;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  a {
+    @apply text-primary underline-offset-4;
+  }
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
 }
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-}
-
-a {
-  color: var(--accent);
-}
-
-.shell {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 0 16px 64px;
-}
-
-.topbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 16px 0;
-}
-
-.topbar h1 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.topbar h1 a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.topbar .who {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-h2 {
-  margin: 8px 0 4px;
-  font-size: 1.5rem;
-}
-
-h3 {
-  margin: 0 0 12px;
-  font-size: 1.05rem;
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  margin: 16px 0;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.stack {
-  display: grid;
-  gap: 12px;
-}
-
-button,
-input,
-select {
-  font: inherit;
-  color: inherit;
-}
-
-button {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
-  font-weight: 600;
-}
-
-button.link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-input,
-select {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  max-width: 100%;
-}
-
-input[type="number"] {
-  width: 5.5rem;
-}
-
-input[type="checkbox"],
-input[type="radio"] {
-  width: auto;
-}
-
-label {
-  display: grid;
-  gap: 4px;
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-
-label.inline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-[role="alert"] {
-  color: var(--loss);
-  margin: 0;
-}
-
-[role="status"] {
-  color: var(--win);
-  margin: 0;
-}
-
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: 0.75rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.badge.pow {
-  background: var(--pow-bg);
-  border-color: transparent;
-  color: var(--pow);
-}
-
-.badge.win {
-  background: var(--win-bg);
-  border-color: transparent;
-  color: var(--win);
-}
-
-.badge.loss {
-  background: var(--loss-bg);
-  border-color: transparent;
-  color: var(--loss);
-}
-
-ul.plain {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-ul.plain li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-/* ---------- Pick sheet ---------- */
-
-.day {
-  margin: 20px 0 8px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-.game {
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
-}
-
-.game-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.game-picks {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.game-picks .at {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-button.side {
-  padding: 12px 8px;
-  font-weight: 600;
-}
-
-button.side[aria-pressed="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
-  opacity: 1;
-}
-
-button.pow[aria-pressed="true"] {
-  background: var(--pow-bg);
-  border-color: var(--pow);
-  color: var(--pow);
-  font-weight: 700;
-  opacity: 1;
-}
-
-.savebar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin: 16px -16px 0;
-  padding: 12px 16px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-
-/* ---------- Tables ---------- */
-
-.table-scroll {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-th,
-td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  white-space: nowrap;
-}
-
-th {
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-td.num,
-th.num {
+@utility num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-td.win {
-  background: var(--win-bg);
-  color: var(--win);
-  font-weight: 600;
+/* Clears the phone's home indicator under anything pinned to the bottom edge. */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-td.loss {
-  background: var(--loss-bg);
-  color: var(--loss);
-}
+@layer components {
+  .table-scroll {
+    overflow-x: auto;
+  }
+  .data-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .data-table th {
+    @apply font-display text-muted-foreground border-b px-2.5 py-2 text-left text-sm font-bold tracking-wider whitespace-nowrap uppercase;
+  }
+  .data-table td {
+    @apply border-b px-2.5 py-2.5 whitespace-nowrap;
+  }
+  .data-table .num {
+    @apply num;
+  }
 
-tr.winner td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
-table input[type="number"] {
-  width: 4.5rem;
-  padding: 6px;
+  /*
+   * On a phone a wide table becomes a list of cards: one card per row, the column headings read out to
+   * screen readers only, and each cell labelled from its `data-label`. The row sets its own grid.
+   */
+  @media (width < 48rem) {
+    .card-rows {
+      display: block;
+    }
+    .card-rows thead {
+      @apply sr-only;
+    }
+    .card-rows tbody {
+      @apply grid gap-3;
+    }
+    .card-rows tr {
+      @apply bg-card grid items-center gap-x-2 gap-y-3 rounded-md border p-3;
+    }
+    .card-rows td {
+      @apply block min-w-0 border-0 p-0 whitespace-normal;
+    }
+    .card-rows td[data-label]::before {
+      content: attr(data-label);
+      @apply font-display text-muted-foreground block text-xs font-bold tracking-wider uppercase;
+    }
+  }
 }

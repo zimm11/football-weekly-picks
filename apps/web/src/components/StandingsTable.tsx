@@ -8,8 +8,8 @@ type Props = {
 /** Season leaderboard. Columns after W–L are the season tiebreakers, in order. */
 export function StandingsTable({ entries, currentUserId }: Props) {
   return (
-    <div className="table-scroll">
-      <table aria-label="Season standings">
+    <div className="table-scroll -mx-4 px-4">
+      <table aria-label="Season standings" className="data-table max-sm:[&_td]:px-2 max-sm:[&_th]:px-2">
         <thead>
           <tr>
             <th className="num">#</th>
@@ -25,18 +25,20 @@ export function StandingsTable({ entries, currentUserId }: Props) {
             <th className="num" title="Sunday night wins">
               SNF
             </th>
-            <th className="num">Weeks won</th>
+            <th className="num" title="Weeks won">
+              Wks
+            </th>
           </tr>
         </thead>
         <tbody>
           {entries.map((entry) => (
-            <tr key={entry.userId}>
-              <td className="num">{entry.rank}</td>
-              <td>
+            <tr key={entry.userId} className={entry.userId === currentUserId ? "bg-primary/10" : undefined}>
+              <td className="num font-display text-lg font-bold text-muted-foreground">{entry.rank}</td>
+              <td className="font-medium">
                 {entry.userId === currentUserId ? <strong>{entry.displayName}</strong> : entry.displayName}
-                {entry.removed && <span className="muted"> (no longer in the league)</span>}
+                {entry.removed && <span className="text-muted-foreground"> (no longer in the league)</span>}
               </td>
-              <td className="num">
+              <td className="num font-display text-xl">
                 <strong>{entry.points}</strong>
               </td>
               <td className="num">{entry.powWins}</td>

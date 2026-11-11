@@ -16,10 +16,34 @@ export function usePath(): string {
 
 type Flash = { kind: "status" | "alert"; text: string };
 
-/** Goes to another screen, optionally carrying a one-off message for it to show (e.g. "Picks saved"). */
+/** Asked before leaving a screen. It calls `leave` if and when the user agrees to go. */
+type LeaveGuard = (leave: () => void) => void;
+let leaveGuard: LeaveGuard | undefined;
+
+/**
+ * While `active`, in-app navigation is handed to `ask` instead of happening, so a screen with unsaved work
+ * can check first. Reloads and tab closes are covered separately by `beforeunload`; the browser's back
+ * button is not intercepted.
+ */
+export function useLeaveGuard(active: boolean, ask: LeaveGuard) {
+  useEffect(() => {
+    if (!active) return;
+    leaveGuard = ask;
+    return () => {
+      if (leaveGuard === ask) leaveGuard = undefined;
+    };
+  }, [active, ask]);
+}
+
+/** Goes to another screen, optionally carrying a one-off message for it to show (e.g. an import warning). */
 export function navigate(to: string, flash?: Flash) {
-  window.history.pushState(flash ? { flash } : null, "", to);
-  window.dispatchEvent(new PopStateEvent("popstate"));
+  const go = () => {
+    leaveGuard = undefined;
+    window.history.pushState(flash ? { flash } : null, "", to);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+  if (leaveGuard) leaveGuard(go);
+  else go();
 }
 
 /** The message `navigate` carried to this screen, if any. It is dropped from history so a reload doesn't repeat it. */
@@ -46,7 +70,7 @@ export function Link({ to, ...rest }: { to: string } & AnchorHTMLAttributes<HTML
 export type Route =
   | { page: "leagues" }
   | { page: "join"; code: string }
-  | { page: "league"; leagueId: string }
+  | { page: "league"; leagueId: string; tab: "picks" | "results" | "standings" | "league" }
   | { page: "week"; weekId: string }
   | { page: "manage-week"; weekId: string }
   | { page: "not-found" };
@@ -56,10 +80,16 @@ export function matchRoute(path: string): Route {
   if (!first) return { page: "leagues" };
   if (second && rest.length === 0) {
     if (first === "join") return { page: "join", code: decodeURIComponent(second) };
-    if (first === "leagues") return { page: "league", leagueId: second };
+    if (first === "leagues") return { page: "league", leagueId: second, tab: "picks" };
     if (first === "weeks") return { page: "week", weekId: second };
   }
-  if (first === "weeks" && second && rest.length === 1 && rest[0] === "manage") {
+  const [third] = rest;
+  if (first === "leagues" && second && rest.length === 1) {
+    if (third === "results" || third === "standings" || third === "league") {
+      return { page: "league", leagueId: second, tab: third };
+    }
+  }
+  if (first === "weeks" && second && rest.length === 1 && third === "manage") {
     return { page: "manage-week", weekId: second };
   }
   return { page: "not-found" };
