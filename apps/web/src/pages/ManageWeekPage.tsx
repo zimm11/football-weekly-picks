@@ -1,5 +1,5 @@
 import type { WeekView } from "@picks/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { api, messageOf, unwrap } from "../api";
@@ -7,9 +7,11 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { GameEditor, type GameUpdate } from "../components/GameEditor";
 import { LeagueLayout } from "../components/LeagueNav";
 import { WeekResultsTable } from "../components/WeekResultsTable";
+import { rememberSeason } from "../lib/seasonSelection";
 import { notifyDone, notifyError } from "../notify";
 import { Link, useFlash } from "../router";
 import { useLoad } from "./useLoad";
+import { useNow } from "./useNow";
 import { WeekHeading } from "./WeekPage";
 
 type ApiCall = () => Promise<{ ok: boolean; json(): Promise<unknown> }>;
@@ -18,6 +20,10 @@ type ApiCall = () => Promise<{ ok: boolean; json(): Promise<unknown> }>;
 export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: string }) {
   const param = { weekId };
   const week = useLoad(() => unwrap<WeekView>(api.weeks[":weekId"].$get({ param })), weekId);
+  const now = useNow();
+  useEffect(() => {
+    if (week.data) rememberSeason(week.data.leagueId, week.data.year);
+  }, [week.data]);
   // Carries the schedule-import warning from the league page when this week was just created.
   const flash = useFlash();
   const [importWarning, setImportWarning] = useState(flash?.kind === "alert" ? flash.text : "");
@@ -44,7 +50,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
   if (view.role !== "admin") {
     return (
       <LeagueLayout leagueId={view.leagueId} leagueName={view.leagueName} active="picks">
-        <WeekHeading view={view} />
+        <WeekHeading view={view} now={now} />
         <p className="m-0">
           Only the league admin can manage a week. <Link to={`/weeks/${view.id}`}>Go to the week</Link>
         </p>
@@ -76,11 +82,11 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
 
   async function closeWeek() {
     const ok = await confirm({
-      title: "Close the week?",
+      title: "Finalize the week?",
       detail: "Everyone's picks and the winner will be revealed.",
-      action: "Close week",
+      action: "Finalize week",
     });
-    if (ok) act([() => api.weeks[":weekId"].finalize.$post({ param })], "Week closed. Results are in.");
+    if (ok) act([() => api.weeks[":weekId"].finalize.$post({ param })], "Week finalized. Results are in.");
   }
 
   async function removeGame(current: WeekView, gameId: string) {
@@ -98,6 +104,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
       {confirmDialog}
       <WeekHeading
         view={view}
+        now={now}
         action={
           view.status !== "draft" && (
             <Link to={`/weeks/${view.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
@@ -135,14 +142,21 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
 
         {view.status === "open" && (
           <>
+            {missingScores === 0 && view.games.length > 0 && (
+              <h3 className="text-2xl text-win">Ready to finalize</h3>
+            )}
             <p className="m-0 text-sm text-muted-foreground">
               {missingScores > 0
                 ? `${missingScores} of ${view.games.length} games still need a final score.`
-                : "All games are final."}
+                : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}
             </p>
             <div className="grid gap-2 sm:flex">
-              <Button type="button" disabled={busy || missingScores > 0} onClick={closeWeek}>
-                Close week
+              <Button
+                type="button"
+                disabled={busy || missingScores > 0 || view.games.length === 0}
+                onClick={closeWeek}
+              >
+                Finalize week
               </Button>
               <Button
                 type="button"

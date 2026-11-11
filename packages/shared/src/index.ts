@@ -1,10 +1,12 @@
 import { z } from "zod";
 import type { SeasonEntry, Side, WeekEntry } from "./rules";
+import type { WeekPhase } from "./seasons";
 import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
 import { TEAM_ABBRS } from "./teams";
 import { isValidTimeZone } from "./time";
 
 export * from "./rules";
+export * from "./seasons";
 export * from "./stats";
 export * from "./teams";
 export * from "./time";
@@ -105,6 +107,13 @@ export type WeekSummary = {
   gameCount: number;
   /** How many of the week's games the signed-in player has picked. */
   myPickCount: number;
+  phase: WeekPhase;
+  /** Unscored games that have not kicked off. */
+  availablePickCount: number;
+  /** Games where this player can still add or change a pick. */
+  myAvailablePickCount: number;
+  /** Unpicked games that have not closed yet. */
+  myMissingPickCount: number;
 };
 export type Member = { userId: string; displayName: string; role: Role };
 

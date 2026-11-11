@@ -42,6 +42,11 @@ export function navigate(to: string, flash?: Flash) {
     window.history.pushState(flash ? { flash } : null, "", to);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
+  requestLeave(go);
+}
+
+/** Also guards view changes (such as switching seasons) that do not change the URL. */
+export function requestLeave(go: () => void) {
   if (leaveGuard) leaveGuard(go);
   else go();
 }
@@ -69,6 +74,8 @@ export function Link({ to, ...rest }: { to: string } & AnchorHTMLAttributes<HTML
 
 export type Route =
   | { page: "leagues" }
+  | { page: "login" }
+  | { page: "how-to-play" }
   | { page: "join"; code: string }
   | { page: "league"; leagueId: string; tab: "picks" | "results" | "standings" | "league" }
   | { page: "week"; weekId: string }
@@ -78,6 +85,8 @@ export type Route =
 export function matchRoute(path: string): Route {
   const [first, second, ...rest] = path.split("/").filter(Boolean);
   if (!first) return { page: "leagues" };
+  if (first === "login" && !second) return { page: "login" };
+  if (first === "how-to-play" && !second) return { page: "how-to-play" };
   if (second && rest.length === 0) {
     if (first === "join") return { page: "join", code: decodeURIComponent(second) };
     if (first === "leagues") return { page: "league", leagueId: second, tab: "picks" };

@@ -1,6 +1,14 @@
 import { CaretRightIcon } from "@phosphor-icons/react";
-import { type LeagueDetail, MAX_WEEK, type Standings, type WeekSummary, weekLabel } from "@picks/shared";
-import { type FormEvent, useState } from "react";
+import {
+  currentWeek,
+  type LeagueDetail,
+  preferredSeasonYear,
+  type Standings,
+  seasonYear,
+  WEEK_PHASE_LABEL,
+  weekLabel,
+} from "@picks/shared";
+import { type FormEvent, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
@@ -9,13 +17,15 @@ import { api, messageOf, unwrap } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
 import { LeagueLayout, type LeagueTab } from "../components/LeagueNav";
 import { PickSplitsTable, WeekByWeekTable, YourSeason } from "../components/SeasonDashboard";
+import { SeasonWeeks } from "../components/SeasonWeeks";
 import { StandingsTable } from "../components/StandingsTable";
-import { ordinal, seasonYear } from "../format";
+import { ordinal } from "../format";
+import { readSeason, rememberSeason } from "../lib/seasonSelection";
 import { notifyDone, notifyError } from "../notify";
-import { Link, navigate } from "../router";
+import { Link, navigate, requestLeave } from "../router";
 import { rowLink } from "./LeaguesPage";
 import { useLoad } from "./useLoad";
-import { STATUS_LABEL, WeekLoader } from "./WeekPage";
+import { WeekLoader } from "./WeekPage";
 
 /** The zones offered for the 6am lock. A league already on another zone keeps it as an extra option. */
 const TIME_ZONES: Record<string, string> = {
@@ -35,37 +45,135 @@ export function LeaguePage({ leagueId, userId, tab }: { leagueId: string; userId
     () => unwrap<LeagueDetail>(api.leagues[":leagueId"].$get({ param: { leagueId } })),
     leagueId,
   );
+  const [selectedYear, setSelectedYear] = useState(() => readSeason(leagueId));
+  const [startingSeason, setStartingSeason] = useState(false);
 
-  if (league.error) return <Notice kind="alert">{league.error}</Notice>;
+  useEffect(() => {
+    if (league.data && selectedYear === undefined) {
+      setSelectedYear(preferredSeasonYear(league.data.weeks, new Date()));
+    }
+  }, [league.data, selectedYear]);
+
+  // Availability counts and display phases are computed by the API using its clock.
+  useEffect(() => {
+    const timer = setInterval(league.reload, 30_000);
+    return () => clearInterval(timer);
+  }, [league.reload]);
+
+  if (league.error && !league.data) return <Notice kind="alert">{league.error}</Notice>;
   if (!league.data) return <p className="text-muted-foreground">Loading…</p>;
+  const detail = league.data;
+  const currentYear = seasonYear(new Date());
+  const year = selectedYear ?? preferredSeasonYear(detail.weeks, new Date());
+  const years = [...new Set([currentYear, year, ...detail.weeks.map((week) => week.year)])].sort(
+    (a, b) => b - a,
+  );
+  const nextYear = Math.min(2100, Math.max(currentYear, ...detail.weeks.map((week) => week.year + 1)));
+  const seasonLeague = { ...detail, weeks: detail.weeks.filter((week) => week.year === year) };
+
+  function chooseYear(value: number) {
+    requestLeave(() => {
+      setSelectedYear(value);
+      rememberSeason(leagueId, value);
+      setStartingSeason(false);
+    });
+  }
+
   return (
-    <LeagueLayout leagueId={leagueId} leagueName={league.data.name} active={tab}>
-      {tab === "picks" && <PicksTab league={league.data} userId={userId} />}
+    <LeagueLayout
+      leagueId={leagueId}
+      leagueName={detail.name}
+      active={tab}
+      seasonSelector={
+        <div className="grid gap-3">
+          <Field label="Season" className="w-full sm:w-72">
+            <NativeSelect
+              value={startingSeason ? "new" : year}
+              onChange={(event) => {
+                if (event.target.value === "new") setStartingSeason(true);
+                else chooseYear(Number(event.target.value));
+              }}
+            >
+              {years.map((value) => (
+                <option key={value} value={value}>
+                  {value} NFL season{detail.weeks.some((week) => week.year === value) ? "" : " · Not started"}
+                </option>
+              ))}
+              {detail.role === "admin" && <option value="new">Start a new season…</option>}
+            </NativeSelect>
+          </Field>
+          {startingSeason && detail.role === "admin" && (
+            <Card aria-label="Start a new season">
+              <h3 className="text-2xl">Start a new season</h3>
+              <p className="m-0 text-sm text-muted-foreground">
+                Use the year the NFL season starts. Your league and members carry over. The season is created
+                when you prepare its first week.
+              </p>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  chooseYear(Number(new FormData(event.currentTarget).get("year")));
+                }}
+                className="flex flex-wrap items-end gap-3"
+              >
+                <Field label="New season year" className="w-40">
+                  <Input name="year" type="number" required min={2020} max={2100} defaultValue={nextYear} />
+                </Field>
+                <Button type="submit">Use season</Button>
+                <Button type="button" variant="outline" onClick={() => setStartingSeason(false)}>
+                  Cancel
+                </Button>
+              </form>
+            </Card>
+          )}
+        </div>
+      }
+    >
+      {league.error && <Notice kind="alert">{league.error}</Notice>}
+      {tab === "picks" && <PicksTab key={year} league={seasonLeague} userId={userId} />}
       {(tab === "results" || tab === "standings") && (
-        <SeasonTab league={league.data} userId={userId} show={tab} />
+        <SeasonTab key={`${year}:${tab}`} league={seasonLeague} year={year} userId={userId} show={tab} />
       )}
-      {tab === "league" && <LeagueTabPanel league={league.data} userId={userId} onChanged={league.reload} />}
+      {tab === "league" && (
+        <LeagueTabPanel
+          key={year}
+          league={seasonLeague}
+          year={year}
+          userId={userId}
+          onChanged={league.reload}
+        />
+      )}
     </LeagueLayout>
   );
-}
-
-/** The week that needs the player's attention: the earliest open week with picks missing, else the latest open one. */
-export function currentWeek(weeks: WeekSummary[]): WeekSummary | undefined {
-  const open = weeks
-    .filter((w) => w.status === "open")
-    .sort((a, b) => a.year - b.year || a.number - b.number);
-  return open.find((w) => w.myPickCount < w.gameCount) ?? open.at(-1);
 }
 
 function PicksTab({ league, userId }: { league: LeagueDetail; userId: string }) {
   const isAdmin = league.role === "admin";
   const open = league.weeks.filter((w) => w.status === "open");
   const drafts = league.weeks.filter((w) => w.status === "draft");
-  const current = currentWeek(league.weeks);
+  // Refreshing counts must not switch sheets underneath edits that have not been saved.
+  const [focusedWeekId] = useState(() => currentWeek(league.weeks)?.id);
+  const current = open.find((week) => week.id === focusedWeekId) ?? currentWeek(league.weeks);
   const lastFinal = league.weeks.find((w) => w.status === "final");
+  const awaiting = open.filter((week) => week.phase === "awaiting");
 
   return (
     <div className="grid gap-4">
+      {awaiting.map((week) => (
+        <Card key={week.id} className="content-start">
+          <h3 className="text-xl">{weekLabel(week.number)} · Awaiting finalization</h3>
+          <p className="m-0 text-sm text-muted-foreground">
+            {isAdmin
+              ? "All final scores are entered. Finalize the week to reveal picks and update standings."
+              : "All scores are in. Your admin will finalize the week to publish results."}
+          </p>
+          {isAdmin && (
+            <Link to={`/weeks/${week.id}/manage`} className={buttonVariants()}>
+              Review &amp; finalize {weekLabel(week.number)}
+            </Link>
+          )}
+        </Card>
+      ))}
       {/* Members never receive drafts, so this is the admin's reminder that a week is waiting on them. */}
       {drafts.map((week) => (
         <Card key={week.id} className="grid-cols-[1fr_auto] items-center">
@@ -94,14 +202,14 @@ function PicksTab({ league, userId }: { league: LeagueDetail; userId: string }) 
                 size: "sm",
               })}
             >
-              {weekLabel(week.number)}
+              {weekLabel(week.number)} · {WEEK_PHASE_LABEL[week.phase]}
             </Link>
           ))}
         </nav>
       )}
 
       {current ? (
-        <WeekLoader weekId={current.id} userId={userId} />
+        <WeekLoader key={current.id} weekId={current.id} userId={userId} />
       ) : (
         <Card>
           <h3 className="text-2xl">No week is open</h3>
@@ -131,20 +239,21 @@ function PicksTab({ league, userId }: { league: LeagueDetail; userId: string }) 
 /** Results and standings are both per season, and share the season picker. */
 function SeasonTab({
   league,
+  year,
   userId,
   show,
 }: {
   league: LeagueDetail;
+  year: number;
   userId: string;
   show: "results" | "standings";
 }) {
-  const [year, setYear] = useState<number>();
   const standings = useLoad(
     () =>
       unwrap<Standings>(
         api.leagues[":leagueId"].standings.$get({
           param: { leagueId: league.id },
-          query: { year: year?.toString() },
+          query: { year: year.toString() },
         }),
       ),
     `${league.id}:${year}`,
@@ -165,17 +274,6 @@ function SeasonTab({
           {show === "results" ? "Results" : "Standings"}{" "}
           {shownYear !== null && <span className="text-2xl text-muted-foreground">· {shownYear}</span>}
         </h3>
-        {standings.data.years.length > 1 && (
-          <Field label="Season" className="w-28">
-            <NativeSelect value={shownYear ?? ""} onChange={(e) => setYear(Number(e.target.value))}>
-              {standings.data.years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-        )}
       </div>
 
       {show === "results" &&
@@ -249,10 +347,12 @@ function SeasonTab({
 /** Who is in the league, and for the admin: weeks, the invite link, and settings. */
 function LeagueTabPanel({
   league,
+  year,
   userId,
   onChanged,
 }: {
   league: LeagueDetail;
+  year: number;
   userId: string;
   onChanged: () => void;
 }) {
@@ -262,8 +362,6 @@ function LeagueTabPanel({
   const [confirm, confirmDialog] = useConfirm();
   const param = { leagueId: league.id };
   const inviteUrl = `${window.location.origin}/join/${league.inviteCode}`;
-  const year = league.weeks[0]?.year ?? seasonYear(new Date());
-  const lastWeek = Math.max(0, ...league.weeks.filter((w) => w.year === year).map((w) => w.number));
 
   /** Runs a change to the league, then reloads it. */
   async function change(request: () => Promise<{ ok: boolean; json(): Promise<unknown> }>, done: string) {
@@ -278,9 +376,7 @@ function LeagueTabPanel({
     setBusy(false);
   }
 
-  async function createWeek(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
+  async function createWeek(number: number, importGames: boolean) {
     // Importing the schedule can take a few seconds, so the button says what is happening.
     setBusy(true);
     try {
@@ -288,9 +384,9 @@ function LeagueTabPanel({
         api.leagues[":leagueId"].weeks.$post({
           param,
           json: {
-            year: Number(form.get("year")),
-            number: Number(form.get("number")),
-            importGames: form.get("importGames") === "on",
+            year,
+            number,
+            importGames,
           },
         }),
       );
@@ -342,59 +438,7 @@ function LeagueTabPanel({
   return (
     <div className="grid gap-4">
       {confirmDialog}
-      {isAdmin && (
-        <Card aria-label="Weeks">
-          <Eyebrow>Weeks</Eyebrow>
-          <form onSubmit={createWeek} className="grid gap-3">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[8rem_8rem_auto] sm:items-end sm:justify-start">
-              <Field label="Season">
-                <Input name="year" type="number" required min={2020} max={2100} defaultValue={year} />
-              </Field>
-              <Field label="Week">
-                <Input
-                  // Remount when a week is added, so the default moves on to the next one.
-                  key={lastWeek}
-                  name="number"
-                  type="number"
-                  required
-                  min={1}
-                  max={MAX_WEEK}
-                  defaultValue={Math.min(lastWeek + 1, MAX_WEEK)}
-                />
-              </Field>
-              <Button type="submit" disabled={busy} className="col-span-2 sm:col-span-1">
-                {busy ? "Creating…" : "Create week"}
-              </Button>
-            </div>
-            <label className="flex min-h-11 items-center gap-3 text-sm">
-              <input name="importGames" type="checkbox" defaultChecked className="size-5 accent-primary" />
-              Import games and spreads from ESPN
-            </label>
-          </form>
-          {league.weeks.length > 0 && (
-            <ul className="m-0 grid list-none p-0">
-              {league.weeks.map((week) => (
-                <li key={week.id} className="border-t">
-                  <Link
-                    to={`/weeks/${week.id}/manage`}
-                    aria-label={`Manage ${weekLabel(week.number)}`}
-                    className="flex min-h-12 items-center gap-3 text-foreground no-underline hover:text-primary"
-                  >
-                    <span className="font-display text-xl font-bold tracking-wide uppercase">
-                      {weekLabel(week.number)}
-                    </span>
-                    <span className="text-sm text-muted-foreground">{week.year}</span>
-                    <Badge variant={week.status === "open" ? "default" : "outline"} className="ml-auto">
-                      {STATUS_LABEL[week.status]}
-                    </Badge>
-                    <CaretRightIcon aria-hidden className="size-5 text-muted-foreground" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
+      {isAdmin && <SeasonWeeks year={year} weeks={league.weeks} busy={busy} onCreate={createWeek} />}
 
       {isAdmin && (
         <Card aria-label="Invite">

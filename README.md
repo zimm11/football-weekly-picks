@@ -47,18 +47,19 @@ rebuilds the database and re-applies the seed) or by removing the stack with `pn
 ### Walking through a week
 
 1. Sign in as `admin@example.com` and open **Sunday Crew**.
-2. Under **Admin → Set up a week**, pick the season and week and press **Create week**. With "Import games and
-   spreads from ESPN" ticked, the week's games, kickoffs and spreads are pulled in (this needs internet access).
+2. Choose **Season** above the league tabs, then open **League**, select a week and press **Create week**.
+   Use **Start a new season** in the season selector to prepare another year; existing weeks open with
+   **Manage week**. With "Import games and spreads from ESPN" ticked, the week's games, kickoffs and spreads are pulled in (this needs internet access).
    You land on the week's **Manage** screen; the week starts as a draft that players can't see.
 3. Adjust the draft if you want: change spreads or point values and press **Save changes**, remove a game, add
    one by hand, or choose a different tiebreaker game. Then press **Open week for picks**.
 4. Make picks. The admin picks on the same screen as everyone else: follow **Make your own picks** (or the
-   week's link on the league page). Saving returns you to the league page, which shows how many games you've
+   week's link on the league page). Saving keeps you on the sheet and confirms how many games you've
    picked. Then pick as a player (see "Signing in as two people" below). Each player sees only their own picks
    while the week is open; the Manage screen shows who has picked, not what.
 5. To finish the week, go back to **Manage** (the link beside the week on the league page). Press **Pull
    results from ESPN** once games are final, or type scores into the game table and press **Save changes**.
-   A game with a score is closed to picks straight away. When every game has a score, **Close week** reveals
+   A game with a score is closed to picks straight away. When every game has a score, **Finalize week** reveals
    everyone's picks, names the winner and updates the standings. **Reopen week** undoes that if a score needs
    correcting.
 

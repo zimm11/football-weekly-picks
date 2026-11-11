@@ -31,6 +31,16 @@ describe("useLeaveGuard", () => {
 });
 
 describe("matchRoute", () => {
+  it("opens the login page directly", () => {
+    expect(matchRoute("/login")).toEqual({ page: "login" });
+    expect(matchRoute("/login/unknown")).toEqual({ page: "not-found" });
+  });
+
+  it("gives the public guide its own address", () => {
+    expect(matchRoute("/how-to-play")).toEqual({ page: "how-to-play" });
+    expect(matchRoute("/how-to-play/unknown")).toEqual({ page: "not-found" });
+  });
+
   it("opens a league on its Picks tab", () => {
     expect(matchRoute("/leagues/abc")).toEqual({ page: "league", leagueId: "abc", tab: "picks" });
   });
