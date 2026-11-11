@@ -17,6 +17,12 @@ erDiagram
   weeks ||--o{ games : "week_id"
   leagues ||--o{ league_members : "league_id"
   auth_users ||--o{ league_members : "user_id"
+  message_threads ||--o{ message_posts : "thread_id"
+  auth_users ||--o{ message_posts : "author_id"
+  message_threads ||--o{ message_reads : "thread_id"
+  auth_users ||--o{ message_reads : "user_id"
+  leagues ||--o{ message_threads : "league_id"
+  auth_users ||--o{ message_threads : "author_id"
   weeks ||--o{ picks : "week_id"
   games ||--o{ picks : "game_id"
   auth_users ||--o{ picks : "user_id"
@@ -55,6 +61,28 @@ erDiagram
     text time_zone
     text invite_code UK
     timestamptz created_at
+  }
+  message_posts {
+    uuid id PK
+    uuid thread_id FK
+    uuid author_id FK
+    text body
+    integer position
+    timestamptz created_at
+  }
+  message_reads {
+    uuid thread_id PK, FK
+    uuid user_id PK, FK
+    integer version
+  }
+  message_threads {
+    uuid id PK
+    uuid league_id FK
+    uuid author_id FK
+    text title
+    integer version
+    timestamptz created_at
+    timestamptz updated_at
   }
   picks {
     uuid id PK
@@ -140,6 +168,45 @@ A group of players who pick against each other, run by league admins.
 | `time_zone` | text | no |  | IANA zone the 6am game-day lock is measured in. Has a default. |
 | `invite_code` | text | no | unique | Anyone holding this code can join. Admins can rotate it. |
 | `created_at` | timestamptz | no |  | Has a default. |
+
+### `message_posts`
+
+The opening message and subsequent replies, ordered within a thread.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `thread_id` | uuid | no | FK → `message_threads.id` |  |
+| `author_id` | uuid | no | FK → `auth.users.id` |  |
+| `body` | text | no |  |  |
+| `position` | integer | no |  |  |
+| `created_at` | timestamptz | no |  | Has a default. |
+
+Unique together: (`thread_id`, `position`).
+
+### `message_reads`
+
+Highest post actually viewed by a player; older tabs cannot move it backwards.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `thread_id` | uuid | no | PK, FK → `message_threads.id` |  |
+| `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
+| `version` | integer | no |  |  |
+
+### `message_threads`
+
+A league-wide conversation, independent of the selected season.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `league_id` | uuid | no | FK → `leagues.id` |  |
+| `author_id` | uuid | no | FK → `auth.users.id` |  |
+| `title` | text | no |  |  |
+| `version` | integer | no |  | Sequential post count; also the unread watermark. Updated under a row lock. Has a default. |
+| `created_at` | timestamptz | no |  | Has a default. |
+| `updated_at` | timestamptz | no |  | Has a default. |
 
 ### `picks`
 

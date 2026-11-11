@@ -198,3 +198,27 @@ export function formatLine(team: string, line: number): string {
 export function lineFor(side: Side, spread: number): number {
   return side === "home" ? spread : spread === 0 ? 0 : -spread;
 }
+
+export const createThreadSchema = z.object({
+  title: z.string().trim().min(1, "Enter a title").max(120),
+  body: z.string().trim().min(1, "Enter a message").max(5000),
+});
+export const replySchema = createThreadSchema.pick({ body: true });
+export const readThreadSchema = z.object({ version: z.int().min(1) });
+export type MessageThread = {
+  id: string;
+  title: string;
+  authorName: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  unread: boolean;
+};
+export type MessagePost = {
+  id: string;
+  body: string;
+  authorName: string;
+  position: number;
+  createdAt: string;
+};
+export type ThreadDetail = { id: string; title: string; version: number; posts: MessagePost[] };

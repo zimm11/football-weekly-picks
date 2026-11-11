@@ -1,5 +1,5 @@
 import { createDb, leagueMembers, leagues, profiles } from "@picks/db";
-import type { LeagueDetail, Standings, WeekView } from "@picks/shared";
+import type { LeagueDetail, MessageThread, Standings, ThreadDetail, WeekView } from "@picks/shared";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
@@ -172,6 +172,53 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(detail.body).toMatchObject({ role: "member", inviteCode: null });
     expect(detail.body.members.map((m) => m.displayName)).toEqual(["Commish", "Pat"]);
     expect((await call(PLAYER, "GET", "/invites/bogus")).status).toBe(404);
+  });
+
+  it("keeps conversations private to members and tracks exact read versions", async () => {
+    const base = `/leagues/${leagueId}/messages`;
+    expect((await call(OUTSIDER, "GET", base)).status).toBe(404);
+    expect((await call(PLAYER, "POST", base, { title: " ", body: "hello" })).status).toBe(400);
+    expect((await call(PLAYER, "POST", base, { title: "Hi", body: "x".repeat(5001) })).status).toBe(400);
+    const created = await call<{ id: string }>(PLAYER, "POST", base, {
+      title: "  Discussion  ",
+      body: "Hello league",
+    });
+    expect(created.status).toBe(201);
+    const path = `${base}/${created.body.id}`;
+    expect((await call<MessageThread[]>(PLAYER, "GET", base)).body[0]).toMatchObject({
+      title: "Discussion",
+      unread: false,
+    });
+    expect((await call<MessageThread[]>(ADMIN, "GET", base)).body[0]?.unread).toBe(true);
+    for (const [method, suffix, body] of [
+      ["GET", "", undefined],
+      ["POST", "/replies", { body: "no" }],
+      ["POST", "/read", { version: 1 }],
+    ] as const) {
+      expect((await call(OUTSIDER, method, path + suffix, body)).status).toBe(404);
+    }
+    await call(ADMIN, "POST", `${path}/read`, { version: 1 });
+    const replies = await Promise.all([
+      call(PLAYER, "POST", `${path}/replies`, { body: "First" }),
+      call(ADMIN, "POST", `${path}/replies`, { body: "Second" }),
+    ]);
+    expect(replies.map((r) => r.status)).toEqual([201, 201]);
+    const detail = (await call<ThreadDetail>(ADMIN, "GET", path)).body;
+    expect(detail.version).toBe(3);
+    expect(detail.posts.map((p) => p.position)).toEqual([1, 2, 3]);
+    await call(ADMIN, "POST", `${path}/read`, { version: 1 });
+    expect((await call<MessageThread[]>(ADMIN, "GET", base)).body[0]?.unread).toBe(true);
+    await call(ADMIN, "POST", `${path}/read`, { version: 3 });
+    await call(ADMIN, "POST", `${path}/read`, { version: 1 });
+    expect((await call<MessageThread[]>(ADMIN, "GET", base)).body[0]?.unread).toBe(false);
+    const other = await call<{ id: string }>(ADMIN, "POST", "/leagues", { name: "Other messages" });
+    createdLeagues.push(other.body.id);
+    expect((await call(ADMIN, "GET", `/leagues/${other.body.id}/messages/${created.body.id}`)).status).toBe(
+      404,
+    );
+    await call(ADMIN, "DELETE", `/leagues/${leagueId}/members/${PLAYER}`);
+    expect((await call(PLAYER, "GET", path)).status).toBe(404);
+    await call(PLAYER, "POST", `/invites/${inviteCode}/join`);
   });
 
   it("only lets the admin set up weeks", async () => {

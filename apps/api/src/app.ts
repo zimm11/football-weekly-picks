@@ -7,6 +7,7 @@ import { type AuthVariables, requireAuth } from "./auth";
 import { type AppDeps, body } from "./context";
 import { leagueRoutes } from "./leagues";
 import { logError, requestLogger } from "./logging";
+import { messageRoutes } from "./messages";
 import { weekRoutes } from "./weeks";
 
 export type { AppDeps } from "./context";
@@ -42,7 +43,8 @@ export function createApp(deps: AppDeps) {
       return c.json(me);
     })
     .route("/", leagueRoutes(deps))
-    .route("/", weekRoutes(deps));
+    .route("/", weekRoutes(deps))
+    .route("/", messageRoutes(deps));
 
   const app = new Hono<{ Variables: AuthVariables }>().use(requestLogger).route("/api", api);
   app.onError((err, c) => {
