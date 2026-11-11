@@ -4,6 +4,7 @@ import { coveringSide, formatLine, type Game, lineFor, type WeekResults } from "
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { matchup } from "../format";
+import { TeamLogo } from "./TeamLogo";
 
 type Props = {
   games: Game[];
@@ -56,8 +57,11 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
               </th>
               {games.map((game) => (
                 <th scope="col" key={game.id} title={`${game.points} pts`}>
-                  {matchup(game)}
-                  <br />
+                  <span className="flex items-center gap-1">
+                    <TeamLogo abbr={game.awayTeam} size={18} />
+                    {matchup(game)}
+                    <TeamLogo abbr={game.homeTeam} size={18} />
+                  </span>
                   <span className="font-sans font-normal tracking-normal normal-case">
                     {formatLine(game.homeTeam, lineFor("home", game.spread ?? 0))} · {game.awayScore}–
                     {game.homeScore}
@@ -107,7 +111,7 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
                 {games.map((game) => {
                   const side = pickOf.get(`${entry.userId}:${game.id}`);
                   const chip =
-                    "max-md:flex max-md:min-h-11 max-md:flex-col max-md:items-center max-md:justify-center max-md:gap-0.5 max-md:rounded-md max-md:border max-md:font-display max-md:text-base max-md:font-bold";
+                    "max-md:flex max-md:min-h-11 max-md:py-1.5 max-md:flex-col max-md:items-center max-md:justify-center max-md:gap-0.5 max-md:rounded-md max-md:border max-md:font-display max-md:text-base max-md:font-bold";
                   if (!side) {
                     return (
                       <td role="cell" key={game.id} className={cn(chip, "text-muted-foreground")}>
@@ -127,6 +131,11 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
                         outcome === "loss" && "text-muted-foreground",
                       )}
                     >
+                      <TeamLogo
+                        abbr={side === "home" ? game.homeTeam : game.awayTeam}
+                        size={22}
+                        className={cn("md:mr-1.5", outcome === "loss" && "opacity-45 grayscale")}
+                      />
                       <span className={outcome === "loss" ? "line-through" : undefined}>
                         {side === "home" ? game.homeTeam : game.awayTeam}
                       </span>
