@@ -1,4 +1,7 @@
 import { type FormEvent, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/card";
+import { Field, Input } from "@/components/ui/input";
 
 export type Credentials = { email: string; password: string };
 export type SignInMode = "sign-in" | "sign-up";
@@ -25,22 +28,22 @@ export function SignInForm({ onSubmit }: Props) {
   }
 
   return (
-    <form onSubmit={handle} className="stack" style={{ maxWidth: 320 }}>
-      <label>
-        Email
-        <input name="email" type="email" required autoComplete="email" />
-      </label>
-      <label>
-        Password
-        <input name="password" type="password" required minLength={6} autoComplete="current-password" />
-      </label>
-      <button type="submit" value="sign-in" className="primary" disabled={pending}>
-        Sign in
-      </button>
-      <button type="submit" value="sign-up" disabled={pending}>
-        Create account
-      </button>
-      {error && <p role="alert">{error}</p>}
+    <form onSubmit={handle} className="grid gap-4">
+      <Field label="Email">
+        <Input name="email" type="email" required autoComplete="email" />
+      </Field>
+      <Field label="Password">
+        <Input name="password" type="password" required minLength={6} autoComplete="current-password" />
+      </Field>
+      {error && <Notice kind="alert">{error}</Notice>}
+      <div className="grid gap-2">
+        <Button type="submit" value="sign-in" disabled={pending}>
+          Sign in
+        </Button>
+        <Button type="submit" value="sign-up" variant="outline" disabled={pending}>
+          Create account
+        </Button>
+      </div>
     </form>
   );
 }

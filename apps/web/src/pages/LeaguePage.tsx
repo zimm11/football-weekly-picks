@@ -1,10 +1,20 @@
+import { CaretRightIcon } from "@phosphor-icons/react";
 import { type LeagueDetail, MAX_WEEK, type Standings, type WeekSummary, weekLabel } from "@picks/shared";
 import { type FormEvent, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, Eyebrow, Notice } from "@/components/ui/card";
+import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
+import { useConfirm } from "../components/ConfirmDialog";
+import { LeagueLayout, type LeagueTab } from "../components/LeagueNav";
 import { StandingsTable } from "../components/StandingsTable";
 import { seasonYear } from "../format";
-import { Link, navigate, useFlash } from "../router";
+import { notifyDone, notifyError } from "../notify";
+import { Link, navigate } from "../router";
+import { rowLink } from "./LeaguesPage";
 import { useLoad } from "./useLoad";
+import { STATUS_LABEL, WeekLoader } from "./WeekPage";
 
 /** The zones offered for the 6am lock. A league already on another zone keeps it as an extra option. */
 const TIME_ZONES: Record<string, string> = {
@@ -18,148 +28,232 @@ const TIME_ZONES: Record<string, string> = {
 };
 const zoneName = (timeZone: string) => TIME_ZONES[timeZone] ?? timeZone;
 
-export function LeaguePage({ leagueId, userId }: { leagueId: string; userId: string }) {
-  const [year, setYear] = useState<number>();
-  const flash = useFlash();
+/** The league hub. Each tab is its own address, so the back button and shared links land where expected. */
+export function LeaguePage({ leagueId, userId, tab }: { leagueId: string; userId: string; tab: LeagueTab }) {
   const league = useLoad(
     () => unwrap<LeagueDetail>(api.leagues[":leagueId"].$get({ param: { leagueId } })),
     leagueId,
   );
+
+  if (league.error) return <Notice kind="alert">{league.error}</Notice>;
+  if (!league.data) return <p className="text-muted-foreground">Loading…</p>;
+  return (
+    <LeagueLayout leagueId={leagueId} leagueName={league.data.name} active={tab}>
+      {tab === "picks" && <PicksTab league={league.data} userId={userId} />}
+      {(tab === "results" || tab === "standings") && (
+        <SeasonTab league={league.data} userId={userId} show={tab} />
+      )}
+      {tab === "league" && <LeagueTabPanel league={league.data} userId={userId} onChanged={league.reload} />}
+    </LeagueLayout>
+  );
+}
+
+/** The week that needs the player's attention: the earliest open week with picks missing, else the latest open one. */
+export function currentWeek(weeks: WeekSummary[]): WeekSummary | undefined {
+  const open = weeks
+    .filter((w) => w.status === "open")
+    .sort((a, b) => a.year - b.year || a.number - b.number);
+  return open.find((w) => w.myPickCount < w.gameCount) ?? open.at(-1);
+}
+
+function PicksTab({ league, userId }: { league: LeagueDetail; userId: string }) {
+  const isAdmin = league.role === "admin";
+  const open = league.weeks.filter((w) => w.status === "open");
+  const drafts = league.weeks.filter((w) => w.status === "draft");
+  const current = currentWeek(league.weeks);
+  const lastFinal = league.weeks.find((w) => w.status === "final");
+
+  return (
+    <div className="grid gap-4">
+      {/* Members never receive drafts, so this is the admin's reminder that a week is waiting on them. */}
+      {drafts.map((week) => (
+        <Card key={week.id} className="grid-cols-[1fr_auto] items-center">
+          <p className="m-0">
+            <strong>{weekLabel(week.number)}</strong> is a draft. Players can't see it yet.
+          </p>
+          <Link
+            to={`/weeks/${week.id}/manage`}
+            aria-label={`Set up ${weekLabel(week.number)}`}
+            className={buttonVariants({ size: "sm" })}
+          >
+            Set up
+          </Link>
+        </Card>
+      ))}
+
+      {open.length > 1 && (
+        <nav aria-label="Open weeks" className="flex flex-wrap gap-2">
+          {open.map((week) => (
+            <Link
+              key={week.id}
+              to={`/weeks/${week.id}`}
+              aria-current={week.id === current?.id ? "page" : undefined}
+              className={buttonVariants({
+                variant: week.id === current?.id ? "secondary" : "outline",
+                size: "sm",
+              })}
+            >
+              {weekLabel(week.number)}
+            </Link>
+          ))}
+        </nav>
+      )}
+
+      {current ? (
+        <WeekLoader weekId={current.id} userId={userId} />
+      ) : (
+        <Card>
+          <h3 className="text-2xl">No week is open</h3>
+          <p className="m-0 text-muted-foreground">
+            {isAdmin
+              ? "Set up a week and open it, and the pick sheet shows up here for everyone."
+              : "The pick sheet shows up here as soon as the admin opens the next week."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {isAdmin && drafts.length === 0 && (
+              <Link to={`/leagues/${league.id}/league`} className={buttonVariants()}>
+                Set up a week
+              </Link>
+            )}
+            {lastFinal && (
+              <Link to={`/weeks/${lastFinal.id}`} className={buttonVariants({ variant: "outline" })}>
+                {weekLabel(lastFinal.number)} results
+              </Link>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** Results and standings are both per season, and share the season picker. */
+function SeasonTab({
+  league,
+  userId,
+  show,
+}: {
+  league: LeagueDetail;
+  userId: string;
+  show: "results" | "standings";
+}) {
+  const [year, setYear] = useState<number>();
   const standings = useLoad(
     () =>
       unwrap<Standings>(
-        api.leagues[":leagueId"].standings.$get({ param: { leagueId }, query: { year: year?.toString() } }),
+        api.leagues[":leagueId"].standings.$get({
+          param: { leagueId: league.id },
+          query: { year: year?.toString() },
+        }),
       ),
-    `${leagueId}:${year}`,
+    `${league.id}:${year}`,
   );
 
-  if (league.error) return <p role="alert">{league.error}</p>;
-  if (!league.data) return <p>Loading…</p>;
-  const isAdmin = league.data.role === "admin";
-  const shownYear = standings.data?.year ?? null;
-  const weeks = league.data.weeks.filter((w) => shownYear === null || w.year === shownYear);
+  if (standings.error) return <Notice kind="alert">{standings.error}</Notice>;
+  if (!standings.data) return <p className="text-muted-foreground">Loading…</p>;
+  const shownYear = standings.data.year;
+  const finals = league.weeks.filter(
+    (w) => w.status === "final" && (shownYear === null || w.year === shownYear),
+  );
 
   return (
-    <>
-      <p className="muted">
-        <Link to="/">← All leagues</Link>
-      </p>
-      <h2>{league.data.name}</h2>
-      {flash && <p role={flash.kind}>{flash.text}</p>}
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h3 className="text-4xl leading-none font-extrabold">
+          {show === "results" ? "Results" : "Standings"}{" "}
+          {shownYear !== null && <span className="text-2xl text-muted-foreground">· {shownYear}</span>}
+        </h3>
+        {standings.data.years.length > 1 && (
+          <Field label="Season" className="w-28">
+            <NativeSelect value={shownYear ?? ""} onChange={(e) => setYear(Number(e.target.value))}>
+              {standings.data.years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+        )}
+      </div>
 
-      {standings.data && standings.data.years.length > 1 && (
-        <label className="inline">
-          Season
-          <select value={shownYear ?? ""} onChange={(e) => setYear(Number(e.target.value))}>
-            {standings.data.years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      <section className="card">
-        <h3>Weeks{shownYear ? ` · ${shownYear} season` : ""}</h3>
-        {weeks.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            No weeks yet.{isAdmin ? " Set one up below." : " The admin hasn't opened one."}
-          </p>
+      {show === "results" &&
+        (finals.length === 0 ? (
+          <Card>
+            <p className="m-0 text-muted-foreground">
+              No week has closed yet. Everyone's picks and the winner show up here once one does.
+            </p>
+          </Card>
         ) : (
-          <ul className="plain">
-            {weeks.map((week) => (
-              <WeekRow
-                key={week.id}
-                week={week}
-                isAdmin={isAdmin}
-                winners={standings.data?.weeks.find((w) => w.id === week.id)?.winners ?? []}
-              />
-            ))}
+          <ul className="m-0 grid list-none gap-2 p-0">
+            {finals.map((week) => {
+              const winners = standings.data?.weeks.find((w) => w.id === week.id)?.winners ?? [];
+              return (
+                <li key={week.id}>
+                  <Link to={`/weeks/${week.id}`} className={rowLink}>
+                    <span className="font-display text-2xl font-bold tracking-wide uppercase">
+                      {weekLabel(week.number)}
+                    </span>
+                    <span className="mr-auto text-sm text-muted-foreground">
+                      {winners.length ? `Won by ${winners.join(", ")}` : "Final"}
+                    </span>
+                    <CaretRightIcon aria-hidden className="size-5 text-muted-foreground" />
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
-        )}
-      </section>
+        ))}
 
-      <section className="card">
-        <h3>Season standings{shownYear ? ` · ${shownYear}` : ""}</h3>
-        {standings.error && <p role="alert">{standings.error}</p>}
-        {standings.data && <StandingsTable entries={standings.data.entries} currentUserId={userId} />}
-        <p className="muted">
-          Standings count closed weeks only. The 6am game-day lock uses {zoneName(league.data.timeZone)} time.
-        </p>
-      </section>
-
-      {isAdmin && (
-        <AdminPanel league={league.data} userId={userId} onChanged={league.reload} defaultYear={shownYear} />
+      {show === "standings" && (
+        <>
+          <StandingsTable entries={standings.data.entries} currentUserId={userId} />
+          <p className="m-0 text-sm text-muted-foreground">
+            Standings count closed weeks only. Ties are broken by POWs won, then wins, then Monday night and
+            Sunday night wins.
+          </p>
+        </>
       )}
-    </>
+    </div>
   );
 }
 
-function WeekRow({ week, isAdmin, winners }: { week: WeekSummary; isAdmin: boolean; winners: string[] }) {
-  const remaining = week.gameCount - week.myPickCount;
-  let status: string;
-  if (week.status === "draft") status = "Draft: not visible to players";
-  else if (week.status === "final") status = winners.length ? `Won by ${winners.join(", ")}` : "Final";
-  else if (week.myPickCount === 0) status = "Open: you haven't picked yet";
-  else if (remaining > 0) status = `Open: you've picked ${week.myPickCount} of ${week.gameCount}`;
-  else status = `Open: all ${week.gameCount} picked`;
-  const needsPicks = week.status === "open" && remaining > 0;
-
-  return (
-    <li>
-      {/* A draft has nothing to pick yet, so it leads straight to the admin's setup screen. */}
-      <Link to={week.status === "draft" ? `/weeks/${week.id}/manage` : `/weeks/${week.id}`}>
-        {weekLabel(week.number)}
-      </Link>
-      <span className="row">
-        <span className={needsPicks ? "badge pow" : "muted"}>{status}</span>
-        {isAdmin && week.status !== "draft" && (
-          <Link to={`/weeks/${week.id}/manage`} aria-label={`Manage ${weekLabel(week.number)}`}>
-            Manage
-          </Link>
-        )}
-      </span>
-    </li>
-  );
-}
-
-function AdminPanel({
+/** Who is in the league, and for the admin: weeks, the invite link, and settings. */
+function LeagueTabPanel({
   league,
   userId,
   onChanged,
-  defaultYear,
 }: {
   league: LeagueDetail;
   userId: string;
   onChanged: () => void;
-  defaultYear: number | null;
 }) {
-  const [error, setError] = useState<string>();
-  const [notice, setNotice] = useState<string>();
+  const isAdmin = league.role === "admin";
+  const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const param = { leagueId: league.id };
   const inviteUrl = `${window.location.origin}/join/${league.inviteCode}`;
-  const year = defaultYear ?? seasonYear(new Date());
+  const year = league.weeks[0]?.year ?? seasonYear(new Date());
   const lastWeek = Math.max(0, ...league.weeks.filter((w) => w.year === year).map((w) => w.number));
 
   /** Runs a change to the league, then reloads it. */
   async function change(request: () => Promise<{ ok: boolean; json(): Promise<unknown> }>, done: string) {
-    setError(undefined);
-    setNotice(undefined);
+    setBusy(true);
     try {
       await unwrap(request());
-      setNotice(done);
+      notifyDone(done);
       onChanged();
     } catch (err) {
-      setError(messageOf(err));
+      notifyError(messageOf(err));
     }
+    setBusy(false);
   }
 
   async function createWeek(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    setError(undefined);
+    // Importing the schedule can take a few seconds, so the button says what is happening.
+    setBusy(true);
     try {
       const { id, importError } = await unwrap<{ id: string; importError: string | null }>(
         api.leagues[":leagueId"].weeks.$post({
@@ -173,7 +267,8 @@ function AdminPanel({
       );
       navigate(`/weeks/${id}/manage`, importError ? { kind: "alert", text: importError } : undefined);
     } catch (err) {
-      setError(messageOf(err));
+      notifyError(messageOf(err));
+      setBusy(false);
     }
   }
 
@@ -190,15 +285,24 @@ function AdminPanel({
     );
   }
 
-  function rotate() {
-    if (!window.confirm("Make a new invite link? The current link will stop working.")) return;
+  async function rotate() {
+    const ok = await confirm({
+      title: "Make a new invite link?",
+      detail: "The current link will stop working.",
+      action: "Make new link",
+    });
+    if (!ok) return;
     setCopied(false);
     change(() => api.leagues[":leagueId"].invite.$post({ param }), "New invite link created.");
   }
 
-  function remove(member: LeagueDetail["members"][number]) {
-    const warning = `Remove ${member.displayName} from the league? They lose access. Weeks already played keep their results.`;
-    if (!window.confirm(warning)) return;
+  async function remove(member: LeagueDetail["members"][number]) {
+    const ok = await confirm({
+      title: `Remove ${member.displayName}?`,
+      detail: "They lose access to the league. Weeks already played keep their results.",
+      action: "Remove",
+    });
+    if (!ok) return;
     change(
       () =>
         api.leagues[":leagueId"].members[":userId"].$delete({ param: { ...param, userId: member.userId } }),
@@ -207,106 +311,144 @@ function AdminPanel({
   }
 
   return (
-    <section className="card stack" aria-label="League admin">
-      <h3 style={{ margin: 0 }}>Admin</h3>
-      {error && <p role="alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+    <div className="grid gap-4">
+      {confirmDialog}
+      {isAdmin && (
+        <Card aria-label="Weeks">
+          <Eyebrow>Weeks</Eyebrow>
+          <form onSubmit={createWeek} className="grid gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[8rem_8rem_auto] sm:items-end sm:justify-start">
+              <Field label="Season">
+                <Input name="year" type="number" required min={2020} max={2100} defaultValue={year} />
+              </Field>
+              <Field label="Week">
+                <Input
+                  // Remount when a week is added, so the default moves on to the next one.
+                  key={lastWeek}
+                  name="number"
+                  type="number"
+                  required
+                  min={1}
+                  max={MAX_WEEK}
+                  defaultValue={Math.min(lastWeek + 1, MAX_WEEK)}
+                />
+              </Field>
+              <Button type="submit" disabled={busy} className="col-span-2 sm:col-span-1">
+                {busy ? "Creating…" : "Create week"}
+              </Button>
+            </div>
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input name="importGames" type="checkbox" defaultChecked className="size-5 accent-primary" />
+              Import games and spreads from ESPN
+            </label>
+          </form>
+          {league.weeks.length > 0 && (
+            <ul className="m-0 grid list-none p-0">
+              {league.weeks.map((week) => (
+                <li key={week.id} className="border-t">
+                  <Link
+                    to={`/weeks/${week.id}/manage`}
+                    aria-label={`Manage ${weekLabel(week.number)}`}
+                    className="flex min-h-12 items-center gap-3 text-foreground no-underline hover:text-primary"
+                  >
+                    <span className="font-display text-xl font-bold tracking-wide uppercase">
+                      {weekLabel(week.number)}
+                    </span>
+                    <span className="text-sm text-muted-foreground">{week.year}</span>
+                    <Badge variant={week.status === "open" ? "default" : "outline"} className="ml-auto">
+                      {STATUS_LABEL[week.status]}
+                    </Badge>
+                    <CaretRightIcon aria-hidden className="size-5 text-muted-foreground" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
 
-      <form onSubmit={createWeek} className="stack">
-        <strong>Set up a week</strong>
-        <div className="row" style={{ alignItems: "end" }}>
-          <label>
-            Season
-            <input name="year" type="number" required min={2020} max={2100} defaultValue={year} />
-          </label>
-          <label>
-            Week
-            <input
-              // Remount when a week is added, so the default moves on to the next one.
-              key={lastWeek}
-              name="number"
-              type="number"
-              required
-              min={1}
-              max={MAX_WEEK}
-              defaultValue={Math.min(lastWeek + 1, MAX_WEEK)}
-            />
-          </label>
-          <button type="submit" className="primary">
-            Create week
-          </button>
-        </div>
-        <label className="inline">
-          <input name="importGames" type="checkbox" defaultChecked />
-          Import games and spreads from ESPN
-        </label>
-      </form>
+      {isAdmin && (
+        <Card aria-label="Invite">
+          <Eyebrow>Invite players</Eyebrow>
+          <Field label="Invite link: send this to anyone who should join">
+            <Input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} />
+          </Field>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(inviteUrl);
+                  setCopied(true);
+                } catch {
+                  notifyError("Couldn't copy the link. Select it above and copy it yourself.");
+                }
+              }}
+            >
+              {copied ? "Copied" : "Copy link"}
+            </Button>
+            <Button type="button" variant="link" onClick={rotate}>
+              Make a new link
+            </Button>
+          </div>
+        </Card>
+      )}
 
-      <div className="stack">
-        <label>
-          Invite link: send this to anyone who should join
-          <input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} />
-        </label>
-        <div className="row">
-          <button
-            type="button"
-            onClick={async () => {
-              await navigator.clipboard.writeText(inviteUrl);
-              setCopied(true);
-            }}
-          >
-            {copied ? "Copied" : "Copy link"}
-          </button>
-          <button type="button" className="link" onClick={rotate}>
-            Make a new link
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <strong>Members ({league.members.length})</strong>
-        <ul className="plain" style={{ marginTop: 8 }}>
+      <Card aria-label="Members">
+        <Eyebrow>Members ({league.members.length})</Eyebrow>
+        <ul className="m-0 grid list-none p-0">
           {league.members.map((member) => (
-            <li key={member.userId}>
-              <span>
-                {member.displayName} {member.role === "admin" && <span className="badge">Admin</span>}
-              </span>
-              {member.userId !== userId && (
-                <button
+            <li key={member.userId} className="flex min-h-12 items-center gap-2 border-t first:border-t-0">
+              <span className="font-medium">{member.displayName}</span>
+              {member.role === "admin" && <Badge variant="outline">Admin</Badge>}
+              {isAdmin && member.userId !== userId && (
+                <Button
                   type="button"
-                  className="link"
+                  variant="destructive"
+                  size="sm"
+                  className="ml-auto"
                   aria-label={`Remove ${member.displayName}`}
                   onClick={() => remove(member)}
                 >
                   Remove
-                </button>
+                </Button>
               )}
             </li>
           ))}
         </ul>
-      </div>
+        {!isAdmin && (
+          <p className="m-0 text-sm text-muted-foreground">
+            The 6am game-day lock uses {zoneName(league.timeZone)} time.
+          </p>
+        )}
+      </Card>
 
-      <form onSubmit={saveSettings} className="stack">
-        <strong>League settings</strong>
-        <div className="row" style={{ alignItems: "end" }}>
-          <label>
-            League name
-            <input name="name" required maxLength={80} defaultValue={league.name} />
-          </label>
-          <label>
-            Time zone for the 6am lock
-            <select name="timeZone" defaultValue={league.timeZone}>
-              {!(league.timeZone in TIME_ZONES) && <option value={league.timeZone}>{league.timeZone}</option>}
-              {Object.entries(TIME_ZONES).map(([zone, name]) => (
-                <option key={zone} value={zone}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="submit">Save settings</button>
-        </div>
-      </form>
-    </section>
+      {isAdmin && (
+        <Card aria-label="League settings">
+          <Eyebrow>League settings</Eyebrow>
+          <form onSubmit={saveSettings} className="grid gap-3 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
+            <Field label="League name">
+              <Input name="name" required maxLength={80} defaultValue={league.name} />
+            </Field>
+            <Field label="Time zone for the 6am lock">
+              <NativeSelect name="timeZone" defaultValue={league.timeZone}>
+                {!(league.timeZone in TIME_ZONES) && (
+                  <option value={league.timeZone}>{league.timeZone}</option>
+                )}
+                {Object.entries(TIME_ZONES).map(([zone, name]) => (
+                  <option key={zone} value={zone}>
+                    {name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Button type="submit" variant="secondary" disabled={busy}>
+              Save settings
+            </Button>
+          </form>
+        </Card>
+      )}
+    </div>
   );
 }

@@ -65,6 +65,54 @@ describe("PickSheet", () => {
     await expect.element(screen.getByRole("status")).toHaveTextContent("Picks saved.");
   });
 
+  it("counts down the games left to pick, going by what is saved", async () => {
+    const { screen } = await renderSheet({ picks: [{ gameId: "thu", side: "home", isPow: false }] });
+    const status = screen.getByRole("region", { name: "Pick status" });
+    await expect.element(status.getByText("games left to pick")).toBeVisible();
+    await expect.element(status.getByText(/1 of 3 saved/)).toBeVisible();
+    await expect.element(status.getByText(/Choose your POW\. Add your tiebreaker guess\./)).toBeVisible();
+  });
+
+  it("still counts the POW as left to do when every game is picked", async () => {
+    const { screen } = await renderSheet({
+      picks: ["thu", "sun", "mon"].map((gameId) => ({ gameId, side: "home" as const, isPow: false })),
+      tiebreakerTotal: 44,
+    });
+    const status = screen.getByRole("region", { name: "Pick status" });
+    await expect.element(status.getByText("thing left to do")).toBeVisible();
+    await expect.element(status.getByText(/3 of 3 saved\. Choose your POW\./)).toBeVisible();
+  });
+
+  it("stops asking for a POW once it can no longer be chosen", async () => {
+    // After 6am on Sunday the Monday night pick is the POW, so there is nothing left to choose.
+    const { screen } = await renderSheet({
+      now: SUNDAY_7AM,
+      picks: ["thu", "sun", "mon"].map((gameId) => ({ gameId, side: "home" as const, isPow: false })),
+      tiebreakerTotal: 44,
+    });
+    const status = screen.getByRole("region", { name: "Pick status" });
+    await expect.element(status.getByText("You're set for the week")).toBeVisible();
+    await expect.element(status.getByText(/POW: defaults to LAC at BAL\./)).toBeVisible();
+  });
+
+  it("says the player is set once every pick and the tiebreaker guess are saved", async () => {
+    const { screen } = await renderSheet({
+      picks: [
+        { gameId: "thu", side: "home", isPow: true },
+        { gameId: "sun", side: "away", isPow: false },
+        { gameId: "mon", side: "home", isPow: false },
+      ],
+      tiebreakerTotal: 44,
+    });
+    const status = screen.getByRole("region", { name: "Pick status" });
+    await expect.element(status.getByText("You're set for the week")).toBeVisible();
+    await expect.element(status.getByText(/All 3 games picked and saved\. POW: WSH at NYG\./)).toBeVisible();
+
+    // Changing a pick takes the all-clear away until it is saved again.
+    await screen.getByRole("button", { name: "Commanders +2.5" }).click();
+    await expect.element(status.getByText("Not saved yet")).toBeVisible();
+  });
+
   it("only allows a POW on a game that has a pick", async () => {
     const { screen } = await renderSheet();
     await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeDisabled();

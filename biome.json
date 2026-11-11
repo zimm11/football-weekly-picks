@@ -8,6 +8,11 @@
   "files": {
     "includes": ["**", "!**/dist", "!supabase/migrations/meta", "!**/*.sql", "!docs/schema.md"]
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "formatter": {
     "indentStyle": "space",
     "indentWidth": 2,

@@ -7,7 +7,9 @@ test("signed-out visitors see the sign-in form", async ({ page }) => {
 });
 
 test("a user can sign out and sign back in", async ({ page, signedIn }) => {
-  await page.getByRole("button", { name: "Sign out" }).click();
+  // Sign out lives in the account menu, under the player's name.
+  await page.getByRole("button", { name: signedIn.displayName }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 
   await page.getByLabel("Email").fill(signedIn.email);
@@ -30,9 +32,8 @@ function kickoffInDays(days: number) {
 }
 
 test("a league week from setup to results", async ({ page, browser, signedIn: _ }) => {
-  page.on("dialog", (dialog) => dialog.accept());
-
-  // The admin starts a league and sets up a week by hand (no schedule import, so the test stays offline).
+  // The admin starts a league, which lands on its League tab, and sets up a week by hand (no schedule import,
+  // so the test stays offline).
   await page.getByLabel("League name").fill("E2E League");
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "E2E League" })).toBeVisible();
@@ -51,14 +52,14 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
 
   await page.getByRole("button", { name: "Open week for picks" }).click();
 
-  // Picks are made on their own screen. The admin takes the Chiefs as their POW; saving returns to the league.
+  // Picks are made on their own screen. The admin takes the Chiefs as their POW; saving stays on the sheet.
   await page.getByRole("link", { name: "Make your own picks" }).click();
   await page.getByRole("button", { name: "Chiefs -3.5" }).click();
   await page.getByRole("button", { name: "POW: KC at ATL" }).click();
   await page.getByLabel(/Tiebreaker/).fill("44");
   await page.getByRole("button", { name: "Save picks" }).click();
-  await expect(page.getByText("Week 1 picks saved: 1 of 1 games picked.")).toBeVisible();
-  await expect(page.getByText("Open: all 1 picked")).toBeVisible();
+  await expect(page.getByText("Picks saved.")).toBeVisible();
+  await expect(page.getByText("1 of 1 picked")).toBeVisible();
 
   // A second person follows the invite link, signs up, joins and takes the Falcons.
   const context = await browser.newContext();
@@ -68,23 +69,27 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await signUp(player, "Pat");
   await player.getByRole("button", { name: "Join league" }).click();
   await expect(player.getByRole("heading", { name: "E2E League" })).toBeVisible();
-  await expect(player.getByText("Open: you haven't picked yet")).toBeVisible();
-  await player.getByRole("link", { name: "Week 1" }).click();
+  // The league opens on the Picks tab, which is the open week's pick sheet.
+  await expect(player.getByRole("link", { name: "Picks", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(player.getByText("0 of 1 picked")).toBeVisible();
   await player.getByRole("button", { name: "Falcons +3.5" }).click();
   await player.getByRole("button", { name: "Save picks" }).click();
-  await expect(player.getByText("Week 1 picks saved: 1 of 1 games picked.")).toBeVisible();
+  await expect(player.getByText("Picks saved.")).toBeVisible();
 
   // While the week is open the player sees only their own pick: the Chiefs button is not selected.
-  await player.getByRole("link", { name: "Week 1" }).click();
+  await player.reload();
   await expect(player.getByRole("button", { name: "Falcons +3.5" })).toHaveAttribute("aria-pressed", "true");
   await expect(player.getByRole("button", { name: "Chiefs -3.5" })).toHaveAttribute("aria-pressed", "false");
   await expect(player.getByRole("button", { name: "Chiefs -3.5" })).toBeEnabled();
   await expect(player.getByRole("table", { name: "Week results" })).toHaveCount(0);
   // Players have no way into the management screen.
-  await expect(player.getByRole("link", { name: "Manage this week" })).toHaveCount(0);
+  await expect(player.getByRole("link", { name: "Manage week" })).toHaveCount(0);
 
   // The admin sees that both have picked and enters the final score.
-  await page.getByRole("link", { name: "Manage Week 1" }).click();
+  await page.getByRole("link", { name: "Manage week" }).click();
   await expect(page.getByRole("row", { name: /Pat/ })).toContainText("1 of 1");
   await page.getByLabel("KC score in KC at ATL").fill("30");
   await page.getByLabel("ATL score in KC at ATL").fill("10");
@@ -98,15 +103,19 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(player.getByRole("button", { name: "Falcons +3.5" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Close week" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Close week" }).click();
   await expect(page.getByText("Winner: Commish")).toBeVisible();
 
   // Now the player can see everyone's picks, and the standings credit the winner.
   await player.reload();
+  await expect(player.getByRole("heading", { name: "No week is open" })).toBeVisible();
+  await player.getByRole("link", { name: "Results", exact: true }).click();
+  await expect(player.getByText("Won by Commish")).toBeVisible();
+  await player.getByRole("link", { name: /Week 1/ }).click();
   const results = player.getByRole("table", { name: "Week results" });
   await expect(results.getByRole("row", { name: /Commish/ })).toContainText("KC POW");
   await expect(results.getByRole("row", { name: /Pat/ })).toContainText("ATL");
-  await player.getByRole("link", { name: /E2E League/ }).click();
-  await expect(player.getByText("Won by Commish")).toBeVisible();
+  await player.getByRole("link", { name: "Standings" }).click();
   const standings = player.getByRole("table", { name: "Season standings" });
   await expect(standings.getByRole("row").nth(1)).toContainText("Commish");
   await context.close();
