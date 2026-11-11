@@ -25,25 +25,22 @@ export function SignInForm({ onSubmit }: Props) {
   }
 
   return (
-    <form onSubmit={handle} style={{ display: "grid", gap: 8, maxWidth: 320 }}>
+    <form onSubmit={handle} className="stack" style={{ maxWidth: 320 }}>
       <label>
-        Email <input name="email" type="email" required autoComplete="email" />
+        Email
+        <input name="email" type="email" required autoComplete="email" />
       </label>
       <label>
-        Password{" "}
+        Password
         <input name="password" type="password" required minLength={6} autoComplete="current-password" />
       </label>
-      <button type="submit" value="sign-in" disabled={pending}>
+      <button type="submit" value="sign-in" className="primary" disabled={pending}>
         Sign in
       </button>
       <button type="submit" value="sign-up" disabled={pending}>
         Create account
       </button>
-      {error && (
-        <p role="alert" style={{ color: "crimson" }}>
-          {error}
-        </p>
-      )}
+      {error && <p role="alert">{error}</p>}
     </form>
   );
 }

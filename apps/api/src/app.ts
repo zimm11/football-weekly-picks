@@ -1,28 +1,21 @@
-import { zValidator } from "@hono/zod-validator";
-import { type Db, examples } from "@picks/db";
-import { createExampleSchema, type Example } from "@picks/shared";
-import { desc, eq, sql } from "drizzle-orm";
+import { profiles } from "@picks/db";
+import { type Me, updateProfileSchema } from "@picks/shared";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
-import { type AuthVariables, requireAuth, type VerifyToken } from "./auth";
+import { type AuthVariables, requireAuth } from "./auth";
+import { type AppDeps, body } from "./context";
+import { leagueRoutes } from "./leagues";
+import { weekRoutes } from "./weeks";
 
-export type AppDeps = {
-  db: Db;
-  verifyToken: VerifyToken;
-  /** Public config handed to clients at runtime (so the web build needs no baked-in env). */
-  publicConfig: { supabaseUrl: string; supabasePublishableKey: string };
-};
+export type { AppDeps } from "./context";
 
-const toExample = (row: typeof examples.$inferSelect): Example => ({
-  id: row.id,
-  title: row.title,
-  createdAt: row.createdAt.toISOString(),
-});
-
-export function createApp({ db, verifyToken, publicConfig }: AppDeps) {
+export function createApp(deps: AppDeps) {
+  const { db, verifyToken, publicConfig } = deps;
   const auth = requireAuth(verifyToken);
 
+  // Keep everything chained (and sub-apps mounted with `.route`), or `ApiType` loses the route types.
   const api = new Hono<{ Variables: AuthVariables }>()
     .get("/health", async (c) => {
       try {
@@ -35,24 +28,22 @@ export function createApp({ db, verifyToken, publicConfig }: AppDeps) {
       }
     })
     .get("/config", (c) => c.json(publicConfig))
-    .get("/me", auth, (c) => c.json(c.var.user))
-    // PLACEHOLDER routes: replace with real domain routes.
-    .get("/examples", auth, async (c) => {
-      const rows = await db
-        .select()
-        .from(examples)
-        .where(eq(examples.userId, c.var.user.id))
-        .orderBy(desc(examples.createdAt));
-      return c.json(rows.map(toExample));
+    .get("/me", auth, async (c) => {
+      const [profile] = await db.select().from(profiles).where(eq(profiles.userId, c.var.user.id));
+      const me: Me = { ...c.var.user, displayName: profile?.displayName ?? null };
+      return c.json(me);
     })
-    .post("/examples", auth, zValidator("json", createExampleSchema), async (c) => {
-      const [row] = await db
-        .insert(examples)
-        .values({ userId: c.var.user.id, title: c.req.valid("json").title })
-        .returning();
-      if (!row) throw new HTTPException(500, { message: "Insert failed" });
-      return c.json(toExample(row), 201);
-    });
+    .put("/me", auth, body(updateProfileSchema), async (c) => {
+      const { displayName } = c.req.valid("json");
+      await db
+        .insert(profiles)
+        .values({ userId: c.var.user.id, displayName })
+        .onConflictDoUpdate({ target: profiles.userId, set: { displayName } });
+      const me: Me = { ...c.var.user, displayName };
+      return c.json(me);
+    })
+    .route("/", leagueRoutes(deps))
+    .route("/", weekRoutes(deps));
 
   const app = new Hono().use(logger()).route("/api", api);
   app.onError((err, c) => {

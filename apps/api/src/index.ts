@@ -3,12 +3,14 @@ import { createDb } from "@picks/db";
 import { createApp } from "./app";
 import { supabaseTokenVerifier } from "./auth";
 import { loadEnv } from "./env";
+import { espnProvider } from "./nfl";
 
 const env = loadEnv();
 const db = createDb(env.DATABASE_URL);
 const app = createApp({
   db,
   verifyToken: supabaseTokenVerifier(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY),
+  nfl: espnProvider(),
   publicConfig: { supabaseUrl: env.SUPABASE_URL, supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY },
 });
 

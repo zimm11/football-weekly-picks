@@ -19,6 +19,7 @@
     "db:status": "node scripts/supabase.mjs status",
     "db:reset": "node scripts/supabase.mjs db reset",
     "db:generate": "pnpm --filter @picks/db generate",
+    "db:erd": "pnpm --filter @picks/db erd",
     "db:migrate:custom": "pnpm --filter @picks/db generate:custom",
     "test:e2e": "pnpm --filter @picks/e2e e2e",
     "test:e2e:ui": "pnpm --filter @picks/e2e e2e:ui",

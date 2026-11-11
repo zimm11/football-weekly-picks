@@ -22,3 +22,19 @@ export const api = hc<ApiType>("/", {
     return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {};
   },
 }).api;
+
+/**
+ * Resolves an API call to its JSON body, or throws an Error carrying the API's `{ error }` message.
+ * Callers name the response type from `@picks/shared`.
+ */
+export async function unwrap<T>(request: Promise<{ ok: boolean; json(): Promise<unknown> }>): Promise<T> {
+  const res = await request;
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error((data as { error?: string } | null)?.error ?? "Something went wrong. Try again.");
+  }
+  return data as T;
+}
+
+export const messageOf = (err: unknown) =>
+  err instanceof Error ? err.message : "Something went wrong. Try again.";
