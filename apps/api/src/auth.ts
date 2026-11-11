@@ -5,7 +5,7 @@ import { HTTPException } from "hono/http-exception";
 export type AuthUser = { id: string; email?: string };
 export type VerifyToken = (token: string) => Promise<AuthUser | null>;
 
-export type AuthVariables = { user: AuthUser };
+export type AuthVariables = { user: AuthUser; requestId: string };
 
 /** Verifies Supabase access tokens (JWKS-backed via getClaims, falling back to the Auth server). */
 export function supabaseTokenVerifier(supabaseUrl: string, publishableKey: string): VerifyToken {

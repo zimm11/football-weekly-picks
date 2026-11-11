@@ -81,8 +81,7 @@ function resolveSlot() {
   });
 }
 
-export function getPorts() {
-  const slot = resolveSlot();
+export function getPorts(slot = resolveSlot()) {
   const sb = 54320 + slot * 10;
   return {
     slot,

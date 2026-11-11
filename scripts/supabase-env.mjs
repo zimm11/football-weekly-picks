@@ -7,12 +7,26 @@ import path from "node:path";
 import { getPorts, supabaseCliEnv } from "./ports.mjs";
 
 const ports = getPorts();
-const raw = execFileSync("pnpm", ["exec", "supabase", "status", "-o", "json"], {
-  cwd: path.resolve(import.meta.dirname, ".."),
-  encoding: "utf8",
-  env: { ...process.env, ...supabaseCliEnv(ports) },
-});
-const status = JSON.parse(raw.slice(raw.indexOf("{")));
+let status;
+try {
+  const raw = execFileSync("pnpm", ["exec", "supabase", "status", "-o", "json"], {
+    cwd: path.resolve(import.meta.dirname, ".."),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...supabaseCliEnv(ports) },
+  });
+  status = JSON.parse(raw.slice(raw.indexOf("{")));
+} catch {
+  console.error("Could not read local Supabase status. Start the local stack first.");
+  process.exit(1);
+}
+// Commands go to stderr: stdout is redirected to GITHUB_ENV (or .env locally).
+if (process.env.GITHUB_ACTIONS === "true") {
+  for (const value of Object.values(status)) {
+    if (typeof value !== "string" || !value || value.includes("\n")) continue;
+    process.stderr.write(`::add-mask::${value.replaceAll("%", "%25").replaceAll("\r", "%0D")}\n`);
+  }
+}
 const get = (...keys) => {
   for (const k of keys) {
     const hit = Object.entries(status).find(([name]) => name.toUpperCase() === k);

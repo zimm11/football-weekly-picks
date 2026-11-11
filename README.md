@@ -86,3 +86,28 @@ generated from `packages/db/src/schema.ts` whenever a migration is generated (`p
 rejects a pull request where it has fallen behind, so it can be trusted to match the code.
 
 See `CLAUDE.md` for commands, database workflow, the league's rules, and deployment.
+
+## Credentials and diagnostics
+
+Remote database connections require TLS with certificate and hostname verification. The API and deployment
+connection check share this policy; Supabase database hosts use the bundled public Supabase CA certificate.
+Loopback databases support the local Supabase stack without TLS. URL parameters cannot disable remote TLS.
+Startup and health checks also verify the database leg behind a pooler and refuse an unencrypted backend.
+
+For the first production rollout of this policy, coordinate enabling **Enforce SSL on incoming connections**
+in Supabase Database Settings with the API deployment. The setting restarts the database and can interrupt
+older API builds that do not request TLS. The migration connection check will block the deployment until
+the pooler-to-database link is encrypted. Changing the application code alone does not enable that setting.
+
+Use a Supabase publishable key (or a legacy `anon` key) for `SUPABASE_PUBLISHABLE_KEY`; privileged keys are
+rejected before the API starts. Environment files are ignored except for `.env.example`.
+
+API logs include route templates, request IDs, readable explanations for known failures, vetted error codes,
+and safe source locations. They omit raw URLs, request data, SQL parameters, arbitrary exception messages,
+and nested errors. Use the response's `X-Request-ID` to correlate a failure with its log entry. CLI output is
+redacted before it is printed, including local Supabase keys. `pnpm env:local` intentionally writes the local
+credentials to `.env`; do not share that file.
+
+CI scans Git history with Gitleaks and chooses free ports before starting Supabase. E2E rejects remote
+database/auth services, disables browser traces and screenshots, and retains its report for three days.
+Hosting access logs are separate from API logs; avoid enabling raw request-URL logging for invite links.
