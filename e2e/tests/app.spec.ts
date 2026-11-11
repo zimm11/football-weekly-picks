@@ -2,7 +2,7 @@ import { expect, signUp, test } from "./fixtures";
 
 test("signed-out visitors see the sign-in form", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Weekly Picks" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "POW Pick'em" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 

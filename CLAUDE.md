@@ -1,5 +1,7 @@
 # Football Weekly Picks
 
+The app is called **POW Pick'em** in everything players see, and lives at `www.pow-pickem.com`. "Football Weekly Picks" is the repository and service name only.
+
 An NFL pick'em league: each week players pick every game against the spread, mark one Pick of the Week (POW),
 and guess the Monday night total as a tiebreaker. A league admin sets up and closes each week. See "Domain rules".
 

@@ -1,5 +1,7 @@
 # Football Weekly Picks
 
+The code behind **POW Pick'em** ([www.pow-pickem.com](https://www.pow-pickem.com)), an NFL pick'em league app.
+
 ## Local setup
 
 Requires Node 24+, pnpm, and a Docker runtime (Docker Desktop or OrbStack).
