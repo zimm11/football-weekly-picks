@@ -17,7 +17,7 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 - `scripts/` — `ports.mjs` (per-worktree ports), `supabase.mjs` (CLI wrapper), `supabase-env.mjs` (writes `.env`), `check-db-url.mjs` (checks a connection string without printing the password: `pbpaste | node scripts/check-db-url.mjs`), `render-deploy.mjs` (deploy step).
 - `packages/db` — Drizzle schema (`src/schema.ts`, the **source of truth** for the DB) and the `createDb` client.
 - `packages/shared` — Zod schemas and types shared by API, web, and the future mobile app. `src/rules.ts` is the rules engine (point values, locks, scoring, tiebreakers) as pure functions; change league rules there.
-- `supabase/` — Supabase CLI config, generated SQL migrations, and `seed.sql` (local only: four test accounts, a league, and one closed week; the README lists the logins). Update the seed when a schema change would break it.
+- `supabase/` — Supabase CLI config, generated SQL migrations, and `seed.sql` (local only: four test accounts, a league, and four closed weeks; the README lists the logins). Update the seed when a schema change would break it.
 
 ## Commands (run from repo root)
 
