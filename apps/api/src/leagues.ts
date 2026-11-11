@@ -8,14 +8,17 @@ import {
   type LeagueDetail,
   type LeagueSummary,
   type PlayerSeasonStats,
+  preferredSeasonYear,
   type Standings,
   scoreWeek,
   seasonStandings,
   seasonStats,
   updateLeagueSchema,
+  weekPhase,
+  weekPickAvailability,
   weekSummary,
 } from "@picks/shared";
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
@@ -41,7 +44,7 @@ function omitUserId(stats: PlayerSeasonStats | undefined): Omit<PlayerSeasonStat
 
 const newInviteCode = () => randomBytes(9).toString("base64url");
 
-export function leagueRoutes({ db, verifyToken }: AppDeps) {
+export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDeps) {
   const auth = requireAuth(verifyToken);
 
   async function leagueByInvite(code: string) {
@@ -86,22 +89,25 @@ export function leagueRoutes({ db, verifyToken }: AppDeps) {
           .where(eq(seasons.leagueId, leagueId))
           .orderBy(desc(seasons.year), desc(weeks.number));
         const weekIds = weekRows.map((w) => w.id);
-        const [gameCountRows, pickCountRows] = weekIds.length
+        const [gameRows, pickRows] = weekIds.length
           ? await Promise.all([
               db
-                .select({ weekId: games.weekId, n: count() })
+                .select({
+                  id: games.id,
+                  weekId: games.weekId,
+                  kickoff: games.kickoff,
+                  homeScore: games.homeScore,
+                  awayScore: games.awayScore,
+                })
                 .from(games)
-                .where(inArray(games.weekId, weekIds))
-                .groupBy(games.weekId),
+                .where(inArray(games.weekId, weekIds)),
               db
-                .select({ weekId: picks.weekId, n: count() })
+                .select({ weekId: picks.weekId, gameId: picks.gameId })
                 .from(picks)
-                .where(and(inArray(picks.weekId, weekIds), eq(picks.userId, c.var.user.id)))
-                .groupBy(picks.weekId),
+                .where(and(inArray(picks.weekId, weekIds), eq(picks.userId, c.var.user.id))),
             ])
           : [[], []];
-        const gameCounts = new Map(gameCountRows.map((r) => [r.weekId, r.n]));
-        const pickCounts = new Map(pickCountRows.map((r) => [r.weekId, r.n]));
+        const clock = now();
         const detail: LeagueDetail = {
           id: league.id,
           name: league.name,
@@ -111,11 +117,19 @@ export function leagueRoutes({ db, verifyToken }: AppDeps) {
           members: (await listMemberRecords(db, leagueId)).filter(isActive).map(toMember),
           weeks: weekRows
             .filter((w) => role === "admin" || w.status !== "draft")
-            .map((w) => ({
-              ...w,
-              gameCount: gameCounts.get(w.id) ?? 0,
-              myPickCount: pickCounts.get(w.id) ?? 0,
-            })),
+            .map((w) => {
+              const slate = gameRows.filter((game) => game.weekId === w.id);
+              const picked = new Set(
+                pickRows.filter((pick) => pick.weekId === w.id).map((pick) => pick.gameId),
+              );
+              return {
+                ...w,
+                gameCount: slate.length,
+                myPickCount: picked.size,
+                phase: weekPhase(w.status, slate, clock),
+                ...weekPickAvailability(slate, picked, league.timeZone, clock),
+              };
+            }),
         };
         return c.json(detail);
       })
@@ -211,8 +225,16 @@ export function leagueRoutes({ db, verifyToken }: AppDeps) {
             .from(seasons)
             .where(eq(seasons.leagueId, leagueId))
             .orderBy(desc(seasons.year));
-          const season =
-            seasonRows.find((s) => s.year === Number(c.req.valid("query").year)) ?? seasonRows[0];
+          const publishedWeeks = await db
+            .select({ year: seasons.year, status: weeks.status })
+            .from(weeks)
+            .innerJoin(seasons, eq(seasons.id, weeks.seasonId))
+            .where(eq(seasons.leagueId, leagueId));
+          const requestedYear = c.req.valid("query").year;
+          const selectedYear = requestedYear
+            ? Number(requestedYear)
+            : preferredSeasonYear(publishedWeeks, now());
+          const season = seasonRows.find((s) => s.year === selectedYear);
           const members = await listMemberRecords(db, leagueId);
           const memberOf = new Map(members.map((m) => [m.userId, m]));
           const nameOf = (userId: string) => memberOf.get(userId)?.displayName ?? "Player";
@@ -256,7 +278,7 @@ export function leagueRoutes({ db, verifyToken }: AppDeps) {
 
           const standings: Standings = {
             years: seasonRows.map((s) => s.year),
-            year: season?.year ?? null,
+            year: season?.year ?? (requestedYear ? selectedYear : null),
             entries: seasonStandings(scored, userIds).map((e) => ({
               ...e,
               ...omitUserId(statsOf.get(e.userId)),

@@ -42,10 +42,14 @@ export function LeaguesPage() {
       <h2 className="text-4xl leading-none font-extrabold">Your leagues</h2>
       {leagues.data.length === 0 ? (
         <Card>
+          <h3 className="text-2xl">Get ready for your first week</h3>
           <p className="m-0 text-muted-foreground">
             You're not in a league yet. To join one, open the invite link from its admin. Or start your own
             below.
           </p>
+          <Link to="/how-to-play" className="flex min-h-11 items-center gap-2 font-medium">
+            New here? Read the rules &amp; app guide <CaretRightIcon aria-hidden className="size-4" />
+          </Link>
         </Card>
       ) : (
         <ul className="m-0 grid list-none gap-2 p-0">

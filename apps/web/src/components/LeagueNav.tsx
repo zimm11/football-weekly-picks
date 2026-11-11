@@ -46,11 +46,13 @@ export function LeagueLayout({
   leagueId,
   leagueName,
   active,
+  seasonSelector,
   children,
 }: {
   leagueId: string;
   leagueName: string;
   active: LeagueTab;
+  seasonSelector?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -64,6 +66,7 @@ export function LeagueLayout({
         </Link>
         <h2 className="text-3xl leading-none font-extrabold">{leagueName}</h2>
       </div>
+      {seasonSelector}
       <LeagueNav leagueId={leagueId} active={active} />
       {children}
     </div>

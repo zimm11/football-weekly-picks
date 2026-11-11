@@ -1,9 +1,44 @@
 import { expect, signUp, test } from "./fixtures";
 
-test("signed-out visitors see the sign-in form", async ({ page }) => {
+test("signed-out visitors can explore the landing page and public guide", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "POW Pick'em" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "POW Pick'em", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Beat the spread/ })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Sign in", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByLabel("Email")).toBeInViewport();
+  await expect(page.getByLabel("Password")).toBeInViewport();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "How to play" })
+    .click();
+  await expect(page).toHaveURL(/\/how-to-play$/);
+  await expect(page.getByRole("heading", { name: "The pick rules" })).toBeVisible();
+  await page.getByRole("link", { name: "For admins", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Create your league and invite the crew" }),
+  ).toBeInViewport();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "How to play", exact: true })).toBeAttached();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Sign in", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+});
+
+test("signed-in users can read the guide and return to their leagues", async ({ page, signedIn }) => {
+  await page.getByRole("link", { name: "How to play", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "How to play", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
+  await page.getByRole("link", { name: "For players", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Press Save picks" })).toBeVisible();
+  await page.getByRole("link", { name: "Go to your leagues" }).first().click();
+  await expect(page.getByRole("heading", { name: "Your leagues" })).toBeVisible();
 });
 
 test("a user can sign out and sign back in", async ({ page, signedIn }) => {
@@ -30,6 +65,73 @@ function kickoffInDays(days: number) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T13:00`;
 }
+
+test("admins choose one season across tabs and manage existing weeks without duplicates", async ({
+  page,
+  signedIn: _,
+}) => {
+  await page.getByLabel("League name").fill("Season choices");
+  await page.getByRole("button", { name: "Create league" }).click();
+  const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
+  await page.getByLabel("Import games and spreads from ESPN").uncheck();
+  await page.getByRole("button", { name: "Create week" }).click();
+  await expect(page.getByRole("heading", { name: new RegExp(`Week 1 · ${originalYear}`) })).toBeVisible();
+  await page.getByRole("link", { name: "League", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Week", exact: true })).toHaveValue("2");
+  await page.getByRole("combobox", { name: "Week", exact: true }).selectOption("1");
+  await expect(page.getByRole("link", { name: "Manage week", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create week" })).toHaveCount(0);
+
+  await page.getByRole("combobox", { name: "Season", exact: true }).selectOption("new");
+  const nextYear = String(Number(originalYear) + 1);
+  await page.getByLabel("New season year").fill(nextYear);
+  await page.getByRole("button", { name: "Use season" }).click();
+  await expect(page.getByRole("combobox", { name: "Week", exact: true })).toHaveValue("1");
+  await page.getByLabel("Import games and spreads from ESPN").uncheck();
+  await page.getByRole("button", { name: "Create week" }).click();
+  await expect(page.getByRole("heading", { name: new RegExp(`Week 1 · ${nextYear}`) })).toBeVisible();
+  for (const tab of ["Standings", "Results", "League"]) {
+    await page.getByRole("link", { name: tab, exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Season", exact: true })).toHaveValue(nextYear);
+  }
+  await page.getByRole("combobox", { name: "Season", exact: true }).selectOption(originalYear);
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Season", exact: true })).toHaveValue(originalYear);
+  await expect(page.getByRole("combobox", { name: "Week", exact: true })).toHaveValue("2");
+});
+
+test("upcoming picks take priority over unfinished past weeks and season changes guard unsaved picks", async ({
+  page,
+  signedIn: _,
+}) => {
+  await page.getByLabel("League name").fill("Pick priorities");
+  await page.getByRole("button", { name: "Create league" }).click();
+  const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
+
+  for (const days of [-3, 3]) {
+    await page.getByLabel("Import games and spreads from ESPN").uncheck();
+    await page.getByRole("button", { name: "Create week" }).click();
+    await page.getByLabel("Away team").selectOption("KC");
+    await page.getByLabel("Home team").selectOption("ATL");
+    await page.getByLabel("Kickoff (your local time)").fill(kickoffInDays(days));
+    await page.getByLabel("Home spread", { exact: true }).fill("3.5");
+    await page.getByRole("button", { name: "Add game" }).click();
+    await page.getByRole("button", { name: "Open week for picks" }).click();
+    await page.getByRole("link", { name: "League", exact: true }).click();
+  }
+  await page.getByRole("link", { name: "Picks", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Week 2 · / })).toBeVisible();
+  await page.getByRole("button", { name: "Chiefs -3.5" }).click();
+  await page.getByRole("combobox", { name: "Season", exact: true }).selectOption("new");
+  await page.getByLabel("New season year").fill(String(Number(originalYear) + 1));
+  await page.getByRole("button", { name: "Use season" }).click();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Use season" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Leave", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "No week is open" })).toBeVisible();
+});
 
 test("a league week from setup to results", async ({ page, browser, signedIn: _ }) => {
   // The admin starts a league, which lands on its League tab, and sets up a week by hand (no schedule import,
@@ -95,6 +197,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await page.getByLabel("ATL score in KC at ATL").fill("10");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Changes saved.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ready to finalize" })).toBeVisible();
 
   // With a result in, the game is closed to picks even though it hasn't kicked off.
   await player.reload();
@@ -102,8 +205,8 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(player.getByRole("button", { name: "Chiefs -3.5" })).toBeDisabled();
   await expect(player.getByRole("button", { name: "Falcons +3.5" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Close week" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Close week" }).click();
+  await page.getByRole("button", { name: "Finalize week" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Finalize week" }).click();
   await expect(page.getByText("Winner: Commish")).toBeVisible();
 
   // Now the player can see everyone's picks, and the standings credit the winner.

@@ -1,5 +1,7 @@
 import type { Game } from "@picks/shared";
 
+export { seasonYear } from "@picks/shared";
+
 /** "Thursday, Nov 12", in the league's time zone (the one the 6am lock is measured in). */
 export function kickoffDay(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -22,11 +24,6 @@ export function kickoffTime(iso: string, timeZone: string): string {
 
 /** "WSH at NYG" */
 export const matchup = (game: Pick<Game, "homeTeam" | "awayTeam">) => `${game.awayTeam} at ${game.homeTeam}`;
-
-/** The NFL season a date falls in: January and February belong to the season that started the year before. */
-export function seasonYear(now: Date): number {
-  return now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
-}
 
 /** "1st", "2nd", "3rd", "11th" */
 export function ordinal(n: number): string {

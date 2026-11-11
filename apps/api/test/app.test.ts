@@ -381,6 +381,17 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     // The admin enters Monday by hand: BAL (-4.5) wins 27–20, total 47.
     expect((await call(ADMIN, "PATCH", `/games/${game.mon}`, { homeScore: 27 })).status).toBe(400);
     await call(ADMIN, "PATCH", `/games/${game.mon}`, { homeScore: 27, awayScore: 20 });
+    const awaiting = (await call<LeagueDetail>(PLAYER, "GET", `/leagues/${leagueId}`)).body.weeks.find(
+      (week) => week.id === weekId,
+    );
+    expect(awaiting).toMatchObject({
+      status: "open",
+      phase: "awaiting",
+      availablePickCount: 0,
+      myAvailablePickCount: 0,
+      myMissingPickCount: 0,
+    });
+    expect((await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body.results).toBeNull();
     const closed = await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/finalize`);
     expect(closed.body.status).toBe("final");
   });
@@ -627,6 +638,25 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await remove(ADMIN, ADMIN)).status).toBe(409);
     expect((await remove(ADMIN, OUTSIDER)).status).toBe(200);
     expect((await call(OUTSIDER, "GET", `/leagues/${leagueId}`)).status).toBe(404);
+  });
+
+  it("keeps future drafts out of default standings and respects an explicitly selected empty season", async () => {
+    expect(
+      (await call(ADMIN, "POST", `/leagues/${leagueId}/weeks`, { year: 2030, number: 1, importGames: false }))
+        .status,
+    ).toBe(201);
+    expect((await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings`)).body.year).toBe(2026);
+    const future = (await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings?year=2030`)).body;
+    expect(future.year).toBe(2030);
+    expect(future.weeks).toEqual([]);
+    const unstarted = (await call<Standings>(ADMIN, "GET", `/leagues/${leagueId}/standings?year=2028`)).body;
+    expect(unstarted.year).toBe(2028);
+    expect(unstarted.weeks).toEqual([]);
+    expect(
+      (await call<LeagueDetail>(PLAYER, "GET", `/leagues/${leagueId}`)).body.weeks.some(
+        (week) => week.year === 2030,
+      ),
+    ).toBe(false);
   });
 
   it("rotates the invite link", async () => {
