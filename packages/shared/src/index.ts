@@ -1,9 +1,11 @@
 import { z } from "zod";
 import type { SeasonEntry, Side, WeekEntry } from "./rules";
+import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
 import { TEAM_ABBRS } from "./teams";
 import { isValidTimeZone } from "./time";
 
 export * from "./rules";
+export * from "./stats";
 export * from "./teams";
 export * from "./time";
 
@@ -164,9 +166,9 @@ export type Standings = {
   years: number[];
   year: number | null;
   /** `removed`: no longer in the league, but played in a counted week. */
-  entries: (SeasonEntry & { displayName: string; removed: boolean })[];
-  /** Final weeks, in order, with their winner(s). */
-  weeks: { id: string; number: number; winners: string[] }[];
+  entries: (SeasonEntry & Omit<PlayerSeasonStats, "userId"> & { displayName: string; removed: boolean })[];
+  /** Final weeks, in order, with their winner(s). Each entry's `weekly` lines up with this list. */
+  weeks: ({ id: string; number: number; winners: string[] } & WeekSummaryStats)[];
 };
 
 // ---------- Display helpers ----------

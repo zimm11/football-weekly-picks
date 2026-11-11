@@ -8,8 +8,9 @@ import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
 import { LeagueLayout, type LeagueTab } from "../components/LeagueNav";
+import { PickSplitsTable, WeekByWeekTable, YourSeason } from "../components/SeasonDashboard";
 import { StandingsTable } from "../components/StandingsTable";
-import { seasonYear } from "../format";
+import { ordinal, seasonYear } from "../format";
 import { notifyDone, notifyError } from "../notify";
 import { Link, navigate } from "../router";
 import { rowLink } from "./LeaguesPage";
@@ -152,6 +153,7 @@ function SeasonTab({
   if (standings.error) return <Notice kind="alert">{standings.error}</Notice>;
   if (!standings.data) return <p className="text-muted-foreground">Loading…</p>;
   const shownYear = standings.data.year;
+  const me = standings.data.entries.find((e) => e.userId === userId);
   const finals = league.weeks.filter(
     (w) => w.status === "final" && (shownYear === null || w.year === shownYear),
   );
@@ -186,16 +188,33 @@ function SeasonTab({
         ) : (
           <ul className="m-0 grid list-none gap-2 p-0">
             {finals.map((week) => {
-              const winners = standings.data?.weeks.find((w) => w.id === week.id)?.winners ?? [];
+              const index = standings.data?.weeks.findIndex((w) => w.id === week.id) ?? -1;
+              const summary = standings.data?.weeks[index];
+              const winners = summary?.winners ?? [];
+              const mine = me?.weekly[index];
               return (
                 <li key={week.id}>
                   <Link to={`/weeks/${week.id}`} className={rowLink}>
                     <span className="font-display text-2xl font-bold tracking-wide uppercase">
                       {weekLabel(week.number)}
                     </span>
-                    <span className="mr-auto text-sm text-muted-foreground">
-                      {winners.length ? `Won by ${winners.join(", ")}` : "Final"}
+                    <span className="mr-auto grid text-sm text-muted-foreground">
+                      <span>
+                        {winners.length ? `Won by ${winners.join(", ")}` : "Final"}
+                        {summary?.topPoints != null && ` · ${summary.topPoints} pts`}
+                      </span>
                     </span>
+                    {mine && (
+                      <span className="grid text-right">
+                        <span
+                          className={`font-display text-xl leading-none font-bold ${mine.isWinner ? "text-win" : ""}`}
+                        >
+                          {mine.points}
+                          <span className="sr-only"> points for you,</span>
+                        </span>
+                        <span className="text-xs text-muted-foreground">You · {ordinal(mine.rank)}</span>
+                      </span>
+                    )}
                     <CaretRightIcon aria-hidden className="size-5 text-muted-foreground" />
                   </Link>
                 </li>
@@ -206,11 +225,21 @@ function SeasonTab({
 
       {show === "standings" && (
         <>
-          <StandingsTable entries={standings.data.entries} currentUserId={userId} />
-          <p className="m-0 text-sm text-muted-foreground">
-            Standings count closed weeks only. Ties are broken by POWs won, then wins, then Monday night and
-            Sunday night wins.
-          </p>
+          <YourSeason standings={standings.data} currentUserId={userId} />
+          <section aria-label="Leaderboard" className="grid gap-3">
+            {standings.data.weeks.length > 0 && <Eyebrow>Leaderboard</Eyebrow>}
+            <StandingsTable entries={standings.data.entries} currentUserId={userId} />
+            <p className="m-0 text-sm text-muted-foreground">
+              Standings count closed weeks only. Ties are broken by POWs won, then wins, then Monday night and
+              Sunday night wins.
+            </p>
+          </section>
+          {standings.data.weeks.length > 0 && (
+            <>
+              <WeekByWeekTable standings={standings.data} currentUserId={userId} />
+              <PickSplitsTable entries={standings.data.entries} currentUserId={userId} />
+            </>
+          )}
         </>
       )}
     </div>

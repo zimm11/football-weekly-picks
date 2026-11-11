@@ -429,6 +429,31 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     });
   });
 
+  it("adds week-by-week results, POW records and pick splits to the standings", async () => {
+    const standings = (await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings`)).body;
+    expect(standings.weeks).toMatchObject([{ topPoints: 9, averagePoints: 8.5 }]);
+    const [pat, commish] = standings.entries;
+    // Pat took the road favorite on Sunday (ATL +3.5 at home) and BAL -4.5 on Monday: both won.
+    expect(pat).toMatchObject({
+      weekly: [{ points: 9, rank: 1, isWinner: true }],
+      powLosses: 0,
+      rankChange: null,
+      splits: {
+        favorite: { wins: 2, losses: 0, pushes: 0 },
+        underdog: { wins: 0, losses: 0, pushes: 0 },
+        home: { wins: 1, losses: 0, pushes: 0 },
+        away: { wins: 1, losses: 0, pushes: 0 },
+      },
+    });
+    // The commissioner won with NYG -2.5 at home and lost with the home dog ATL.
+    expect(commish?.splits).toEqual({
+      favorite: { wins: 1, losses: 0, pushes: 0 },
+      underdog: { wins: 0, losses: 1, pushes: 0 },
+      home: { wins: 1, losses: 1, pushes: 0 },
+      away: { wins: 0, losses: 0, pushes: 0 },
+    });
+  });
+
   it("keeps past results steady when membership changes", async () => {
     const membership = (userId: string) =>
       and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, userId));
