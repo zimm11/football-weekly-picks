@@ -34,6 +34,8 @@ export const updateLeagueSchema = z
   })
   .refine((v) => v.name !== undefined || v.timeZone !== undefined, "Nothing to change");
 
+export const updateMemberRoleSchema = z.object({ role: z.enum(["admin", "member"]) });
+
 /** Regular season only: the league does not run through the playoffs. */
 export const MAX_WEEK = 18;
 

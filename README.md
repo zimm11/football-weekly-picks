@@ -134,6 +134,14 @@ Sessions are stored per browser profile, so both accounts can stay signed in sid
    or spread. While reopened, other players' picks are hidden again and the week is excluded from
    standings until finalized again.
 
+### Sharing league administration
+
+Any admin can open **League → Members** and choose **Make admin** beside a current player.
+All admins have equal access to weeks, games, scores, settings, invites, and membership management.
+Admins can revoke each other's admin access or remove each other, including the league creator.
+**Revoke admin** keeps that person in the league as a player with their picks and results. Admins can
+also step down themselves, provided at least one active admin remains.
+
 ### Testing locks and inspecting data
 
 Locks use the real clock and the league's time zone. An imported historical week may already be locked.

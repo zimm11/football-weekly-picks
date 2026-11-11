@@ -37,7 +37,7 @@ export const profiles = pgTable("profiles", {
   createdAt: createdAt(),
 }).enableRLS();
 
-/** A group of players who pick against each other, run by an admin. */
+/** A group of players who pick against each other, run by league admins. */
 export const leagues = pgTable("leagues", {
   id: uuid().primaryKey().defaultRandom(),
   name: text().notNull(),

@@ -131,7 +131,7 @@ Who is in a league, and whether they run it.
 
 ### `leagues`
 
-A group of players who pick against each other, run by an admin.
+A group of players who pick against each other, run by league admins.
 
 | Column | Type | Null | Key | Description |
 | --- | --- | --- | --- | --- |
