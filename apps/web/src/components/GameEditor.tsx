@@ -16,6 +16,7 @@ import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { kickoffDay, kickoffTime, matchup } from "../format";
 import { useUnsavedGuard } from "./ConfirmDialog";
 import { TAB_BAR_OFFSET } from "./LeagueNav";
+import { TeamLogo } from "./TeamLogo";
 
 export type GameUpdate = { gameId: string; changes: UpdateGame };
 
@@ -148,7 +149,11 @@ export function GameEditor({
                     role="cell"
                     className="font-display text-xl font-bold tracking-wide max-md:order-1 max-md:col-span-2 max-md:text-2xl"
                   >
-                    {name}
+                    <span className="flex items-center gap-2">
+                      <TeamLogo abbr={game.awayTeam} size={24} />
+                      {name}
+                      <TeamLogo abbr={game.homeTeam} size={24} />
+                    </span>
                   </td>
                   <td role="cell" data-label="Home spread" className="max-md:order-3">
                     {input(game, "spread", `Home spread for ${name}`, { step: 0.5 })}

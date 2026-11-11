@@ -22,13 +22,15 @@ import { Field, Input } from "@/components/ui/input";
 import { kickoffDay, kickoffTime, matchup } from "../format";
 import { useUnsavedGuard } from "./ConfirmDialog";
 import { TAB_BAR_OFFSET } from "./LeagueNav";
+import { TeamLogo } from "./TeamLogo";
 
 // A pressed button stays fully lit after it locks, so a frozen pick still reads as the pick.
 const pickButton =
   "min-h-14 rounded-md border-2 border-input bg-background transition-colors enabled:hover:border-primary/60 disabled:cursor-not-allowed disabled:aria-[pressed=false]:opacity-40";
 const sideClass = cn(
   pickButton,
-  "grid min-w-0 content-center gap-0.5 px-3 py-1.5 text-left aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground",
+  // Logo over name on a phone, where the two buttons share a narrow row; side by side once there is room.
+  "flex min-w-0 flex-col items-center justify-center gap-1 px-2 py-2 text-center sm:flex-row sm:justify-start sm:gap-3 sm:px-3 sm:text-left aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground",
 );
 const powClass = cn(
   pickButton,
@@ -191,7 +193,8 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
                 </div>
                 <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
                   {(["away", "home"] as const).map((side) => {
-                    const team = teamName(side === "home" ? game.homeTeam : game.awayTeam);
+                    const abbr = side === "home" ? game.homeTeam : game.awayTeam;
+                    const team = teamName(abbr);
                     const line = formatLine(team, lineFor(side, game.spread ?? 0));
                     return (
                       <button
@@ -204,12 +207,15 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
                         onClick={() => choose(game, side)}
                         className={sideClass}
                       >
-                        <span className="truncate font-display text-lg leading-tight font-bold uppercase sm:text-xl sm:tracking-wide">
-                          {team}
-                        </span>
-                        <span className="text-sm tabular-nums opacity-80">
-                          {line.slice(team.length + 1)}
-                          {side === "home" && " · home"}
+                        <TeamLogo abbr={abbr} size={36} />
+                        <span className="grid min-w-0 max-w-full gap-0.5">
+                          <span className="truncate font-display text-lg leading-tight font-bold uppercase sm:text-xl sm:tracking-wide">
+                            {team}
+                          </span>
+                          <span className="text-sm tabular-nums opacity-80">
+                            {line.slice(team.length + 1)}
+                            {side === "home" && " · home"}
+                          </span>
                         </span>
                       </button>
                     );
