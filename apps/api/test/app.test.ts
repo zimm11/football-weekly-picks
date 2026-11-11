@@ -35,7 +35,8 @@ describe("without a database", () => {
 });
 
 describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:start`)", () => {
-  const db = createDb(process.env.DATABASE_URL ?? "");
+  // Vitest collects skipped suites too. A valid lazy client keeps collection safe without opening a DB.
+  const db = createDb(process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:54322/postgres");
 
   // Week 10 of 2026 in Eastern time (UTC-5): Thursday night, Sunday 1pm, Monday night.
   const THU = new Date("2026-11-13T01:15:00Z");
