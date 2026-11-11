@@ -65,7 +65,7 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 
 - `playwright` — drive a browser against the running app.
 - `supabase` — the hosted Supabase project (signs in through the browser; run `/mcp` to authenticate). This is the **production** database: read freely, but schema changes still go through migrations, never ad-hoc SQL.
-- `render` — the Render service: deploys, logs, env vars. Needs `RENDER_API_KEY` exported in the shell that starts Claude Code.
+- `render` — the Render service: deploys, logs, env vars. Needs `RENDER_API_KEY` exported in the shell that starts the MCP client.
 - GitHub needs no MCP server: use the `gh` CLI.
 
 ## Ports and worktrees
