@@ -179,6 +179,105 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(res.status).toBe(403);
   });
 
+  it("lets every admin assign roles, including demoting the creator or themselves", async () => {
+    const path = `/leagues/${leagueId}/members/${PLAYER}`;
+    const creatorPath = `/leagues/${leagueId}/members/${ADMIN}`;
+    expect((await call(PLAYER, "PATCH", path, { role: "admin" })).status).toBe(403);
+    expect((await call(OUTSIDER, "PATCH", path, { role: "admin" })).status).toBe(404);
+    expect((await call(ADMIN, "PATCH", path, { role: "owner" })).status).toBe(400);
+    expect((await call(ADMIN, "PATCH", path, {})).status).toBe(400);
+    expect(
+      (await call(ADMIN, "PATCH", `/leagues/${leagueId}/members/${OUTSIDER}`, { role: "admin" })).status,
+    ).toBe(404);
+    expect((await call(ADMIN, "PATCH", creatorPath, { role: "member" })).status).toBe(409);
+    expect((await call(ADMIN, "PATCH", creatorPath, { role: "admin" })).status).toBe(200);
+    expect((await call(ADMIN, "PATCH", path, { role: "admin" })).status).toBe(200);
+    expect((await call(ADMIN, "PATCH", path, { role: "admin" })).status).toBe(200);
+    expect((await call<LeagueDetail>(PLAYER, "GET", `/leagues/${leagueId}`)).body).toMatchObject({
+      role: "admin",
+      inviteCode,
+    });
+    expect((await call<{ role: string }[]>(PLAYER, "GET", "/leagues")).body).toContainEqual({
+      id: leagueId,
+      name: "Test League",
+      role: "admin",
+    });
+
+    expect((await call(PLAYER, "PATCH", creatorPath, { role: "member" })).status).toBe(200);
+    expect((await call(ADMIN, "PATCH", path, { role: "member" })).status).toBe(403);
+    expect((await call(PLAYER, "PATCH", `/leagues/${leagueId}`, { name: "Test League" })).status).toBe(200);
+    expect((await call(PLAYER, "PATCH", path, { role: "member" })).status).toBe(409);
+    expect((await call(PLAYER, "PATCH", creatorPath, { role: "admin" })).status).toBe(200);
+    expect((await call(PLAYER, "PATCH", path, { role: "member" })).status).toBe(200);
+    expect((await call<LeagueDetail>(PLAYER, "GET", `/leagues/${leagueId}`)).body.role).toBe("member");
+    expect((await call(PLAYER, "PATCH", `/leagues/${leagueId}`, { name: "Forbidden" })).status).toBe(403);
+  });
+
+  async function adminTestLeague() {
+    const created = await call<{ id: string }>(ADMIN, "POST", "/leagues", { name: "Equal admins" });
+    const id = created.body.id;
+    createdLeagues.push(id);
+    const detail = (await call<LeagueDetail>(ADMIN, "GET", `/leagues/${id}`)).body;
+    await call(PLAYER, "POST", `/invites/${detail.inviteCode}/join`);
+    await call(ADMIN, "PATCH", `/leagues/${id}/members/${PLAYER}`, { role: "admin" });
+    return detail;
+  }
+
+  it("lets added admins promote others and remove the creator without restoring admin access on rejoin", async () => {
+    const league = await adminTestLeague();
+    try {
+      await call(OUTSIDER, "POST", `/invites/${league.inviteCode}/join`);
+      expect(
+        (await call(PLAYER, "PATCH", `/leagues/${league.id}/members/${OUTSIDER}`, { role: "admin" })).status,
+      ).toBe(200);
+      expect((await call(PLAYER, "DELETE", `/leagues/${league.id}/members/${ADMIN}`)).status).toBe(200);
+      expect((await call(ADMIN, "GET", `/leagues/${league.id}`)).status).toBe(404);
+      expect(
+        (await call(PLAYER, "PATCH", `/leagues/${league.id}/members/${ADMIN}`, { role: "admin" })).status,
+      ).toBe(404);
+      await call(ADMIN, "POST", `/invites/${league.inviteCode}/join`);
+      expect((await call<LeagueDetail>(ADMIN, "GET", `/leagues/${league.id}`)).body.role).toBe("member");
+      expect((await call(PLAYER, "DELETE", `/leagues/${league.id}/members/${OUTSIDER}`)).status).toBe(200);
+      // Removed admins do not count toward the safeguard.
+      expect((await call(PLAYER, "DELETE", `/leagues/${league.id}/members/${PLAYER}`)).status).toBe(409);
+      expect(
+        (await call(PLAYER, "PATCH", `/leagues/${league.id}/members/${PLAYER}`, { role: "member" })).status,
+      ).toBe(409);
+      await call(OUTSIDER, "POST", `/invites/${league.inviteCode}/join`);
+      expect((await call<LeagueDetail>(OUTSIDER, "GET", `/leagues/${league.id}`)).body.role).toBe("member");
+    } finally {
+      await db.delete(leagues).where(eq(leagues.id, league.id));
+    }
+  });
+
+  it.each([
+    ["self-demotions", "PATCH", true, [200, 409]],
+    ["self-removals", "DELETE", true, [200, 409]],
+    ["mutual demotions", "PATCH", false, [200, 403]],
+    ["mutual removals", "DELETE", false, [200, 404]],
+  ] as const)("keeps one active admin during simultaneous %s", async (_, method, self, statuses) => {
+    const league = await adminTestLeague();
+    try {
+      const results = await Promise.all(
+        [ADMIN, PLAYER].map((actor, index) =>
+          call(
+            actor,
+            method,
+            `/leagues/${league.id}/members/${self ? actor : [PLAYER, ADMIN][index]}`,
+            method === "PATCH" ? { role: "member" } : undefined,
+          ),
+        ),
+      );
+      expect(results.map((result) => result.status).sort()).toEqual(statuses);
+      const members = await db.select().from(leagueMembers).where(eq(leagueMembers.leagueId, league.id));
+      expect(members.filter((member) => member.role === "admin" && member.removedAt === null)).toHaveLength(
+        1,
+      );
+    } finally {
+      await db.delete(leagues).where(eq(leagues.id, league.id));
+    }
+  });
+
   it("imports the week's games, spreads and slot points from the provider", async () => {
     const created = await call<{ id: string; importError: string | null }>(
       ADMIN,
@@ -212,6 +311,19 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call<LeagueDetail>(ADMIN, "GET", `/leagues/${leagueId}`)).body.weeks).toMatchObject([
       { id: weekId, year: 2026, number: 10, status: "draft" },
     ]);
+  });
+
+  it("gives an added admin draft and week management access, and revokes it immediately", async () => {
+    const path = `/leagues/${leagueId}/members/${PLAYER}`;
+    await call(ADMIN, "PATCH", path, { role: "admin" });
+    const view = await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`);
+    expect(view.status).toBe(200);
+    expect(view.body).toMatchObject({ role: "admin", status: "draft", results: null });
+    expect((await call(PLAYER, "PATCH", `/games/${game.thu}`, { points: 3 })).status).toBe(200);
+    // Revoking access changes permissions without changing membership or picks.
+    await call(ADMIN, "PATCH", path, { role: "member" });
+    expect((await call(PLAYER, "GET", `/weeks/${weekId}`)).status).toBe(404);
+    expect((await call(PLAYER, "PATCH", `/games/${game.thu}`, { points: 3 })).status).toBe(404);
   });
 
   it("lets the admin add, edit and remove games", async () => {

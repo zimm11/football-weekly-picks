@@ -59,6 +59,74 @@ test("the API rejects unauthenticated requests", async ({ request }) => {
   expect((await request.get("/api/leagues")).status()).toBe(401);
 });
 
+test("admins have equal authority and can step down while keeping one admin", async ({
+  page,
+  browser,
+  signedIn: _,
+}) => {
+  await page.getByLabel("League name").fill("Shared administration");
+  await page.getByRole("button", { name: "Create league" }).click();
+  await expect(page.getByRole("heading", { name: "Shared administration" })).toBeVisible();
+  const leagueUrl = page.url();
+  const inviteUrl = await page.getByLabel(/Invite link/).inputValue();
+  const contexts = [];
+  try {
+    for (const name of ["Pat", "Sam"]) {
+      const context = await browser.newContext();
+      contexts.push(context);
+      const player = await context.newPage();
+      await player.goto(inviteUrl);
+      await signUp(player, name);
+      await player.getByRole("button", { name: "Join league" }).click();
+      await expect(player.getByRole("heading", { name: "Shared administration" })).toBeVisible();
+      await player.goto(leagueUrl);
+      await expect(player.getByRole("button", { name: "Create week" })).toHaveCount(0);
+      await expect(player.getByRole("button", { name: /Make .* an admin/ })).toHaveCount(0);
+
+      await page.reload();
+      await page.getByRole("button", { name: `Make ${name} an admin` }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByRole("button", { name: `Make ${name} an admin` })).toBeVisible();
+      await page.getByRole("button", { name: `Make ${name} an admin` }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Make admin", exact: true }).click();
+      await expect(page.getByRole("button", { name: `Revoke admin access for ${name}` })).toBeVisible();
+      await player.reload();
+      await expect(player.getByRole("button", { name: "Create week" })).toBeVisible();
+      await expect(player.getByRole("button", { name: "Revoke admin access for Commish" })).toBeEnabled();
+      await expect(player.getByRole("button", { name: "Remove Commish", exact: true })).toBeEnabled();
+    }
+    const pat = contexts[0]?.pages()[0];
+    if (!pat) throw new Error("Missing Pat's page");
+    await pat.getByLabel("Import games and spreads from ESPN").uncheck();
+    await pat.getByRole("button", { name: "Create week" }).click();
+    await expect(pat.getByRole("heading", { name: /Week 1 · / })).toBeVisible();
+
+    await pat.goto(leagueUrl);
+    await pat.getByRole("button", { name: "Revoke admin access for Commish" }).click();
+    await pat.getByRole("alertdialog").getByRole("button", { name: "Revoke admin", exact: true }).click();
+    await expect(pat.getByRole("button", { name: "Make Commish an admin" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Create week" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Revoke admin access/ })).toHaveCount(0);
+    await expect(page.getByLabel(/Invite link/)).toHaveCount(0);
+
+    await pat.getByRole("button", { name: "Revoke admin access for Pat" }).click();
+    await pat.getByRole("alertdialog").getByRole("button", { name: "Revoke admin", exact: true }).click();
+    await expect(pat.getByLabel(/Invite link/)).toHaveCount(0);
+    const sam = contexts[1]?.pages()[0];
+    if (!sam) throw new Error("Missing Sam's page");
+    await sam.reload();
+    await expect(sam.getByRole("button", { name: "Revoke admin access for Sam" })).toBeDisabled();
+    await sam.getByRole("button", { name: "Remove Commish", exact: true }).click();
+    await sam.getByRole("alertdialog").getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(sam.getByText("Commish", { exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("alert")).toContainText("League not found");
+  } finally {
+    for (const context of contexts) await context.close();
+  }
+});
+
 /** A `datetime-local` value a few days out, so every pick window is still open. */
 function kickoffInDays(days: number) {
   const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);

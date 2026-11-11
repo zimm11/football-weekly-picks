@@ -357,7 +357,9 @@ function LeagueTabPanel({
   onChanged: () => void;
 }) {
   const isAdmin = league.role === "admin";
+  const adminCount = league.members.filter((member) => member.role === "admin").length;
   const [busy, setBusy] = useState(false);
+  const [changingRole, setChangingRole] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirm, confirmDialog] = useConfirm();
   const param = { leagueId: league.id };
@@ -435,6 +437,32 @@ function LeagueTabPanel({
     );
   }
 
+  async function changeRole(member: LeagueDetail["members"][number]) {
+    const granting = member.role !== "admin";
+    const ok = await confirm({
+      title: granting
+        ? `Make ${member.displayName} an admin?`
+        : `Revoke admin access for ${member.displayName}?`,
+      detail: granting
+        ? "They get the same admin access as you, including managing weeks, settings, invites, and admin assignments, and removing members."
+        : member.userId === userId
+          ? "You stay in the league as a player and keep your picks and results. Another admin can restore your admin access."
+          : "They stay in the league as a player and keep their picks and results.",
+      action: granting ? "Make admin" : "Revoke admin",
+    });
+    if (!ok) return;
+    setChangingRole(member.userId);
+    await change(
+      () =>
+        api.leagues[":leagueId"].members[":userId"].$patch({
+          param: { ...param, userId: member.userId },
+          json: { role: granting ? "admin" : "member" },
+        }),
+      granting ? `${member.displayName} is now an admin.` : `Admin access revoked for ${member.displayName}.`,
+    );
+    setChangingRole(null);
+  }
+
   return (
     <div className="grid gap-4">
       {confirmDialog}
@@ -470,23 +498,53 @@ function LeagueTabPanel({
 
       <Card aria-label="Members">
         <Eyebrow>Members ({league.members.length})</Eyebrow>
+        {isAdmin && (
+          <p className="m-0 text-sm text-muted-foreground">
+            All admins can grant or revoke admin access and remove members. At least one admin must remain.
+          </p>
+        )}
         <ul className="m-0 grid list-none p-0">
           {league.members.map((member) => (
-            <li key={member.userId} className="flex min-h-12 items-center gap-2 border-t first:border-t-0">
-              <span className="font-medium">{member.displayName}</span>
+            <li
+              key={member.userId}
+              className="flex min-h-12 flex-wrap items-center gap-2 border-t py-2 first:border-t-0"
+            >
+              <span className="min-w-0 break-words font-medium">{member.displayName}</span>
               {member.role === "admin" && <Badge variant="outline">Admin</Badge>}
-              {isAdmin && member.userId !== userId && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="ml-auto"
-                  aria-label={`Remove ${member.displayName}`}
-                  onClick={() => remove(member)}
-                >
-                  Remove
-                </Button>
-              )}
+              <div className="ml-auto flex flex-wrap gap-2">
+                {isAdmin && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || (member.role === "admin" && adminCount === 1)}
+                    aria-label={
+                      member.role === "admin"
+                        ? `Revoke admin access for ${member.displayName}`
+                        : `Make ${member.displayName} an admin`
+                    }
+                    onClick={() => changeRole(member)}
+                  >
+                    {changingRole === member.userId
+                      ? "Saving…"
+                      : member.role === "admin"
+                        ? "Revoke admin"
+                        : "Make admin"}
+                  </Button>
+                )}
+                {isAdmin && member.userId !== userId && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={busy || (member.role === "admin" && adminCount === 1)}
+                    aria-label={`Remove ${member.displayName}`}
+                    onClick={() => remove(member)}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
             </li>
           ))}
         </ul>

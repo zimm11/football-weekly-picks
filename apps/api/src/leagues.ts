@@ -9,11 +9,13 @@ import {
   type LeagueSummary,
   type PlayerSeasonStats,
   preferredSeasonYear,
+  type Role,
   type Standings,
   scoreWeek,
   seasonStandings,
   seasonStats,
   updateLeagueSchema,
+  updateMemberRoleSchema,
   weekPhase,
   weekPickAvailability,
   weekSummary,
@@ -51,6 +53,33 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
     const [league] = await db.select().from(leagues).where(eq(leagues.inviteCode, code));
     if (!league) fail(404, "This invite link is no longer valid. Ask the league admin for a new one.");
     return league;
+  }
+
+  /** Serialize membership changes per league, including the authorization check and last-admin guard. */
+  async function changeMembership(leagueId: string, actorId: string, userId: string, role: Role | null) {
+    await db.transaction(async (tx) => {
+      await tx.select({ id: leagues.id }).from(leagues).where(eq(leagues.id, leagueId)).for("update");
+      const members = await tx
+        .select({ userId: leagueMembers.userId, role: leagueMembers.role })
+        .from(leagueMembers)
+        .where(and(eq(leagueMembers.leagueId, leagueId), isNull(leagueMembers.removedAt)));
+      const actor = members.find((member) => member.userId === actorId);
+      if (!actor) fail(404, "League not found");
+      requireAdmin(actor.role);
+      const target = members.find((member) => member.userId === userId);
+      if (!target) fail(404, "Member not found");
+      if (
+        target.role === "admin" &&
+        role !== "admin" &&
+        members.filter((member) => member.role === "admin").length === 1
+      ) {
+        fail(409, "At least one admin must remain. Make another member an admin first.");
+      }
+      await tx
+        .update(leagueMembers)
+        .set(role === null ? { removedAt: new Date(), role: "member" } : { role })
+        .where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, userId)));
+    });
   }
 
   return (
@@ -139,6 +168,17 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
         await db.update(leagues).set(c.req.valid("json")).where(eq(leagues.id, leagueId));
         return c.json({ ok: true });
       })
+      .patch(
+        "/leagues/:leagueId/members/:userId",
+        auth,
+        zValidator("param", z.object({ leagueId: z.uuid(), userId: z.uuid() })),
+        body(updateMemberRoleSchema),
+        async (c) => {
+          const { leagueId, userId } = c.req.valid("param");
+          await changeMembership(leagueId, c.var.user.id, userId, c.req.valid("json").role);
+          return c.json({ ok: true });
+        },
+      )
       /**
        * Removes a player from the league. The membership row is kept and marked, so weeks they already
        * played keep their results; they lose access until they rejoin through an invite link.
@@ -149,18 +189,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
         zValidator("param", z.object({ leagueId: z.uuid(), userId: z.uuid() })),
         async (c) => {
           const { leagueId, userId } = c.req.valid("param");
-          requireAdmin((await requireMember(db, leagueId, c.var.user.id)).role);
-          if (userId === c.var.user.id) fail(409, "You can't remove yourself from a league you run.");
-          await db
-            .update(leagueMembers)
-            .set({ removedAt: new Date() })
-            .where(
-              and(
-                eq(leagueMembers.leagueId, leagueId),
-                eq(leagueMembers.userId, userId),
-                isNull(leagueMembers.removedAt),
-              ),
-            );
+          await changeMembership(leagueId, c.var.user.id, userId, null);
           return c.json({ ok: true });
         },
       )

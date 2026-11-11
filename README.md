@@ -63,6 +63,14 @@ rebuilds the database and re-applies the seed) or by removing the stack with `pn
    everyone's picks, names the winner and updates the standings. **Reopen week** undoes that if a score needs
    correcting.
 
+### Sharing league administration
+
+Any admin can open **League → Members** and choose **Make admin** beside a current player.
+All admins have equal access to weeks, games, scores, settings, invites, and membership management.
+Admins can revoke each other's admin access or remove each other, including the league creator.
+**Revoke admin** keeps that person in the league as a player with their picks and results. Admins can
+also step down themselves, provided at least one active admin remains.
+
 ### Signing in as two people
 
 The session is stored per browser profile, so use one window for the admin and a private (incognito) window,
