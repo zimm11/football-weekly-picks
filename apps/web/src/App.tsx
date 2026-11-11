@@ -33,7 +33,7 @@ function Shell({
   const brand = (
     <span className="flex items-center gap-2 text-foreground">
       <FootballIcon aria-hidden weight="fill" className="size-6 text-pow" />
-      Weekly Picks
+      POW Pick'em
     </span>
   );
   return (
