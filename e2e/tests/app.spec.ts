@@ -118,5 +118,10 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await player.getByRole("link", { name: "Standings" }).click();
   const standings = player.getByRole("table", { name: "Season standings" });
   await expect(standings.getByRole("row").nth(1)).toContainText("Commish");
+  // The player's own season sits above the table, and the week-by-week grid marks the winner.
+  await expect(player.getByRole("region", { name: "Your season stats" })).toContainText("2nd");
+  await expect(
+    player.getByRole("table", { name: "Points by week" }).getByRole("row", { name: /Commish/ }),
+  ).toContainText("won the week");
   await context.close();
 });

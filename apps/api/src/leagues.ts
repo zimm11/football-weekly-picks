@@ -7,10 +7,13 @@ import {
   type InvitePreview,
   type LeagueDetail,
   type LeagueSummary,
+  type PlayerSeasonStats,
   type Standings,
   scoreWeek,
   seasonStandings,
+  seasonStats,
   updateLeagueSchema,
+  weekSummary,
 } from "@picks/shared";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { Hono } from "hono";
@@ -28,6 +31,13 @@ import {
   toMember,
   weekParticipants,
 } from "./context";
+
+/** Every player in the standings has stats, since both are built from the same list. */
+function omitUserId(stats: PlayerSeasonStats | undefined): Omit<PlayerSeasonStats, "userId"> {
+  if (!stats) throw new Error("Missing season stats for a standings entry");
+  const { userId: _, ...rest } = stats;
+  return rest;
+}
 
 const newInviteCode = () => randomBytes(9).toString("base64url");
 
@@ -223,10 +233,10 @@ export function leagueRoutes({ db, verifyToken }: AppDeps) {
                 db.select().from(tiebreakerGuesses).where(inArray(tiebreakerGuesses.weekId, weekIds)),
               ])
             : [[], [], []];
-          const scored = finalWeeks.map((week) => {
+          const statsWeeks = finalWeeks.map((week) => {
             const weekGames = gameRows.filter((g) => g.weekId === week.id);
             const weekPicks = pickRows.filter((p) => p.weekId === week.id);
-            return scoreWeek({
+            const entries = scoreWeek({
               games: weekGames,
               picks: weekPicks,
               guesses: guessRows.filter((g) => g.weekId === week.id),
@@ -234,17 +244,22 @@ export function leagueRoutes({ db, verifyToken }: AppDeps) {
               userIds: weekParticipants(members, weekGames, weekPicks).map((m) => m.userId),
               tiebreakerGameId: effectiveTiebreakerId(week.tiebreakerGameId, weekGames),
             });
+            return { games: weekGames, picks: weekPicks, entries };
           });
+          const scored = statsWeeks.map((w) => w.entries);
           // The table lists current members plus anyone since removed who played a counted week.
           const userIds = members
             .filter((m) => isActive(m) || scored.some((week) => week.some((e) => e.userId === m.userId)))
             .map((m) => m.userId);
+
+          const statsOf = new Map(seasonStats(statsWeeks, userIds).map((s) => [s.userId, s]));
 
           const standings: Standings = {
             years: seasonRows.map((s) => s.year),
             year: season?.year ?? null,
             entries: seasonStandings(scored, userIds).map((e) => ({
               ...e,
+              ...omitUserId(statsOf.get(e.userId)),
               displayName: nameOf(e.userId),
               removed: memberOf.get(e.userId)?.removedAt != null,
             })),
@@ -252,6 +267,7 @@ export function leagueRoutes({ db, verifyToken }: AppDeps) {
               id: week.id,
               number: week.number,
               winners: (scored[i] ?? []).filter((e) => e.isWinner).map((e) => nameOf(e.userId)),
+              ...weekSummary(scored[i] ?? []),
             })),
           };
           return c.json(standings);

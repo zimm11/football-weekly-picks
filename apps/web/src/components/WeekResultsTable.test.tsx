@@ -79,9 +79,22 @@ describe("WeekResultsTable", () => {
   });
 });
 
+const rec = { wins: 0, losses: 0, pushes: 0 };
+
 describe("StandingsTable", () => {
   it("lists players in rank order with their tiebreaker stats", async () => {
-    const base = { losses: 0, pushes: 0, mondayWins: 0, sundayNightWins: 0, weeksWon: 0, removed: false };
+    const base = {
+      losses: 0,
+      pushes: 0,
+      mondayWins: 0,
+      sundayNightWins: 0,
+      weeksWon: 0,
+      removed: false,
+      powLosses: 1,
+      powPushes: 0,
+      splits: { favorite: rec, underdog: rec, home: rec, away: rec },
+      rankChange: null,
+    };
     const screen = await render(
       <StandingsTable
         entries={[
@@ -94,6 +107,11 @@ describe("StandingsTable", () => {
             powWins: 3,
             weeksWon: 2,
             rank: 1,
+            rankChange: 1,
+            weekly: [
+              { points: 30, rank: 1, isWinner: true },
+              { points: 12, rank: 2, isWinner: false },
+            ],
           },
           {
             ...base,
@@ -104,17 +122,21 @@ describe("StandingsTable", () => {
             powWins: 1,
             losses: 4,
             rank: 2,
+            rankChange: -1,
+            weekly: [null, { points: 30, rank: 1, isWinner: true }],
           },
         ]}
       />,
     );
     const cells = (row: number) => screen.getByRole("row").nth(row).getByRole("cell");
-    // Rank, player, points, POWs, W–L.
-    for (const [i, text] of ["1", "Pat", "42", "3", "20–0"].entries()) {
-      await expect.element(cells(1).nth(i)).toHaveTextContent(text);
+    // Rank (with movement), player, points, POW record, W–L, win %, average points.
+    for (const [i, text] of ["1", "Pat", "42", "3–1", "20–0", "100%", "21"].entries()) {
+      await expect.element(cells(1).nth(i)).toMatchTextContent(text);
     }
-    for (const [i, text] of ["2", "Sam", "30", "1", "18–4"].entries()) {
-      await expect.element(cells(2).nth(i)).toHaveTextContent(text);
+    await expect.element(cells(1).nth(0)).toMatchTextContent("up 1 since last week");
+    // Sam missed a week, so the average is over the one week played.
+    for (const [i, text] of ["2", "Sam", "30", "1–1", "18–4", "82%", "30"].entries()) {
+      await expect.element(cells(2).nth(i)).toMatchTextContent(text);
     }
   });
 });

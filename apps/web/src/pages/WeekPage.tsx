@@ -8,6 +8,7 @@ import { api, messageOf, unwrap } from "../api";
 import { LeagueLayout } from "../components/LeagueNav";
 import { PickSheet } from "../components/PickSheet";
 import { WeekResultsTable } from "../components/WeekResultsTable";
+import { GameBreakdown, WeekSummary } from "../components/WeekSummary";
 import { Link } from "../router";
 import { useLoad } from "./useLoad";
 
@@ -100,12 +101,21 @@ export function WeekBody({
       )}
 
       {view.status === "final" && view.results && (
-        <WeekResultsTable
-          games={view.games}
-          results={view.results}
-          tiebreakerGameId={view.tiebreakerGameId}
-          currentUserId={userId}
-        />
+        <>
+          <WeekSummary
+            games={view.games}
+            results={view.results}
+            tiebreakerGameId={view.tiebreakerGameId}
+            currentUserId={userId}
+          />
+          <WeekResultsTable
+            games={view.games}
+            results={view.results}
+            tiebreakerGameId={view.tiebreakerGameId}
+            currentUserId={userId}
+          />
+          <GameBreakdown games={view.games} results={view.results} />
+        </>
       )}
     </div>
   );
