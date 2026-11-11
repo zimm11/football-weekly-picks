@@ -11,6 +11,12 @@ concurrency:
 permissions:
   contents: read
 
+# TEMPORARY: Ubuntu mirror DNS outage blocks Playwright's system dependency install.
+# Set to "false" once https://github.com/actions/runner-images/issues/15296 resolves.
+# Keep all non-browser checks and builds required while browser coverage is suspended.
+env:
+  SKIP_BROWSER_TESTS: "true"
+
 jobs:
   # Fast feedback: static checks, unit tests, component tests (real Chromium), web build, API image build. No database.
   check:
@@ -54,10 +60,21 @@ jobs:
           fi
 
       - name: Install Chromium for component tests
+        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm --filter @picks/web exec playwright install --with-deps chromium
 
-      - name: Unit + component tests
-        run: pnpm test
+      - name: Unit + script tests
+        run: |
+          pnpm -r --filter './packages/*' --filter @picks/api test
+          node --test scripts/*.test.mjs
+
+      - name: Component tests
+        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
+        run: pnpm --filter @picks/web test
+
+      - name: Browser coverage temporarily suspended
+        if: ${{ env.SKIP_BROWSER_TESTS == 'true' }}
+        run: echo "::warning::Component and E2E browser tests are temporarily skipped during the Ubuntu mirror DNS outage."
 
       - name: Build web app (deployed as a static site)
         run: pnpm --filter @picks/web build
@@ -91,13 +108,15 @@ jobs:
         run: pnpm --filter @picks/api test
 
       - name: Install Playwright browsers
+        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm playwright:install
 
       - name: E2E tests
+        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm test:e2e
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.SKIP_BROWSER_TESTS != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
