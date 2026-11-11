@@ -13,6 +13,7 @@ function fixture(t, schema) {
   const config = path.join(dir, "drizzle.config.ts");
   const marker = path.join(dir, "diagram-refreshed");
   copyFileSync(new URL("./generate.mjs", import.meta.url), script);
+  copyFileSync(new URL("./cli.mjs", import.meta.url), path.join(dir, "cli.mjs"));
   writeFileSync(
     path.join(dir, "erd.mjs"),
     `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'refreshed');`,

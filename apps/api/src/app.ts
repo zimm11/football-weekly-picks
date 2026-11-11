@@ -1,12 +1,12 @@
 import { profiles } from "@picks/db";
 import { type Me, updateProfileSchema } from "@picks/shared";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { logger } from "hono/logger";
 import { type AuthVariables, requireAuth } from "./auth";
 import { type AppDeps, body } from "./context";
 import { leagueRoutes } from "./leagues";
+import { logError, requestLogger } from "./logging";
 import { weekRoutes } from "./weeks";
 
 export type { AppDeps } from "./context";
@@ -19,11 +19,10 @@ export function createApp(deps: AppDeps) {
   const api = new Hono<{ Variables: AuthVariables }>()
     .get("/health", async (c) => {
       try {
-        await db.execute(sql`select 1`);
+        await db.$check();
         return c.json({ ok: true, db: "up" as const });
       } catch (err) {
-        // Log the reason (never the connection string) so a failing health check is diagnosable from host logs.
-        console.error("Health check: database query failed:", err instanceof Error ? err.message : err);
+        logError("health", err, c.get("requestId"));
         return c.json({ ok: false, db: "down" as const }, 503);
       }
     })
@@ -45,10 +44,10 @@ export function createApp(deps: AppDeps) {
     .route("/", leagueRoutes(deps))
     .route("/", weekRoutes(deps));
 
-  const app = new Hono().use(logger()).route("/api", api);
+  const app = new Hono<{ Variables: AuthVariables }>().use(requestLogger).route("/api", api);
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
-    console.error(err);
+    logError("request", err, c.get("requestId"));
     return c.json({ error: "Internal server error" }, 500);
   });
   return app;

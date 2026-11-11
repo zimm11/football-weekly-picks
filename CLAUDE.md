@@ -59,7 +59,7 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 Every git worktree runs its own isolated stack, so agents can work in parallel.
 
 - `scripts/ports.mjs` gives the main checkout (and CI) slot 0, the default ports: web 5173, API 8787, Supabase 54320–54329. Each linked worktree gets the next free slot `n`: web `5173+n`, API `8787+n`, Supabase `54320+10n` onward, and its own Supabase project (`football-weekly-picks-<n>`) with a separate database.
-- Slots are recorded in `picks-port-slots.json` inside the shared `.git` directory and freed when the worktree directory is gone. Force one with `PICKS_PORT_SLOT=<n>`.
+- Slots are recorded in `picks-port-slots.json` inside the shared `.git` directory and freed when the worktree directory is gone. Force one with `PICKS_PORT_SLOT=<n>`. CI selects an available port group with `scripts/ci-ports.mjs` before starting Supabase.
 - `pnpm env:local` writes the ports into `.env` (`PORT`, `WEB_PORT`); Vite, the API, and Playwright all read them from there. Run it after `pnpm db:start` in every new worktree.
 - Before deleting a worktree, run `pnpm sb stop --no-backup` in it to remove its containers and database volume.
 - The local stack runs only what the app uses: Postgres, Auth, the API gateway, Studio, and the test inbox. Realtime, Storage, Edge Functions, and Analytics are switched off in `supabase/config.toml`; set `enabled = true` there when a feature needs one.
@@ -108,9 +108,16 @@ Conventions:
 - Auth: clients sign in with Supabase and send `Authorization: Bearer <access_token>`. `requireAuth` verifies it and sets `c.var.user`.
 - Keep routes chained on the Hono instance, otherwise `ApiType` loses route types and the web client breaks.
 
+## Credentials and logs
+
+- Remote database connections require verified TLS. `packages/db/src/connection.ts` is the shared policy for the API and `check-db-url.mjs`; the public Supabase CA is bundled and scoped to Supabase database hosts. Never disable certificate verification to work around a trust failure.
+- API logs use route templates, generated request IDs, fixed readable messages, known error codes, and safe source locations. Never print raw errors, SQL parameters, request bodies/headers, or raw URLs. Extend the safe diagnostic vocabulary in `apps/api/src/logging.ts` when adding a new operation.
+- CLI wrappers redact credentials before printing. `supabase-env.mjs` intentionally exports local credentials to `.env` or `GITHUB_ENV`; do not pipe it into public logs. It registers Actions masks before subsequent steps run.
+- E2E allows only local database and auth services. Traces and screenshots are disabled because they can capture credentials. Reports contain test outcomes and are retained for three days. Host/proxy access logs need their own URL privacy settings.
+
 ## Deploy (GitHub Actions → Render)
 
-- `ci.yml` runs on PRs. Job `check`: lint, typecheck, migration drift check, unit + component tests, web build, API docker build. Job `e2e`: local Supabase, DB-backed API tests, Playwright (report uploaded as an artifact).
+- `ci.yml` runs on PRs. Job `check`: Gitleaks history scan with redacted output, lint, typecheck, migration drift check, unit + component/script tests, web build, API docker build. Job `e2e`: local Supabase, DB-backed API tests, Playwright (report uploaded as an artifact).
 - `deploy.yml` runs on push to main: CI → connection-string check → `supabase db push` → `scripts/render-deploy.mjs` for the API, then again for the static site. Each run asks Render to build and deploy that commit and waits until it is live (the job fails if the deploy fails). The API deploys first, so the API must stay backward-compatible with the web build that is still live.
 - `render.yaml` defines both services, with auto-deploy off so Actions is the only deploy path:
   - `football-weekly-picks-ui` (static site, the public URL): builds `apps/web/dist` on Render; `/assets/*` cached as immutable; rewrites `/api/*` to the API and every other path without a file to `/index.html`.

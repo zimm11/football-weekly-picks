@@ -31,6 +31,7 @@ import {
   weekParam,
   weekParticipants,
 } from "./context";
+import { logError } from "./logging";
 
 type GameRow = typeof games.$inferSelect;
 
@@ -126,7 +127,7 @@ export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: App
     try {
       provided = await nfl.getWeek(year, number);
     } catch (err) {
-      console.error("Schedule import failed:", err instanceof Error ? err.message : err);
+      logError("schedule_import", err);
       return "Couldn't load the schedule. Add games by hand, or try the import again.";
     }
     if (provided.length === 0) return "No games are scheduled for that week yet.";
@@ -269,7 +270,7 @@ export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: App
         try {
           provided = await nfl.getWeek(ctx.season.year, ctx.week.number);
         } catch (err) {
-          console.error("Results sync failed:", err instanceof Error ? err.message : err);
+          logError("results_sync", err, c.get("requestId"));
           fail(502, "Couldn't load results. Enter the scores by hand, or try again.");
         }
         const finals = new Map(provided.filter((g) => g.homeScore !== null).map((g) => [g.externalId, g]));
