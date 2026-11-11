@@ -14,7 +14,8 @@ permissions:
 jobs:
   # Fast feedback: static checks, unit tests, component tests (real Chromium), web build, API image build. No database.
   check:
-    runs-on: ubuntu-latest
+    # Avoid the Ubuntu 26.04 runner pool's APT DNS failures during Playwright setup.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -67,7 +68,8 @@ jobs:
 
   # Full stack: local Supabase, DB-backed API tests, Playwright E2E.
   e2e:
-    runs-on: ubuntu-latest
+    # Keep both Playwright jobs on the same explicit runner release.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
