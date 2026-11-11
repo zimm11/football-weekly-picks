@@ -32,8 +32,9 @@ something to look at straight away. All four accounts use the password `password
 | `sam@example.com`   | Sam     | Player                |
 | `alex@example.com`  | Alex    | Player                |
 
-The league has the 2026 season with **Week 9 closed**: real matchups and scores, made-up spreads, and picks
-from everyone, so the results grid and season standings are filled in. No later week exists; you create those
+The league has the 2026 season with **Weeks 6–9 closed**, so results, standings, the week-by-week grid and
+rank movement all have history to show. Week 9 has real matchups and scores with made-up spreads; Weeks 6–8 are
+made-up eight-game slates. Everyone has picks in every week except Alex, who missed Week 7. No later week exists; you create those
 yourself (next section).
 
 You don't have to use the seeded accounts. Local sign-up needs no email confirmation, so "Create account" with
