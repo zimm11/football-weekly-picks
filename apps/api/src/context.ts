@@ -26,6 +26,8 @@ export type AppDeps = {
   insights?: InsightsProvider;
   /** Injected so tests can pin the clock that pick locks are measured against. */
   now?: () => Date;
+  /** Membership caps; injected so tests can use small numbers. Defaults to the shared limits. */
+  limits?: { membersPerLeague: number; leaguesPerUser: number };
 };
 
 type Status = 400 | 403 | 404 | 409 | 502;

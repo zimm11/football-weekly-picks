@@ -73,37 +73,6 @@ export function pickWindow(game: LockableGame, timeZone: string, now: Date): Gam
   return game.final ? "closed" : gameWindow(game.kickoff, timeZone, now);
 }
 
-/**
- * When the automatic POW takes over: 6am on the week's Sunday. From then on a player who has no POW is given
- * the tiebreaker (Monday night) game and can't choose a different one. Null when the rule doesn't apply:
- * no Sunday games, no tiebreaker game, or a tiebreaker game that isn't after that Sunday morning.
- */
-export function autoPowCutoff(
-  games: { id: string; kickoff: Date }[],
-  tiebreakerGameId: string | null,
-  timeZone: string,
-): Date | null {
-  const sundayLocks = games
-    .filter((g) => zonedParts(g.kickoff, NFL_TIME_ZONE).weekday === 0)
-    .map((g) => dayLock(g.kickoff, timeZone).getTime());
-  const tiebreaker = games.find((g) => g.id === tiebreakerGameId);
-  if (sundayLocks.length === 0 || !tiebreaker) return null;
-  const cutoff = new Date(Math.min(...sundayLocks));
-  return tiebreaker.kickoff > cutoff ? cutoff : null;
-}
-
-/** True when a player without a POW has passed the Sunday cutoff, so their POW is the tiebreaker game. */
-export function isAutoPow(input: {
-  games: { id: string; kickoff: Date }[];
-  tiebreakerGameId: string | null;
-  hasPow: boolean;
-  timeZone: string;
-  now: Date;
-}): boolean {
-  const cutoff = autoPowCutoff(input.games, input.tiebreakerGameId, input.timeZone);
-  return !input.hasPow && cutoff !== null && input.now >= cutoff;
-}
-
 export type PickInput = { gameId: string; side: Side };
 export type ExistingPick = PickInput & { isPow: boolean };
 
@@ -117,12 +86,10 @@ export function checkPickSubmission(input: {
   existing: ExistingPick[];
   picks: PickInput[];
   powGameId: string | null;
-  /** The game that receives automatic POWs. */
-  tiebreakerGameId: string | null;
   timeZone: string;
   now: Date;
 }): string | null {
-  const { games, existing, picks, powGameId, tiebreakerGameId, timeZone, now } = input;
+  const { games, existing, picks, powGameId, timeZone, now } = input;
   const gameById = new Map(games.map((g) => [g.id, g]));
   const existingByGame = new Map(existing.map((p) => [p.gameId, p]));
   const windowOf = (gameId: string) => {
@@ -156,13 +123,6 @@ export function checkPickSubmission(input: {
         return game.final
           ? `${game.label} can't be your POW: it is final.`
           : `${game.label} can't be your POW: it is after ${LOCK_HOUR}am on game day.`;
-      }
-      if (
-        powGameId !== tiebreakerGameId &&
-        isAutoPow({ games, tiebreakerGameId, hasPow: currentPow !== null, timeZone, now })
-      ) {
-        const auto = tiebreakerGameId ? gameById.get(tiebreakerGameId) : undefined;
-        return `It is after ${LOCK_HOUR}am on Sunday, so your POW is automatically ${auto?.label ?? "the Monday night game"}.`;
       }
       if (!existingByGame.has(powGameId) && !picks.some((p) => p.gameId === powGameId)) {
         return `Pick a side in ${game.label} before making it your POW.`;
@@ -206,7 +166,7 @@ export function effectiveTiebreakerId(
   return defaultTiebreakerGame(games)?.id ?? null;
 }
 
-/** The game that decides tiebreakers and receives automatic POWs: the last Monday game, else the last game. */
+/** The game that decides tiebreakers: the last Monday game, else the last game. */
 export function defaultTiebreakerGame<G extends { id: string; kickoff: Date }>(games: G[]): G | undefined {
   const latest = (list: G[]) =>
     list.reduce<G | undefined>((a, g) => (!a || g.kickoff >= a.kickoff ? g : a), undefined);
@@ -238,7 +198,7 @@ export type WeekEntry = {
   wins: number;
   losses: number;
   pushes: number;
-  /** The game counted as this player's POW (their own choice, or the automatic Monday night POW). */
+  /** The player's chosen POW. Null when they didn't choose one: there is no automatic POW. */
   powGameId: string | null;
   powWon: boolean;
   mondayWins: number;
@@ -254,7 +214,7 @@ export type ScoredPick = { userId: string; gameId: string; side: Side; isPow: bo
  * Scores one week.
  *
  * - A winning pick earns the game's points; a winning POW earns POW_BONUS more. A push earns nothing.
- * - A player with no POW is given their pick on the tiebreaker (Monday night) game as their POW.
+ * - Only a POW the player chose counts. A player who chose none has no POW that week.
  * - Weekly ranking: points, then games won, then closest tiebreaker guess (on equal distance, the guess that
  *   did not go over wins). Players still level share the rank.
  */
@@ -277,14 +237,13 @@ export function scoreWeek(input: {
   const entries = userIds.map((userId): WeekEntry => {
     const mine = picks.filter((p) => p.userId === userId && gameById.has(p.gameId));
     const chosenPow = mine.find((p) => p.isPow)?.gameId;
-    const autoPow = mine.find((p) => p.gameId === tiebreakerGameId)?.gameId;
     const entry: WeekEntry = {
       userId,
       points: 0,
       wins: 0,
       losses: 0,
       pushes: 0,
-      powGameId: chosenPow ?? autoPow ?? null,
+      powGameId: chosenPow ?? null,
       powWon: false,
       mondayWins: 0,
       sundayNightWins: 0,

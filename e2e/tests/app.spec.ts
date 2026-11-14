@@ -59,6 +59,34 @@ test("the API rejects unauthenticated requests", async ({ request }) => {
   expect((await request.get("/api/leagues")).status()).toBe(401);
 });
 
+test("a player can leave a league, but its only admin can't", async ({ page, browser, signedIn: _ }) => {
+  await page.getByLabel("League name").fill("Leaving soon");
+  await page.getByRole("button", { name: "Create league" }).click();
+  await expect(page.getByRole("heading", { name: "Leaving soon" })).toBeVisible();
+  const inviteUrl = await page.getByLabel(/Invite link/).inputValue();
+  await expect(page.getByRole("button", { name: "Leave league" })).toBeDisabled();
+
+  const context = await browser.newContext();
+  try {
+    const player = await context.newPage();
+    await player.goto(inviteUrl);
+    await signUp(player, "Pat");
+    await player.getByRole("button", { name: "Join league" }).click();
+    await expect(player).toHaveURL(/\/leagues\/[^/]+$/);
+    await expect(player.getByRole("heading", { name: "Leaving soon" })).toBeVisible();
+    await player.goto(`${new URL(page.url()).pathname.replace(/\/league$/, "")}/league`);
+    await player.getByRole("button", { name: "Leave league" }).click();
+    await player.getByRole("alertdialog").getByRole("button", { name: "Leave league" }).click();
+    await expect(player.getByRole("heading", { name: "Your leagues" })).toBeVisible();
+    await expect(player.getByRole("link", { name: /Leaving soon/ })).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Members" })).not.toContainText("Pat");
+  } finally {
+    await context.close();
+  }
+});
+
 test("admins have equal authority and can step down while keeping one admin", async ({
   page,
   browser,
@@ -78,6 +106,7 @@ test("admins have equal authority and can step down while keeping one admin", as
       await player.goto(inviteUrl);
       await signUp(player, name);
       await player.getByRole("button", { name: "Join league" }).click();
+      await expect(player).toHaveURL(/\/leagues\/[^/]+$/);
       await expect(player.getByRole("heading", { name: "Shared administration" })).toBeVisible();
       await player.goto(leagueUrl);
       await expect(player.getByRole("button", { name: "Create week" })).toHaveCount(0);

@@ -7,6 +7,8 @@ import {
   type InvitePreview,
   type LeagueDetail,
   type LeagueSummary,
+  MAX_LEAGUE_MEMBERS,
+  MAX_LEAGUES_PER_USER,
   type PlayerSeasonStats,
   preferredSeasonYear,
   type Role,
@@ -20,7 +22,7 @@ import {
   weekPickAvailability,
   weekSummary,
 } from "@picks/shared";
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
@@ -46,8 +48,32 @@ function omitUserId(stats: PlayerSeasonStats | undefined): Omit<PlayerSeasonStat
 
 const newInviteCode = () => randomBytes(9).toString("base64url");
 
-export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDeps) {
+type Tx = Parameters<Parameters<AppDeps["db"]["transaction"]>[0]>[0];
+
+const defaultLimits = { membersPerLeague: MAX_LEAGUE_MEMBERS, leaguesPerUser: MAX_LEAGUES_PER_USER };
+
+export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits = defaultLimits }: AppDeps) {
   const auth = requireAuth(verifyToken);
+
+  /** Active members of a league, or active leagues of a user, depending on the filter. */
+  async function countMemberships(tx: Tx | AppDeps["db"], filter: SQL) {
+    const [row] = await tx
+      .select({ n: count() })
+      .from(leagueMembers)
+      .where(and(filter, isNull(leagueMembers.removedAt)));
+    return row?.n ?? 0;
+  }
+
+  /**
+   * Serializes a user's league creates and joins so two at once can't both slip under the cap. Taken
+   * after any league row lock, never before, so it can't deadlock with membership changes.
+   */
+  async function requireRoomForAnotherLeague(tx: Tx, userId: string) {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`leagues-of:${userId}`}, 0))`);
+    if ((await countMemberships(tx, eq(leagueMembers.userId, userId))) >= limits.leaguesPerUser) {
+      fail(409, `You're already in ${limits.leaguesPerUser} leagues, the most one player can be in.`);
+    }
+  }
 
   async function leagueByInvite(code: string) {
     const [league] = await db.select().from(leagues).where(eq(leagues.inviteCode, code));
@@ -65,7 +91,9 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
         .where(and(eq(leagueMembers.leagueId, leagueId), isNull(leagueMembers.removedAt)));
       const actor = members.find((member) => member.userId === actorId);
       if (!actor) fail(404, "League not found");
-      requireAdmin(actor.role);
+      // Anyone can leave; every other change needs an admin.
+      const leaving = role === null && userId === actorId;
+      if (!leaving) requireAdmin(actor.role);
       const target = members.find((member) => member.userId === userId);
       if (!target) fail(404, "Member not found");
       if (
@@ -73,7 +101,12 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
         role !== "admin" &&
         members.filter((member) => member.role === "admin").length === 1
       ) {
-        fail(409, "At least one admin must remain. Make another member an admin first.");
+        fail(
+          409,
+          leaving
+            ? "You're the league's only admin. Make another member an admin before you leave."
+            : "At least one admin must remain. Make another member an admin first.",
+        );
       }
       await tx
         .update(leagueMembers)
@@ -96,6 +129,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
       .post("/leagues", auth, body(createLeagueSchema), async (c) => {
         const { name, timeZone } = c.req.valid("json");
         const id = await db.transaction(async (tx) => {
+          await requireRoomForAnotherLeague(tx, c.var.user.id);
           const [league] = await tx
             .insert(leagues)
             .values({ name, timeZone, inviteCode: newInviteCode() })
@@ -180,8 +214,9 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
         },
       )
       /**
-       * Removes a player from the league. The membership row is kept and marked, so weeks they already
-       * played keep their results; they lose access until they rejoin through an invite link.
+       * Removes a player from the league, or lets a player leave by naming themselves. The membership row
+       * is kept and marked, so weeks they already played keep their results; they lose access until they
+       * rejoin through an invite link.
        */
       .delete(
         "/leagues/:leagueId/members/:userId",
@@ -217,20 +252,40 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
           leagueId: league.id,
           leagueName: league.name,
           alreadyMember: !!member,
+          full:
+            !member &&
+            (await countMemberships(db, eq(leagueMembers.leagueId, league.id))) >= limits.membersPerLeague,
         };
         return c.json(preview);
       })
       .post("/invites/:code/join", auth, async (c) => {
         const league = await leagueByInvite(c.req.param("code"));
-        await db
-          .insert(leagueMembers)
-          .values({ leagueId: league.id, userId: c.var.user.id, joinedAt: now() })
-          // A removed player rejoining starts a fresh membership; weeks they picked in before still count.
-          .onConflictDoUpdate({
-            target: [leagueMembers.leagueId, leagueMembers.userId],
-            set: { removedAt: null, joinedAt: now() },
-            setWhere: isNotNull(leagueMembers.removedAt),
-          });
+        const userId = c.var.user.id;
+        await db.transaction(async (tx) => {
+          // The league row lock serializes joins with each other and with removals, so the count holds.
+          await tx.select({ id: leagues.id }).from(leagues).where(eq(leagues.id, league.id)).for("update");
+          const [existing] = await tx
+            .select({ removedAt: leagueMembers.removedAt })
+            .from(leagueMembers)
+            .where(and(eq(leagueMembers.leagueId, league.id), eq(leagueMembers.userId, userId)));
+          // Joining a league you're already in is harmless and doesn't count against either limit.
+          if (existing && existing.removedAt === null) return;
+          if (
+            (await countMemberships(tx, eq(leagueMembers.leagueId, league.id))) >= limits.membersPerLeague
+          ) {
+            fail(409, `This league is full: it already has ${limits.membersPerLeague} players.`);
+          }
+          await requireRoomForAnotherLeague(tx, userId);
+          await tx
+            .insert(leagueMembers)
+            .values({ leagueId: league.id, userId, joinedAt: now() })
+            // A removed player rejoining starts a fresh membership; weeks they picked in before still count.
+            .onConflictDoUpdate({
+              target: [leagueMembers.leagueId, leagueMembers.userId],
+              set: { removedAt: null, joinedAt: now() },
+              setWhere: isNotNull(leagueMembers.removedAt),
+            });
+        });
         return c.json({ leagueId: league.id });
       })
       .get(
