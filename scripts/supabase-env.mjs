@@ -45,6 +45,12 @@ const env = {
   OPERATOR_USER_IDS: "11111111-1111-4111-8111-000000000001",
   // The local stack's test inbox (Mailpit), where E2E tests read auth emails such as password resets.
   INBOX_URL: `http://127.0.0.1:${ports.supabase.mail}`,
+  // Notification email goes to the same test inbox (INBOX_URL). These secrets are for the local stack only.
+  APP_URL: `http://localhost:${ports.web}`,
+  UNSUBSCRIBE_SECRET: "local-only-unsubscribe-secret-not-for-production",
+  // The test inbox has no quota, so local runs (and repeated E2E) shouldn't stop at production's budget.
+  EMAIL_DAILY_LIMIT: "10000",
+  EMAIL_MONTHLY_LIMIT: "100000",
 };
 process.stdout.write(
   `${Object.entries(env)

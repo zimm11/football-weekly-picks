@@ -57,6 +57,13 @@
       "when": 1794698118531,
       "tag": "20261114231518_message_pins_quotes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794761746498,
+      "tag": "20261115165546_email_notifications",
+      "breakpoints": true
     }
   ]
 }

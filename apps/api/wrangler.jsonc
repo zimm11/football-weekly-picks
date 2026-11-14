@@ -25,8 +25,15 @@
       "id": "1420fcc7f52241b7a4839d1a2d6e28c0"
     }
   ],
-  // Secrets (`wrangler secret put`): SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, and optionally OPERATOR_USER_IDS.
-  "vars": { "NODE_ENV": "production" },
+  // Notification email through Cloudflare Email Sending (README, "Email"). No API key: the binding is the
+  // credential. Only the app's own sender may be used. Sending is off until the UNSUBSCRIBE_SECRET secret is set.
+  "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["noreply@pow-pickem.com"] }],
+  // The email job (src/worker.ts `scheduled`): queues pick reminders due at 7pm league time and sends or retries
+  // what's in the outbox. It's idempotent, so a late or doubled run is harmless.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  // Secrets (`wrangler secret put`): SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, optionally OPERATOR_USER_IDS, and
+  // UNSUBSCRIBE_SECRET to turn email on. Optional vars: EMAIL_FROM, EMAIL_DAILY_LIMIT, EMAIL_MONTHLY_LIMIT.
+  "vars": { "NODE_ENV": "production", "APP_URL": "https://www.pow-pickem.com" },
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 1 },

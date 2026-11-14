@@ -16,10 +16,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
 import { type AppDeps, body, fail, leagueParam, requireAdmin, requireMember } from "./context";
+import { drainOutbox, queueThreadEmails, runInBackground } from "./outbox";
 
 const threadParam = zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
 
-export function messageRoutes({ db, verifyToken }: AppDeps) {
+export function messageRoutes({ db, verifyToken, email, now = () => new Date() }: AppDeps) {
   const auth = requireAuth(verifyToken);
   async function thread(leagueId: string, threadId: string, userId: string) {
     const { role } = await requireMember(db, leagueId, userId);
@@ -88,8 +89,9 @@ export function messageRoutes({ db, verifyToken }: AppDeps) {
     })
     .post("/leagues/:leagueId/messages", auth, leagueParam, body(createThreadSchema), async (c) => {
       const { leagueId } = c.req.valid("param");
-      await requireMember(db, leagueId, c.var.user.id);
+      const { league } = await requireMember(db, leagueId, c.var.user.id);
       const { title, body: content } = c.req.valid("json");
+      let queued = 0;
       const id = await db.transaction(async (tx) => {
         const [t] = await tx
           .insert(messageThreads)
@@ -100,8 +102,21 @@ export function messageRoutes({ db, verifyToken }: AppDeps) {
           .insert(messagePosts)
           .values({ threadId: t.id, authorId: c.var.user.id, body: content, position: 1 });
         await tx.insert(messageReads).values({ threadId: t.id, userId: c.var.user.id, version: 1 });
+        if (email) {
+          queued = await queueThreadEmails(tx, email, {
+            leagueId,
+            leagueName: league.name,
+            threadId: t.id,
+            authorId: c.var.user.id,
+            title: t.title,
+            body: content,
+            now: now(),
+          });
+        }
         return t.id;
       });
+      // Sent after the thread is committed, so a slow or failing provider never holds up posting.
+      if (email && queued) runInBackground(email, () => drainOutbox(db, email, now()));
       return c.json({ id }, 201);
     })
     .get("/leagues/:leagueId/messages/:threadId", auth, threadParam, async (c) => {

@@ -199,7 +199,10 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# Raised from the default 2 so local E2E runs (password resets, both browsers, retries) don't hit it. On the
+# hosted project, set it to about 10 in the dashboard (Authentication → Rate Limits): Auth's emails share
+# Cloudflare Email Sending's included sends but bypass the API's budget (README, "Email").
+email_sent = 100
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -247,16 +250,30 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+# POW Pick'em branded templates. These apply to the local stack; the hosted project needs the same subjects
+# and HTML pasted into the dashboard (Authentication → Emails). Don't `config push`: it would send local settings too.
+[auth.email.template.recovery]
+subject = "Reset your POW Pick'em password"
+content_path = "./supabase/templates/recovery.html"
 
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./supabase/templates/password_changed_notification.html"
+[auth.email.template.email_change]
+subject = "Confirm your new POW Pick'em email"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.confirmation]
+subject = "Confirm your POW Pick'em email"
+content_path = "./supabase/templates/confirmation.html"
+
+# Security notices, sent after the change has happened.
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Your POW Pick'em password was changed"
+content_path = "./supabase/templates/password_changed.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "Your POW Pick'em email was changed"
+content_path = "./supabase/templates/email_changed.html"
 
 [auth.sms]
 # Allow/disallow the phone provider. When false, users can't sign up or sign in with SMS.

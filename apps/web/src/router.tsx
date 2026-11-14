@@ -95,6 +95,8 @@ export type Route =
   | { page: "how-to-play" }
   | { page: "feedback" }
   | { page: "operator" }
+  | { page: "account" }
+  | { page: "unsubscribe" }
   | { page: "join"; code: string }
   | {
       page: "league";
@@ -114,6 +116,8 @@ export function matchRoute(path: string): Route {
   if (first === "how-to-play" && !second) return { page: "how-to-play" };
   if (first === "feedback" && !second) return { page: "feedback" };
   if (first === "operator" && !second) return { page: "operator" };
+  if (first === "account" && !second) return { page: "account" };
+  if (first === "unsubscribe" && !second) return { page: "unsubscribe" };
   if (second && rest.length === 0) {
     if (first === "join") return { page: "join", code: decodeURIComponent(second) };
     if (first === "leagues") return { page: "league", leagueId: second, tab: "picks" };

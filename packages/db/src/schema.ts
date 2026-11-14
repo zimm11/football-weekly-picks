@@ -2,9 +2,11 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
+  date,
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -30,10 +32,14 @@ const userRef = () =>
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" });
 
-/** What a player is called on leaderboards. */
+/** What a player is called on leaderboards, and which emails they want. */
 export const profiles = pgTable("profiles", {
   userId: userRef().primaryKey(),
   displayName: text().notNull(),
+  /** Email the player when someone starts a message thread in one of their leagues. */
+  emailNewThreads: boolean().notNull().default(true),
+  /** Email the player the evening before a game day on which they still have games to pick. */
+  emailPickReminders: boolean().notNull().default(true),
   createdAt: createdAt(),
 }).enableRLS();
 
@@ -281,3 +287,47 @@ export const feedback = pgTable(
   },
   (t) => [index("feedback_user_created_idx").on(t.userId, t.createdAt)],
 ).enableRLS();
+export type OutboxMessage = { subject: string; html: string; text: string; listUnsubscribeUrl: string };
+
+/**
+ * Emails waiting to be sent, and a short history of those that were. Rows are queued with their content
+ * already rendered; the address is looked up at send time from `auth.users`, so it is never copied here.
+ */
+export const emailOutbox = pgTable(
+  "email_outbox",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: userRef(),
+    kind: text({ enum: ["new_thread", "pick_reminder"] }).notNull(),
+    /** Identifies the email's purpose (e.g. `thread:<id>:<user>`) so a retried or repeated job never queues it twice. */
+    dedupeKey: text().notNull().unique(),
+    /** Rendered message: subject, HTML and plain-text bodies, and the one-click unsubscribe URL for its headers. */
+    message: jsonb().$type<OutboxMessage>().notNull(),
+    /** pending → sending → sent; or failed (gave up), or skipped (no address, opted out, or too late to be useful). */
+    status: text({ enum: ["pending", "sending", "sent", "failed", "skipped"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer().notNull().default(0),
+    /** When a pending row may next be tried; also when a `sending` claim is considered abandoned. */
+    nextAttemptAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /** After this the email is no longer worth sending and is skipped. */
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    /** A known error code from the last failed attempt (never provider prose). */
+    lastError: text(),
+    sentAt: timestamp({ withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("email_outbox_due_idx").on(t.status, t.nextAttemptAt)],
+).enableRLS();
+
+/**
+ * Notification emails handed to Cloudflare Email Sending per UTC day. The API reserves a slot here before every
+ * send and stops at its daily and monthly limits, so it stays inside the plan's included sends with room left for
+ * Auth's own emails (which share them but don't pass through the API).
+ */
+export const emailUsage = pgTable("email_usage", {
+  /** The UTC calendar day. */
+  day: date({ mode: "string" }).primaryKey(),
+  /** Sends reserved that day. A send the provider refused is given back. */
+  sent: integer().notNull().default(0),
+}).enableRLS();

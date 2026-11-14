@@ -2,10 +2,16 @@ import { randomUUID } from "node:crypto";
 import { createMiddleware } from "hono/factory";
 import { routePath } from "hono/route";
 import type { AuthVariables } from "./auth";
+import { CLOUDFLARE_EMAIL_ERROR_CODES } from "./email";
 
 const methods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
-const codes = new Set([
+const codes = new Set<string>([
   "INVALID_ENVIRONMENT",
+  // Cloudflare Email Service's error codes: fixed identifiers, never prose.
+  ...CLOUDFLARE_EMAIL_ERROR_CODES,
+  "EMAIL_REJECTED",
+  "EMAIL_PROVIDER_UNAVAILABLE",
+  "EMAIL_QUOTA_EXCEEDED",
   "DATABASE_TLS_REQUIRED",
   "ECONNREFUSED",
   "ECONNRESET",
@@ -30,6 +36,18 @@ const codes = new Set([
 ]);
 const messages: Record<string, string> = {
   INVALID_ENVIRONMENT: "API environment configuration is invalid.",
+  EMAIL_REJECTED: "Email provider rejected the message.",
+  EMAIL_PROVIDER_UNAVAILABLE: "Email provider unavailable or refused the request.",
+  EMAIL_QUOTA_EXCEEDED: "Email provider quota reached; notification emails resume tomorrow (UTC).",
+  E_DAILY_LIMIT_EXCEEDED:
+    "Cloudflare's daily email quota reached; notification emails resume tomorrow (UTC).",
+  E_RATE_LIMIT_EXCEEDED: "Cloudflare is rate limiting email; the outbox will retry.",
+  E_SENDER_NOT_VERIFIED: "The sender's domain isn't verified for Cloudflare Email Sending.",
+  E_SENDER_DOMAIN_NOT_AVAILABLE: "The sender's domain isn't onboarded to Cloudflare Email Sending.",
+  E_RECIPIENT_NOT_ALLOWED:
+    "Cloudflare refused the recipient (on Workers Free, only verified addresses can receive).",
+  E_RECIPIENT_SUPPRESSED:
+    "The recipient is on Cloudflare's suppression list (an earlier bounce or complaint).",
   DATABASE_TLS_REQUIRED: "Pooler-to-database TLS is disabled. Enable database SSL enforcement.",
   ECONNREFUSED: "Connection refused.",
   ECONNRESET: "Connection reset.",
@@ -56,6 +74,7 @@ const applicationMessages = new Set([
   "Thread insert returned no row",
   "League insert returned no row",
   "Season upsert returned no row",
+  "Reminder has no games",
 ]);
 const operationMessages = {
   health: "Database health check failed.",
@@ -66,19 +85,24 @@ const operationMessages = {
   matchup_insights: "Matchup stats provider request failed.",
   market_insights: "Prediction market provider request failed.",
   startup: "API startup failed; check environment configuration.",
+  email_send: "Sending an email failed.",
+  email_jobs: "Email job failed.",
 };
+type Operation = keyof typeof operationMessages;
 
-/** Only fixed operations and known error codes cross the logging boundary. Never serialize errors. */
-export function logError(operation: keyof typeof operationMessages, error: unknown, requestId?: string) {
-  let code = "UNKNOWN";
+/** The first known error code on an error or its causes, else `UNKNOWN`. Safe to log or store. */
+export function knownErrorCode(error: unknown): string {
   for (let depth = 0, current = error; depth < 5 && current && typeof current === "object"; depth++) {
     const candidate = current as { code?: unknown; cause?: unknown };
-    if (typeof candidate.code === "string" && codes.has(candidate.code)) {
-      code = candidate.code;
-      break;
-    }
+    if (typeof candidate.code === "string" && codes.has(candidate.code)) return candidate.code;
     current = candidate.cause;
   }
+  return "UNKNOWN";
+}
+
+/** Only fixed operations and known error codes cross the logging boundary. Never serialize errors. */
+export function logError(operation: Operation, error: unknown, requestId?: string) {
+  const code = knownErrorCode(error);
   // Keep diagnostic prose, but only from our fixed vocabulary. Arbitrary driver messages embed SQL values.
   const message =
     messages[code] ??
@@ -90,7 +114,7 @@ export function logError(operation: keyof typeof operationMessages, error: unkno
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /apps\/api\/src\/(app|auth|context|env|index|insights|leagues|logging|messages|nfl|operator|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /apps\/api\/src\/(app|auth|context|email|env|index|insights|leagues|logging|messages|nfl|operator|outbox|templates|unsubscribe|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;
@@ -98,12 +122,37 @@ export function logError(operation: keyof typeof operationMessages, error: unkno
   const fields =
     code === "INVALID_ENVIRONMENT" && Array.isArray(inputFields)
       ? inputFields.filter((field) =>
-          ["PORT", "DATABASE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "OPERATOR_USER_IDS"].includes(
-            field,
-          ),
+          [
+            "PORT",
+            "DATABASE_URL",
+            "SUPABASE_URL",
+            "SUPABASE_PUBLISHABLE_KEY",
+            "OPERATOR_USER_IDS",
+            "APP_URL",
+            "EMAIL_FROM",
+            "INBOX_URL",
+            "UNSUBSCRIBE_SECRET",
+            "EMAIL_DAILY_LIMIT",
+            "EMAIL_MONTHLY_LIMIT",
+          ].includes(field),
         )
       : undefined;
   console.error(JSON.stringify({ event: "error", operation, message, code, requestId, location, fields }));
+}
+
+const warnings = {
+  email_budget_reached: "Email budget reached; notification emails resume tomorrow (UTC).",
+};
+
+/** A fixed, expected condition worth seeing in the logs. Carries no data beyond its name and message. */
+export function logWarning(name: keyof typeof warnings) {
+  console.warn(JSON.stringify({ event: "warning", name, message: warnings[name] }));
+}
+
+/** A summary of one scheduled email run: counts only, and only when it did something. */
+export function logEmailJobs(result: Record<string, number>) {
+  if (Object.values(result).some((n) => n > 0))
+    console.log(JSON.stringify({ event: "email_jobs", ...result }));
 }
 
 export const requestLogger = createMiddleware<{ Variables: AuthVariables }>(async (c, next) => {
