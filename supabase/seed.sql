@@ -13,6 +13,8 @@
 --       - Weeks 6–8: made-up eight-game slates (Thursday, five Sunday afternoon games, Sunday night,
 --         Monday night) with made-up scores and spreads. Week 6 and Week 7 each have a push.
 --         Alex missed Week 7 entirely; Sam chose no POW in Week 8.
+-- Browser users can open Add to home screen on Your leagues or inside a league without leaving their picks.
+-- The public How to play guide has separate install instructions; the prompt is hidden in the home-screen app.
 -- Later weeks are deliberately absent: create them in the app so the import from ESPN gets exercised.
 
 -- ---------- Accounts ----------

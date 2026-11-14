@@ -10,6 +10,7 @@ import { cn } from "cn";
 import { type ReactNode, useEffect, useState } from "react";
 import { api, unwrap } from "../api";
 import { Link } from "../router";
+import { HomeScreenInstall } from "./HomeScreenInstall";
 
 export type LeagueTab = "picks" | "results" | "standings" | "league" | "messages";
 
@@ -101,6 +102,7 @@ export function LeagueLayout({
         </Link>
         <h2 className="text-3xl leading-none font-extrabold">{leagueName}</h2>
       </div>
+      <HomeScreenInstall />
       {seasonSelector}
       <LeagueNav leagueId={leagueId} active={active} />
       {children}

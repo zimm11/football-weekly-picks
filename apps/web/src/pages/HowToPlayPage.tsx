@@ -1,11 +1,19 @@
-import { ArrowRightIcon, ListChecksIcon, TrophyIcon, UsersThreeIcon } from "@phosphor-icons/react";
+import {
+  ArrowRightIcon,
+  DeviceMobileIcon,
+  ListChecksIcon,
+  TrophyIcon,
+  UsersThreeIcon,
+} from "@phosphor-icons/react";
 import { LOCK_HOUR, MAX_LEAGUE_MEMBERS, MAX_LEAGUES_PER_USER, POW_BONUS } from "@picks/shared";
 import type { ReactNode } from "react";
+import { HomeScreenInstructions } from "../components/HomeScreenInstall";
 import { buttonVariants } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Link } from "../router";
 
 const sections = [
+  ["home-screen", "Add to home screen"],
   ["rules", "The pick rules"],
   ["players", "For players"],
   ["admins", "For admins"],
@@ -49,7 +57,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </Link>
       </header>
 
-      <nav aria-label="Guide sections" className="grid grid-cols-3 border-y">
+      <nav aria-label="Guide sections" className="grid grid-cols-2 border-y sm:grid-cols-4">
         {sections.map(([id, title]) => (
           <a
             key={id}
@@ -60,6 +68,20 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
           </a>
         ))}
       </nav>
+
+      <section id="home-screen" aria-labelledby="home-screen-title" className="grid scroll-mt-6 gap-5">
+        <div className="flex items-center gap-3">
+          <DeviceMobileIcon aria-hidden className="size-7 text-primary" />
+          <h3 id="home-screen-title" className="text-3xl">
+            Add it to your home screen
+          </h3>
+        </div>
+        <p className="m-0 text-lg text-muted-foreground">
+          Your league, one tap away. Keep POW Pick'em beside your other apps for quick access. No app store
+          download needed.
+        </p>
+        <HomeScreenInstructions />
+      </section>
 
       <section id="rules" aria-labelledby="rules-title" className="grid scroll-mt-6 gap-5">
         <div className="flex items-center gap-3">
@@ -212,11 +234,6 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Get into your league",
                 detail: `Create an account or sign in, then choose your display name. Open the invite link your admin sends and press Join league. You can belong to up to ${MAX_LEAGUES_PER_USER} leagues. Your leagues are always one tap away from the POW Pick'em logo.`,
-              },
-              {
-                title: "Add it to your home screen",
-                detail:
-                  "Optional, but it puts POW Pick'em a tap away and opens it full screen like an app. On iPhone, open this site in Safari, tap Share, then Add to Home Screen. On Android, open it in Chrome, tap the ⋮ menu, then Add to Home screen or Install app. Sign in once more the first time you open it from the new icon.",
               },
               {
                 title: "Open Picks and choose your sides",
