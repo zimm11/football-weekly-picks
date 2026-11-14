@@ -14,8 +14,9 @@ async function resetLinkFor(to: string): Promise<string> {
       async () => {
         const search = await fetch(`${inboxUrl()}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
         const { messages } = (await search.json()) as { messages: { ID: string }[] };
-        if (!messages.length) return undefined;
-        const message = await fetch(`${inboxUrl()}/api/v1/message/${messages[0].ID}`);
+        const [newest] = messages;
+        if (!newest) return undefined;
+        const message = await fetch(`${inboxUrl()}/api/v1/message/${newest.ID}`);
         const { HTML, Text } = (await message.json()) as { HTML: string; Text: string };
         link =
           /href="([^"]*\/auth\/v1\/verify[^"]*)"/.exec(HTML)?.[1] ??
