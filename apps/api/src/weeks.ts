@@ -1,4 +1,4 @@
-import { type Db, games, picks, seasons, tiebreakerGuesses, weeks } from "@picks/db";
+import { type Db, games, picks, seasons, tiebreakerGuesses, weekRecapViews, weeks } from "@picks/db";
 import {
   checkPickSubmission,
   checkTiebreakerGuess,
@@ -121,6 +121,16 @@ async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<
 
 export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Date() }: AppDeps) {
   const auth = requireAuth(verifyToken);
+
+  /** Records that a player has been shown the week's results, so the recap isn't offered to them again. */
+  const markRecapSeen = (weekId: string, userId: string) =>
+    db
+      .insert(weekRecapViews)
+      .values({ weekId, userId, seenAt: now() })
+      .onConflictDoUpdate({
+        target: [weekRecapViews.weekId, weekRecapViews.userId],
+        set: { seenAt: now() },
+      });
 
   /**
    * Adds the provider's games to a week and refreshes kickoffs and spreads of the ones already there.
@@ -294,13 +304,15 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
         if (gameRows.some((g) => g.homeScore === null || g.awayScore === null)) {
           fail(409, "Every game needs a final score before the week can close.");
         }
-        await db.update(weeks).set({ status: "final" }).where(eq(weeks.id, ctx.week.id));
+        await db.update(weeks).set({ status: "final", finalizedAt: now() }).where(eq(weeks.id, ctx.week.id));
+        // The admin closing the week is shown the results right here, so they don't get the recap as well.
+        await markRecapSeen(ctx.week.id, c.var.user.id);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
       /** Lets the admin correct a score or spread after closing; picks are hidden again until it is re-closed. */
       .post("/weeks/:weekId/reopen", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["final"]);
-        await db.update(weeks).set({ status: "open" }).where(eq(weeks.id, ctx.week.id));
+        await db.update(weeks).set({ status: "open", finalizedAt: null }).where(eq(weeks.id, ctx.week.id));
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
 
@@ -308,6 +320,12 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
       .get("/weeks/:weekId", auth, weekParam, async (c) => {
         const ctx = await requireWeek(db, c.req.valid("param").weekId, c.var.user.id);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
+      })
+      /** The player has been shown this closed week's recap. See `recapWeekId` on the league. */
+      .post("/weeks/:weekId/recap/seen", auth, weekParam, async (c) => {
+        const ctx = await requireWeek(db, c.req.valid("param").weekId, c.var.user.id);
+        if (ctx.week.status === "final") await markRecapSeen(ctx.week.id, c.var.user.id);
+        return c.json({ ok: true });
       })
       // Public background on a game (team form, market prices). Nothing here is drawn from anyone's picks.
       .get("/games/:gameId/insights", auth, gameParam, async (c) => {

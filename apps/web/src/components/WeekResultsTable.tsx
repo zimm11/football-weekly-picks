@@ -1,6 +1,13 @@
 // biome-ignore-all lint/a11y/noRedundantRoles: on a phone these rows are laid out as cards, and a browser drops a table's built-in roles once its display changes. The explicit roles keep it a table for screen readers.
 import { TrophyIcon } from "@phosphor-icons/react";
-import { coveringSide, formatLine, type Game, lineFor, type WeekResults } from "@picks/shared";
+import {
+  coveringSide,
+  formatLine,
+  type Game,
+  lineFor,
+  lowPointLosers,
+  type WeekResults,
+} from "@picks/shared";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { matchup } from "../format";
@@ -26,6 +33,7 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
       ? tiebreakerGame.homeScore + tiebreakerGame.awayScore
       : null;
   const winners = results.entries.filter((e) => e.isWinner).map((e) => e.displayName);
+  const lpls = new Set(lowPointLosers(results.entries));
   const tiebreakerHeading = actualTotal === null ? "Tiebreaker" : `Tiebreaker (${actualTotal})`;
 
   return (
@@ -89,6 +97,14 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
                 </td>
                 <td role="cell" className="font-medium max-md:col-span-3 max-md:text-lg">
                   {entry.userId === currentUserId ? <strong>{entry.displayName}</strong> : entry.displayName}
+                  {lpls.has(entry.userId) && (
+                    <>
+                      {" "}
+                      <Badge variant="outline" className="align-middle" title="Low Point Loser">
+                        LPL<span className="sr-only">: Low Point Loser</span>
+                      </Badge>
+                    </>
+                  )}
                   {entry.removed && <span className="text-muted-foreground"> (no longer in the league)</span>}
                 </td>
                 <td

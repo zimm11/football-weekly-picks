@@ -1,4 +1,4 @@
-import type { WeekView } from "@picks/shared";
+import { lowPointLosers, type WeekView } from "@picks/shared";
 import { useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
@@ -46,6 +46,13 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
       const resultPreview = winners.length
         ? `Winner${winners.length === 1 ? "" : "s"}: ${winners.map((entry) => `${entry.displayName} (${entry.points} points)`).join(", ")}. `
         : "";
+      const lplIds = lowPointLosers(updated?.results?.entries ?? []);
+      const lplNames = (updated?.results?.entries ?? [])
+        .filter((entry) => lplIds.includes(entry.userId))
+        .map((entry) => entry.displayName);
+      const lplPreview = lplNames.length
+        ? `Low Point Loser${lplNames.length === 1 ? "" : "s"}: ${lplNames.join(", ")}. `
+        : "";
       // Announced in the banner above the save bar, so it reads from whichever button was pressed.
       if (done) notifyDone(done);
       if (
@@ -53,7 +60,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
         updated &&
         (await confirm({
           title: "Post a league message?",
-          detail: `${resultPreview}Create a thread to let your league know. ${updated.status === "final" ? "The final results will be shown with your draft." : "You can edit the message before posting."}`,
+          detail: `${resultPreview}${lplPreview}Create a thread to let your league know. ${updated.status === "final" ? "The final results will be shown with your draft." : "You can edit the message before posting."}`,
           action: "Write message",
         }))
       ) {
@@ -148,6 +155,11 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
                     <span className="min-w-0 break-words font-medium">
                       {entry.rank}. {entry.displayName}
                       {entry.isWinner && <span className="ml-2 font-display font-bold text-win">Winner</span>}
+                      {lowPointLosers(view.results?.entries ?? []).includes(entry.userId) && (
+                        <span className="ml-2 font-display font-bold text-muted-foreground">
+                          Low Point Loser
+                        </span>
+                      )}
                     </span>
                     <strong>{entry.points} pts</strong>
                     <span className="col-span-2 text-sm text-muted-foreground">

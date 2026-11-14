@@ -68,9 +68,15 @@ describe("WeekResultsTable", () => {
       await expect.element(cells(1).nth(i)).toHaveTextContent(text);
     }
     // Sam made no tiebreaker guess and no Monday pick.
-    for (const [i, text] of ["2", "Sam", "0", "0–1", "—", "WSH", "—"].entries()) {
+    for (const [i, text] of ["2", "Sam LPL: Low Point Loser", "0", "0–1", "—", "WSH", "—"].entries()) {
       await expect.element(cells(2).nth(i)).toHaveTextContent(text);
     }
+  });
+
+  it("marks the Low Point Loser", async () => {
+    const screen = await render(<WeekResultsTable games={games} results={results} tiebreakerGameId="mon" />);
+    await expect.element(screen.getByRole("row", { name: /Sam/ })).toMatchTextContent("LPL");
+    await expect.element(screen.getByRole("row", { name: /Pat/ })).not.toMatchTextContent("LPL");
   });
 
   it("shows the actual tiebreaker total", async () => {

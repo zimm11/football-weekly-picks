@@ -6,6 +6,7 @@ import {
   type Standings,
   seasonYear,
   WEEK_PHASE_LABEL,
+  type WeekView,
   weekLabel,
 } from "@picks/shared";
 import { type FormEvent, useEffect, useState } from "react";
@@ -20,6 +21,7 @@ import { LeagueLayout, type LeagueTab } from "../components/LeagueNav";
 import { PickSplitsTable, WeekByWeekTable, YourSeason } from "../components/SeasonDashboard";
 import { SeasonWeeks } from "../components/SeasonWeeks";
 import { StandingsTable } from "../components/StandingsTable";
+import { WeekRecap } from "../components/WeekRecap";
 import { ordinal } from "../format";
 import { readSeason, rememberSeason } from "../lib/seasonSelection";
 import { notifyDone, notifyError } from "../notify";
@@ -59,6 +61,13 @@ export function LeaguePage({
   );
   const [selectedYear, setSelectedYear] = useState(() => readSeason(leagueId));
   const [startingSeason, setStartingSeason] = useState(false);
+  // Decided once, when the league first loads: a week finalized while the player is on the page waits for
+  // their next visit instead of sliding up over whatever they are doing.
+  const [recapWeekId, setRecapWeekId] = useState<string | null>();
+  const loadedRecapWeekId = league.data?.recapWeekId;
+  useEffect(() => {
+    if (loadedRecapWeekId !== undefined) setRecapWeekId((current) => current ?? loadedRecapWeekId);
+  }, [loadedRecapWeekId]);
 
   useEffect(() => {
     if (league.data && selectedYear === undefined) {
@@ -145,6 +154,9 @@ export function LeaguePage({
       }
     >
       {league.error && <Notice kind="alert">{league.error}</Notice>}
+      {recapWeekId && tab !== "messages" && tab !== "league" && (
+        <RecapLoader weekId={recapWeekId} userId={userId} onClose={() => setRecapWeekId(null)} />
+      )}
       {tab === "messages" && (
         <MessagesPage key={threadId ?? "board"} leagueId={leagueId} threadId={threadId} />
       )}
@@ -163,6 +175,22 @@ export function LeaguePage({
       )}
     </LeagueLayout>
   );
+}
+
+/**
+ * Slides the results of a week closed since the player's last visit up over the league, once. Anything that
+ * goes wrong loading it is left alone: the results are still on the Results tab.
+ */
+function RecapLoader({ weekId, userId, onClose }: { weekId: string; userId: string; onClose: () => void }) {
+  const week = useLoad(() => unwrap<WeekView>(api.weeks[":weekId"].$get({ param: { weekId } })), weekId);
+  const shown = week.data?.status === "final" && week.data.results !== null;
+
+  useEffect(() => {
+    if (shown) api.weeks[":weekId"].recap.seen.$post({ param: { weekId } }).catch(() => {});
+  }, [shown, weekId]);
+
+  if (!week.data || !shown) return null;
+  return <WeekRecap view={week.data} userId={userId} onClose={onClose} />;
 }
 
 function PicksTab({ league, userId }: { league: LeagueDetail; userId: string }) {
@@ -319,6 +347,9 @@ function SeasonTab({
                         {winners.length ? `Won by ${winners.join(", ")}` : "Final"}
                         {summary?.topPoints != null && ` · ${summary.topPoints} pts`}
                       </span>
+                      {summary && summary.lowPointLosers.length > 0 && (
+                        <span>LPL: {summary.lowPointLosers.join(", ")}</span>
+                      )}
                     </span>
                     {mine && (
                       <span className="grid text-right">
