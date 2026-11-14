@@ -206,6 +206,11 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
                   "Create an account or sign in, then choose your display name. Open the invite link your admin sends and press Join league. Your leagues are always one tap away from the POW Pick'em logo.",
               },
               {
+                title: "Add it to your home screen",
+                detail:
+                  "Optional, but it puts POW Pick'em a tap away and opens it full screen like an app. On iPhone, open this site in Safari, tap Share, then Add to Home Screen. On Android, open it in Chrome, tap the ⋮ menu, then Add to Home screen or Install app. Sign in once more the first time you open it from the new icon.",
+              },
+              {
                 title: "Open Picks and choose your sides",
                 detail:
                   "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. If there is no open week, wait for your admin to open one.",

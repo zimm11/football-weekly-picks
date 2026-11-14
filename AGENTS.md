@@ -35,6 +35,7 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 - `pnpm test:e2e:ui` — Playwright UI mode, for debugging
 - `pnpm test:all` — everything
 - `pnpm format` — Biome auto-fix
+- `pnpm icons` — redraw the app icons in `apps/web/public` (only after changing the design in `scripts/icons.mjs`)
 
 ## Domain rules
 
@@ -58,6 +59,7 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 - **Phone first.** Tap targets are at least 44px. Use a whole-row link rather than a word of link text. Anything pinned to the bottom edge uses `TAB_BAR_OFFSET` to sit above the tab bar. Wide tables take the `card-rows` class, which turns each row into a card below `md`; those tables carry explicit ARIA roles because browsers drop table semantics once the display changes.
 - **Matchup sheet:** each pick card has a "Stats, news & market" row that opens `MatchupSheet` (a bottom sheet) for that game, loaded on demand from `GET /api/games/:gameId/insights`. Everything in it is public background (ESPN, Kalshi), never this league's picks, so it doesn't touch the privacy rule. Either source can fail or change without notice: the endpoint returns `null` for that half and the sheet shows what arrived. Market prices are read against the league's own spread; no sportsbook branding or betting links.
 - **Team logos** come from ESPN's image CDN through `TeamLogo` (`components/TeamLogo.tsx`), keyed by the team abbreviation and resized by ESPN. They are decorative: always show the team name or abbreviation beside one. The browser loads them from `a.espncdn.com`, so a Content-Security-Policy added later must allow that host for images.
+- **Installable.** `apps/web/public/manifest.json` and the `apple-*` tags in `index.html` let the app be added to a phone's home screen, where it opens without browser chrome. The icons are committed PNGs drawn by `scripts/icons.mjs`. There is no service worker, so nothing works offline. Keep the manifest's `theme_color` equal to the page's `theme-color` meta tag (`scripts/manifest.test.mjs` checks it).
 - Use `useConfirm` (`components/ConfirmDialog.tsx`) instead of `window.confirm`.
 - **Feedback goes where the user is looking.** The outcome of an action is announced with `notifyDone` / `notifyError` (`src/notify.ts`), a banner pinned just above the save bar, never in a message at the top of a long page. The exceptions sit beside their button: the pick sheet's save bar, and validation inside a form. A button that starts a request is disabled and says what it is doing ("Saving…") until it finishes.
 - **Unsaved work is guarded.** A screen with edits that haven't been saved calls `useUnsavedGuard`, which asks before in-app navigation and warns on reload or tab close.

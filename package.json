@@ -27,7 +27,8 @@
     "env:local": "node scripts/supabase-env.mjs > .env",
     "playwright:install": "pnpm --filter @picks/e2e exec playwright install --with-deps chromium webkit",
     "sb": "node scripts/supabase.mjs",
-    "ports": "node scripts/ports.mjs"
+    "ports": "node scripts/ports.mjs",
+    "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",

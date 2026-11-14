@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "POW Pick'em",
+  "short_name": "POW Pick'em",
+  "description": "Pick every NFL game against the spread with your league, and call your Pick of the Week.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#070d1f",
+  "theme_color": "#030817",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
