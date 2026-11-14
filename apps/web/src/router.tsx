@@ -75,6 +75,7 @@ export function Link({ to, ...rest }: { to: string } & AnchorHTMLAttributes<HTML
 export type Route =
   | { page: "leagues" }
   | { page: "login" }
+  | { page: "reset-password" }
   | { page: "how-to-play" }
   | { page: "join"; code: string }
   | {
@@ -91,6 +92,7 @@ export function matchRoute(path: string): Route {
   const [first, second, ...rest] = path.split("/").filter(Boolean);
   if (!first) return { page: "leagues" };
   if (first === "login" && !second) return { page: "login" };
+  if (first === "reset-password" && !second) return { page: "reset-password" };
   if (first === "how-to-play" && !second) return { page: "how-to-play" };
   if (second && rest.length === 0) {
     if (first === "join") return { page: "join", code: decodeURIComponent(second) };

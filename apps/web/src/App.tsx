@@ -12,6 +12,7 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { api, getSupabase, messageOf, unwrap } from "./api";
 import { NameForm } from "./components/NameForm";
+import { NewPasswordForm } from "./components/NewPasswordForm";
 import { type Credentials, SignInForm, type SignInMode } from "./components/SignInForm";
 import { buttonVariants } from "./components/ui/button";
 import { notifyDone } from "./notify";
@@ -21,7 +22,20 @@ import { LeaguePage } from "./pages/LeaguePage";
 import { JoinPage, LeaguesPage } from "./pages/LeaguesPage";
 import { ManageWeekPage } from "./pages/ManageWeekPage";
 import { WeekPage } from "./pages/WeekPage";
-import { Link, matchRoute, usePath } from "./router";
+import { Link, matchRoute, navigate, usePath } from "./router";
+
+/**
+ * Supabase sends people back from an expired or already-used email link with the reason in the URL fragment
+ * (`#error=access_denied&error_code=otp_expired&error_description=...`). Reads it once and clears it.
+ */
+function takeAuthLinkError(): string | undefined {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  if (!params.has("error")) return undefined;
+  window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  return params.get("error_code") === "otp_expired"
+    ? "That reset link has expired or was already used. Request a new one below."
+    : (params.get("error_description") ?? "That link didn't work. Request a new one below.");
+}
 
 /** The bar across the top of every screen, and the column the screen sits in. */
 function Shell({ account, children }: { account?: ReactNode; children: ReactNode }) {
@@ -72,6 +86,7 @@ function Shell({ account, children }: { account?: ReactNode; children: ReactNode
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [linkError] = useState(takeAuthLinkError);
   const path = usePath();
   const route = matchRoute(path);
 
@@ -102,6 +117,13 @@ export function App() {
     return data.session ? undefined : "Check your email to confirm your account, then sign in.";
   }
 
+  async function requestReset(email: string) {
+    const sb = await getSupabase();
+    // The link signs the user in and lands on the screen that asks for a new password.
+    const redirectTo = `${window.location.origin}/reset-password`;
+    return (await sb.auth.resetPasswordForEmail(email, { redirectTo })).error?.message;
+  }
+
   // The guide is public and can be read even while authentication is still loading.
   if (route.page === "how-to-play" && !session) {
     return (
@@ -115,7 +137,7 @@ export function App() {
     if (route.page === "leagues") {
       return (
         <Shell>
-          <LandingPage onSignIn={signIn} />
+          <LandingPage onSignIn={signIn} onResetRequest={requestReset} />
         </Shell>
       );
     }
@@ -128,16 +150,25 @@ export function App() {
                 ? "Join the league"
                 : route.page === "login"
                   ? "Welcome back"
-                  : "Beat the spread"}
+                  : route.page === "reset-password"
+                    ? "Reset your password"
+                    : "Beat the spread"}
             </h2>
-            <p className="m-0 text-muted-foreground">
-              {route.page === "join"
-                ? "Sign in or create an account to join the league."
-                : "Pick NFL winners against the spread with your league."}
-            </p>
+            {route.page !== "reset-password" && (
+              <p className="m-0 text-muted-foreground">
+                {route.page === "join"
+                  ? "Sign in or create an account to join the league."
+                  : "Pick NFL winners against the spread with your league."}
+              </p>
+            )}
           </div>
           <Card id="sign-in" className="scroll-mt-6">
-            <SignInForm onSubmit={signIn} />
+            <SignInForm
+              onSubmit={signIn}
+              onResetRequest={requestReset}
+              startForgot={route.page === "reset-password"}
+              initialError={linkError}
+            />
           </Card>
         </div>
       </Shell>
@@ -170,6 +201,14 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
 
   const signOut = async () => (await getSupabase()).auth.signOut();
 
+  async function savePassword(password: string) {
+    const { error } = await (await getSupabase()).auth.updateUser({ password });
+    if (error) return error.message;
+    notifyDone("Password updated.");
+    navigate("/");
+    return undefined;
+  }
+
   const account = (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex h-11 min-w-0 max-w-36 items-center gap-1.5 rounded-md px-2 font-medium text-foreground hover:bg-secondary">
@@ -180,6 +219,7 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
         {me?.displayName && (
           <DropdownMenuItem onSelect={() => setEditingName(true)}>Change your name</DropdownMenuItem>
         )}
+        <DropdownMenuItem onSelect={() => navigate("/reset-password")}>Change password</DropdownMenuItem>
         <DropdownMenuItem onSelect={signOut}>Sign out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -189,6 +229,17 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
     <Shell account={account}>
       {route.page === "how-to-play" && !editingName ? (
         <HowToPlayPage signedIn />
+      ) : route.page === "reset-password" ? (
+        // Reached from a reset email (which signs the user in) or the account menu.
+        <div className="mx-auto grid max-w-sm gap-5 pt-6">
+          <div className="grid gap-2">
+            <h2 className="text-4xl leading-none font-extrabold">Choose a new password</h2>
+            <p className="m-0 text-muted-foreground">You'll use it the next time you sign in.</p>
+          </div>
+          <Card>
+            <NewPasswordForm onSubmit={savePassword} onCancel={() => navigate("/")} />
+          </Card>
+        </div>
       ) : (
         <>
           {error && <Notice kind="alert">{error}</Notice>}

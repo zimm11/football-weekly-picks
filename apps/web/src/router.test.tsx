@@ -36,6 +36,11 @@ describe("matchRoute", () => {
     expect(matchRoute("/login/unknown")).toEqual({ page: "not-found" });
   });
 
+  it("opens the password reset page", () => {
+    expect(matchRoute("/reset-password")).toEqual({ page: "reset-password" });
+    expect(matchRoute("/reset-password/unknown")).toEqual({ page: "not-found" });
+  });
+
   it("gives the public guide its own address", () => {
     expect(matchRoute("/how-to-play")).toEqual({ page: "how-to-play" });
     expect(matchRoute("/how-to-play/unknown")).toEqual({ page: "not-found" });

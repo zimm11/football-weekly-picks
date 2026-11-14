@@ -7,8 +7,10 @@ import { Link } from "../router";
 
 export function LandingPage({
   onSignIn,
+  onResetRequest,
 }: {
   onSignIn: (mode: SignInMode, credentials: Credentials) => Promise<string | undefined>;
+  onResetRequest: (email: string) => Promise<string | undefined>;
 }) {
   return (
     <div className="grid gap-10 py-4 sm:gap-14 sm:py-8">
@@ -131,7 +133,7 @@ export function LandingPage({
         </div>
         <Card aria-label="Sign in or create an account">
           <h3 className="text-2xl">Welcome to POW Pick'em</h3>
-          <SignInForm onSubmit={onSignIn} />
+          <SignInForm onSubmit={onSignIn} onResetRequest={onResetRequest} />
         </Card>
       </section>
     </div>
