@@ -62,7 +62,7 @@ const activeMember = (userId: string) =>
 /** The caller's role in a league. Non-members get a 404, so league ids don't leak. */
 export async function requireMember(db: Db, leagueId: string, userId: string) {
   const [row] = await db
-    .select({ league: leagues, role: leagueMembers.role })
+    .select({ league: leagues, role: leagueMembers.role, joinedAt: leagueMembers.joinedAt })
     .from(leagues)
     .innerJoin(leagueMembers, activeMember(userId))
     .where(eq(leagues.id, leagueId));

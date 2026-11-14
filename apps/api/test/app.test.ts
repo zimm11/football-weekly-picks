@@ -639,8 +639,20 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       myMissingPickCount: 0,
     });
     expect((await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body.results).toBeNull();
+    const recapOf = async (user: string) =>
+      (await call<LeagueDetail>(user, "GET", `/leagues/${leagueId}`)).body.recapWeekId;
+    expect(await recapOf(PLAYER)).toBeNull();
+    // Marking a week that hasn't closed changes nothing.
+    expect((await call(PLAYER, "POST", `/weeks/${weekId}/recap/seen`)).status).toBe(200);
     const closed = await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/finalize`);
     expect(closed.body.status).toBe("final");
+
+    // The player is offered the recap until they have been shown it; the admin saw the results on closing.
+    expect(await recapOf(ADMIN)).toBeNull();
+    expect(await recapOf(PLAYER)).toBe(weekId);
+    expect((await call(OUTSIDER, "POST", `/weeks/${weekId}/recap/seen`)).status).toBe(404);
+    expect((await call(PLAYER, "POST", `/weeks/${weekId}/recap/seen`)).status).toBe(200);
+    expect(await recapOf(PLAYER)).toBeNull();
     expect(closed.body.games.map((g) => g.spread)).toEqual([-2.5, 3.5, -4.5]);
   });
 
@@ -680,7 +692,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(standings).toMatchObject({
       years: [2026],
       year: 2026,
-      weeks: [{ id: weekId, number: 10, winners: ["Pat"] }],
+      weeks: [{ id: weekId, number: 10, winners: ["Pat"], lowPointLosers: ["Commish"] }],
       entries: [
         { displayName: "Pat", points: 9, wins: 2, powWins: 1, mondayWins: 1, weeksWon: 1, rank: 1 },
         { displayName: "Commish", points: 8, wins: 1, powWins: 1, mondayWins: 0, weeksWon: 0, rank: 2 },
@@ -875,6 +887,17 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(ADMIN, "POST", `/weeks/${weekId}/import`)).status).toBe(409);
     const corrected = await call<WeekView>(ADMIN, "PATCH", `/games/${game.sun}`, { spread: 3 });
     expect(corrected.body.games.find((g) => g.id === game.sun)?.spread).toBe(3);
+
+    // Closing it again is news again: players who saw the first recap are offered the corrected one.
+    const recapOf = async (user: string) =>
+      (await call<LeagueDetail>(user, "GET", `/leagues/${leagueId}`)).body.recapWeekId;
+    expect(await recapOf(PLAYER)).toBeNull();
+    now = new Date("2026-12-02T12:00:00Z");
+    await call(ADMIN, "POST", `/weeks/${weekId}/finalize`);
+    expect(await recapOf(PLAYER)).toBe(weekId);
+    expect(await recapOf(ADMIN)).toBeNull();
+    await call(ADMIN, "POST", `/weeks/${weekId}/reopen`);
+    now = WEDNESDAY;
   });
 
   it("lets the admin rename the league and change its time zone", async () => {

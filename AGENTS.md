@@ -50,6 +50,8 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 - **Pick submissions** run in one transaction that locks the week row and takes a per-player advisory lock, so the lock rules can't be raced. Keep reads, validation and writes inside it.
 - **Weekly winner:** most points, then most games won, then closest guess at the tiebreaker game's total (on equal distance, the guess that didn't go over).
 - **Season standings:** total points, then POWs won, wins, Monday night wins, Sunday night wins.
+- **Awards and the Low Point Loser (LPL):** `packages/shared/src/awards.ts` works them out from a final week's results. The LPL is last place by the weekly ranking (shared if still level; nobody when the whole league is level). The others are perfect week, bullseye (exact tiebreaker total) and lone wolf (alone on the covering side of a game at least three players picked).
+- **Results recap:** the first time a player opens a league after a week is finalized, a bottom sheet (`WeekRecap`) shows how they finished and the awards, once. `weeks.finalized_at` is set on finalize and cleared on reopen; `week_recap_views` records who has seen it, and a view older than `finalized_at` doesn't count, so a corrected week is recapped again. The league endpoint's `recapWeekId` names the latest such week closed since the player joined. The admin who finalizes is marked as having seen it. Weeks closed before the feature have no `finalized_at` and never get one.
 
 ## Design
 

@@ -1,12 +1,22 @@
 import { randomBytes } from "node:crypto";
 import { zValidator } from "@hono/zod-validator";
-import { games, leagueMembers, leagues, picks, seasons, tiebreakerGuesses, weeks } from "@picks/db";
+import {
+  games,
+  leagueMembers,
+  leagues,
+  picks,
+  seasons,
+  tiebreakerGuesses,
+  weekRecapViews,
+  weeks,
+} from "@picks/db";
 import {
   createLeagueSchema,
   effectiveTiebreakerId,
   type InvitePreview,
   type LeagueDetail,
   type LeagueSummary,
+  lowPointLosers,
   MAX_LEAGUE_MEMBERS,
   MAX_LEAGUES_PER_USER,
   type PlayerSeasonStats,
@@ -144,9 +154,15 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
       })
       .get("/leagues/:leagueId", auth, leagueParam, async (c) => {
         const { leagueId } = c.req.valid("param");
-        const { league, role } = await requireMember(db, leagueId, c.var.user.id);
+        const { league, role, joinedAt } = await requireMember(db, leagueId, c.var.user.id);
         const weekRows = await db
-          .select({ id: weeks.id, year: seasons.year, number: weeks.number, status: weeks.status })
+          .select({
+            id: weeks.id,
+            year: seasons.year,
+            number: weeks.number,
+            status: weeks.status,
+            finalizedAt: weeks.finalizedAt,
+          })
           .from(weeks)
           .innerJoin(seasons, eq(seasons.id, weeks.seasonId))
           .where(eq(seasons.leagueId, leagueId))
@@ -171,6 +187,21 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
             ])
           : [[], []];
         const clock = now();
+        // The recap is for the latest week closed since this player joined, until they have been shown it.
+        const [latestFinal] = weekRows
+          .flatMap((w) =>
+            w.status === "final" && w.finalizedAt && w.finalizedAt >= joinedAt
+              ? [{ id: w.id, finalizedAt: w.finalizedAt }]
+              : [],
+          )
+          .sort((a, b) => b.finalizedAt.getTime() - a.finalizedAt.getTime());
+        const [recapView] = latestFinal
+          ? await db
+              .select({ seenAt: weekRecapViews.seenAt })
+              .from(weekRecapViews)
+              .where(and(eq(weekRecapViews.weekId, latestFinal.id), eq(weekRecapViews.userId, c.var.user.id)))
+          : [];
+        const recapSeen = !!latestFinal && !!recapView && recapView.seenAt >= latestFinal.finalizedAt;
         const detail: LeagueDetail = {
           id: league.id,
           name: league.name,
@@ -180,7 +211,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
           members: (await listMemberRecords(db, leagueId)).filter(isActive).map(toMember),
           weeks: weekRows
             .filter((w) => role === "admin" || w.status !== "draft")
-            .map((w) => {
+            .map(({ finalizedAt: _, ...w }) => {
               const slate = gameRows.filter((game) => game.weekId === w.id);
               const picked = new Set(
                 pickRows.filter((pick) => pick.weekId === w.id).map((pick) => pick.gameId),
@@ -193,6 +224,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
                 ...weekPickAvailability(slate, picked, league.timeZone, clock),
               };
             }),
+          recapWeekId: latestFinal && !recapSeen ? latestFinal.id : null,
         };
         return c.json(detail);
       })
@@ -373,6 +405,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
               id: week.id,
               number: week.number,
               winners: (scored[i] ?? []).filter((e) => e.isWinner).map((e) => nameOf(e.userId)),
+              lowPointLosers: lowPointLosers(scored[i] ?? []).map(nameOf),
               ...weekSummary(scored[i] ?? []),
             })),
           };

@@ -30,6 +30,8 @@ erDiagram
   leagues ||--o{ seasons : "league_id"
   weeks ||--o{ tiebreaker_guesses : "week_id"
   auth_users ||--o{ tiebreaker_guesses : "user_id"
+  weeks ||--o{ week_recap_views : "week_id"
+  auth_users ||--o{ week_recap_views : "user_id"
   seasons ||--o{ weeks : "season_id"
   games |o--o{ weeks : "tiebreaker_game_id"
   auth_users["auth.users (Supabase Auth)"] {
@@ -111,12 +113,18 @@ erDiagram
     integer total
     timestamptz updated_at
   }
+  week_recap_views {
+    uuid week_id PK, FK
+    uuid user_id PK, FK
+    timestamptz seen_at
+  }
   weeks {
     uuid id PK
     uuid season_id FK
     integer number
     text status
     uuid tiebreaker_game_id FK
+    timestamptz finalized_at
     timestamptz created_at
   }
 ```
@@ -261,6 +269,16 @@ A player's guess at the combined score of the week's tiebreaker game.
 | `total` | integer | no |  | Guessed combined points of both teams. |
 | `updated_at` | timestamptz | no |  | Has a default. |
 
+### `week_recap_views`
+
+A player has been shown a closed week's results recap. It counts only if it is no older than the week's `finalizedAt`, so a week reopened and closed again is recapped again.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `week_id` | uuid | no | PK, FK → `weeks.id` |  |
+| `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
+| `seen_at` | timestamptz | no |  |  |
+
 ### `weeks`
 
 One week of a season: the unit players pick, and the admin opens and closes.
@@ -272,6 +290,7 @@ One week of a season: the unit players pick, and the admin opens and closes.
 | `number` | integer | no |  | Regular-season week, 1–18. |
 | `status` | text | no |  | draft: the admin is setting games and spreads. open: players pick. final: scored, picks revealed. One of: `draft`, `open`, `final`. Has a default. |
 | `tiebreaker_game_id` | uuid | yes | FK → `games.id` | The admin's explicit choice of tiebreaker game. Null means "use the default" (the last Monday game, else the last game), worked out from the slate on every read. Players guess this game's total. |
+| `finalized_at` | timestamptz | yes |  | When the admin last closed the week. Null while it isn't final, and for weeks closed before results recaps existed, which never get one. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 Unique together: (`season_id`, `number`).

@@ -91,9 +91,11 @@ select
   external_id, away_team, home_team, kickoff, spread, points, away_score, home_score
 from seed_games;
 
--- The Monday night game is the tiebreaker.
+-- The Monday night game is the tiebreaker. The week has a close time, so each test account is shown its
+-- results recap the first time it opens the league.
 update weeks
-set tiebreaker_game_id = '55555555-5555-4555-8555-000000000014'
+set tiebreaker_game_id = '55555555-5555-4555-8555-000000000014',
+    finalized_at = '2026-11-10 14:00:00+00'
 where id = '44444444-4444-4444-8444-000000000009';
 
 -- Everyone picks every game (an arbitrary but fixed mix of sides), except that Alex missed Thursday.

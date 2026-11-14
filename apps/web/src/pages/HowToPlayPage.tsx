@@ -171,6 +171,11 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
                 shares the win.
               </p>
               <p className="m-0 text-sm text-muted-foreground">
+                The same order, read from the bottom, names the week's Low Point Loser (LPL): whoever finishes
+                last. Results also hand out a few awards, like the lone wolf who was alone on the right side
+                of a game.
+              </p>
+              <p className="m-0 text-sm text-muted-foreground">
                 The tiebreaker is the admin's chosen game, otherwise the last Monday game (or the last game if
                 there is no Monday game). Look for “Tiebreaker game” on the sheet.
               </p>
