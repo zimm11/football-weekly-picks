@@ -271,7 +271,7 @@ One week of a season: the unit players pick, and the admin opens and closes.
 | `season_id` | uuid | no | FK → `seasons.id` |  |
 | `number` | integer | no |  | Regular-season week, 1–18. |
 | `status` | text | no |  | draft: the admin is setting games and spreads. open: players pick. final: scored, picks revealed. One of: `draft`, `open`, `final`. Has a default. |
-| `tiebreaker_game_id` | uuid | yes | FK → `games.id` | The admin's explicit choice of tiebreaker game. Null means "use the default" (the last Monday game, else the last game), worked out from the slate on every read. Players guess this game's total, and it receives automatic POWs. |
+| `tiebreaker_game_id` | uuid | yes | FK → `games.id` | The admin's explicit choice of tiebreaker game. Null means "use the default" (the last Monday game, else the last game), worked out from the slate on every read. Players guess this game's total. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 Unique together: (`season_id`, `number`).

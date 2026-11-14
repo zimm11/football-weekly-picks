@@ -63,6 +63,20 @@ Running it again overwrites `.env`.
 The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
 needs no environment variables. Database credentials stay on the API server.
 
+#### Simulating a different date and time (local only)
+
+To test pick and POW locks or week phases without waiting for game day, start the API with
+`CLOCK_OVERRIDE` set to an ISO 8601 time with an offset:
+
+```sh
+CLOCK_OVERRIDE=2026-09-13T12:30:00-04:00 pnpm dev
+```
+
+The API's clock starts at that moment and keeps running in real time. The web app picks up the same offset
+from `/api/config` and shows a **Simulated time** banner under the header. Restart `pnpm dev` to change or
+clear it. The API refuses to start with `CLOCK_OVERRIDE` when `NODE_ENV=production`, so it can't reach the
+deployed service. Rows the database timestamps itself (such as message times) still use the real clock.
+
 ### Ports, worktrees, and stopping the stack
 
 Run `pnpm ports` in each checkout to see its web, API, Supabase, Studio, test inbox, and PostgreSQL URLs.
@@ -99,7 +113,7 @@ database and reapplies migrations and seed data.** Before deleting a worktree, r
 The **Sunday Crew** league has a 2026 season with **Weeks 6–9 already finalized**. Results, standings,
 the week-by-week grid, and rank movement have history to explore. Week 9 uses the matchups and scores
 recorded in the seed with made-up spreads; Weeks 6–8 use made-up eight-game slates. The fixtures include
-pushes, automatic POWs, and missed picks, including Alex missing all of Week 7. Later weeks are absent
+pushes, weeks with no POW, and missed picks, including Alex missing all of Week 7. Later weeks are absent
 so you can create them yourself.
 
 Local sign-up needs no email confirmation. You can create an account with a made-up email address and
@@ -180,10 +194,10 @@ Default point values use **Eastern time**, with holidays taking priority. Admins
 | Thanksgiving or Christmas Day           | 4      |
 
 A winning **Pick of the Week** earns **5 bonus points** in addition to the game's value. A losing or
-pushed POW earns no bonus. If a player chooses no POW, their pick on the tiebreaker game becomes their
-POW. When the slate has Sunday games and a later tiebreaker game, that default is enforced from the
-Sunday morning lock; the player can no longer choose another game. They must still save a pick on the
-tiebreaker game to earn points.
+pushed POW earns no bonus. There is no automatic POW: a player who doesn't choose one has none that
+week. A game can take the POW only until 6am on its game day, so a player who hasn't chosen by Sunday
+morning can still pick any Monday game (either one on a doubleheader) before 6am Monday. A late pick,
+added after 6am on game day, can't be the POW.
 
 ### Deadlines and rankings
 

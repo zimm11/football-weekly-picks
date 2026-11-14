@@ -1,6 +1,9 @@
 import type { ApiType } from "@picks/api/app";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { hc } from "hono/client";
+import { setClockOffset } from "./clock";
+
+type PublicConfig = { supabaseUrl: string; supabasePublishableKey: string; clockOffsetMs?: number };
 
 let supabase: Promise<SupabaseClient> | undefined;
 
@@ -10,8 +13,11 @@ let supabase: Promise<SupabaseClient> | undefined;
  */
 export function getSupabase(): Promise<SupabaseClient> {
   supabase ??= fetch("/api/config")
-    .then((res) => res.json() as Promise<{ supabaseUrl: string; supabasePublishableKey: string }>)
-    .then((config) => createClient(config.supabaseUrl, config.supabasePublishableKey));
+    .then((res) => res.json() as Promise<PublicConfig>)
+    .then((config) => {
+      setClockOffset(config.clockOffsetMs);
+      return createClient(config.supabaseUrl, config.supabasePublishableKey);
+    });
   return supabase;
 }
 

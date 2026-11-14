@@ -72,6 +72,7 @@ test("a player can leave a league, but its only admin can't", async ({ page, bro
     await player.goto(inviteUrl);
     await signUp(player, "Pat");
     await player.getByRole("button", { name: "Join league" }).click();
+    await expect(player).toHaveURL(/\/leagues\/[^/]+$/);
     await expect(player.getByRole("heading", { name: "Leaving soon" })).toBeVisible();
     await player.goto(`${new URL(page.url()).pathname.replace(/\/league$/, "")}/league`);
     await player.getByRole("button", { name: "Leave league" }).click();
@@ -105,6 +106,7 @@ test("admins have equal authority and can step down while keeping one admin", as
       await player.goto(inviteUrl);
       await signUp(player, name);
       await player.getByRole("button", { name: "Join league" }).click();
+      await expect(player).toHaveURL(/\/leagues\/[^/]+$/);
       await expect(player.getByRole("heading", { name: "Shared administration" })).toBeVisible();
       await player.goto(leagueUrl);
       await expect(player.getByRole("button", { name: "Create week" })).toHaveCount(0);

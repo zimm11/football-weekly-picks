@@ -7,11 +7,18 @@ import { z } from "zod";
 import type { VerifyToken } from "./auth";
 import type { NflProvider } from "./nfl";
 
+export type PublicConfig = {
+  supabaseUrl: string;
+  supabasePublishableKey: string;
+  /** Set only while a local `CLOCK_OVERRIDE` is active: how far the API's clock is shifted from real time. */
+  clockOffsetMs?: number;
+};
+
 export type AppDeps = {
   db: Db;
   verifyToken: VerifyToken;
   /** Public config handed to clients at runtime (so the web build needs no baked-in env). */
-  publicConfig: { supabaseUrl: string; supabasePublishableKey: string };
+  publicConfig: PublicConfig;
   /** Source of schedules, spreads and results. */
   nfl: NflProvider;
   /** Injected so tests can pin the clock that pick locks are measured against. */

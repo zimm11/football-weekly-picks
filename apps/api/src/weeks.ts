@@ -121,7 +121,10 @@ async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<
 export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: AppDeps) {
   const auth = requireAuth(verifyToken);
 
-  /** Adds the provider's games to a week and refreshes kickoffs and spreads of the ones already there. */
+  /**
+   * Adds the provider's games to a week and refreshes kickoffs and spreads of the ones already there.
+   * Drafts only: once players have picked, spreads change only when the admin edits them by hand.
+   */
   async function importGames(weekId: string, year: number, number: number): Promise<string | null> {
     let provided: Awaited<ReturnType<typeof nfl.getWeek>>;
     try {
@@ -263,7 +266,7 @@ export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: App
         await db.update(weeks).set({ status: "open" }).where(eq(weeks.id, ctx.week.id));
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
-      /** Pulls final scores from the provider for games that came from it. */
+      /** Pulls final scores from the provider for games that came from it. Spreads are never touched here. */
       .post("/weeks/:weekId/results", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["open"]);
         let provided: Awaited<ReturnType<typeof nfl.getWeek>>;
@@ -347,7 +350,6 @@ export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: App
               existing,
               picks: input.picks,
               powGameId: input.powGameId,
-              tiebreakerGameId,
               timeZone: ctx.league.timeZone,
               now: at,
             }) ??

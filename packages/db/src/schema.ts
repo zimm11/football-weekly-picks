@@ -97,8 +97,7 @@ export const weeks = pgTable(
       .default("draft"),
     /**
      * The admin's explicit choice of tiebreaker game. Null means "use the default" (the last Monday game, else
-     * the last game), worked out from the slate on every read. Players guess this game's total, and it
-     * receives automatic POWs.
+     * the last game), worked out from the slate on every read. Players guess this game's total.
      */
     tiebreakerGameId: uuid().references((): AnyPgColumn => games.id, { onDelete: "set null" }),
     createdAt: createdAt(),

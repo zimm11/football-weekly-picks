@@ -118,10 +118,10 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               bonus.
             </p>
             <p className="m-0 text-sm text-muted-foreground">
-              If you leave your POW unchosen, your pick on the tiebreaker game becomes your POW. From{" "}
-              {LOCK_HOUR}am on Sunday, that default is enforced when the slate has Sunday games and a later
-              tiebreaker game; you can no longer choose a different game. You still need to save a pick on
-              that game to earn its points.
+              There is no automatic POW: if you don't choose one, you don't get one that week. A game can be
+              your POW only until {LOCK_HOUR}am on its game day, so if Sunday locks before you choose, you can
+              still make a Monday game your POW (either one, on a Monday doubleheader) before {LOCK_HOUR}am
+              Monday. A late pick, added after {LOCK_HOUR}am on game day, can't be your POW.
             </p>
           </Card>
         </div>
@@ -267,12 +267,12 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Record scores and finalize the week",
                 detail:
-                  "In Manage week, press Pull results from ESPN once games are final, or enter scores and press Save changes. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner, and updates season standings.",
+                  "In Manage week, press Pull results from ESPN once games are final, or enter scores and press Save changes. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner, and updates season standings. Pulling results and finalizing never change spreads: games are scored against the spreads set when the week opened.",
               },
               {
                 title: "Correct results when needed",
                 detail:
-                  "Use Reopen week in Manage week, correct the score or spread, and save. Close the week again to publish the corrected results. While reopened, other players' picks are hidden and the week is excluded from standings.",
+                  "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't pulled from ESPN again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, other players' picks are hidden and the week is excluded from standings.",
               },
             ]}
           />
