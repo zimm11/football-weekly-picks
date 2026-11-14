@@ -1,6 +1,6 @@
 {
   "id": "03b6fcfe-3c13-4603-a91b-cc5cbd83d2bc",
-  "prevId": "98c0f557-1be6-4a3d-909e-fc985aa7adbb",
+  "prevId": "11f372ab-4fa7-48b7-86ef-375e422947d5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -976,6 +976,73 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
+    "public.week_recap_views": {
+      "name": "week_recap_views",
+      "schema": "",
+      "columns": {
+        "week_id": {
+          "name": "week_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seen_at": {
+          "name": "seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "week_recap_views_week_id_weeks_id_fk": {
+          "name": "week_recap_views_week_id_weeks_id_fk",
+          "tableFrom": "week_recap_views",
+          "tableTo": "weeks",
+          "columnsFrom": [
+            "week_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "week_recap_views_user_id_users_id_fk": {
+          "name": "week_recap_views_user_id_users_id_fk",
+          "tableFrom": "week_recap_views",
+          "tableTo": "users",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "week_recap_views_week_id_user_id_pk": {
+          "name": "week_recap_views_week_id_user_id_pk",
+          "columns": [
+            "week_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
     "public.weeks": {
       "name": "weeks",
       "schema": "",
@@ -1009,6 +1076,12 @@
         "tiebreaker_game_id": {
           "name": "tiebreaker_game_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finalized_at": {
+          "name": "finalized_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

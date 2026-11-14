@@ -7,6 +7,7 @@ import { Card, Notice } from "@/components/ui/card";
 import { api, messageOf, unwrap } from "../api";
 import { LeagueLayout } from "../components/LeagueNav";
 import { PickSheet } from "../components/PickSheet";
+import { WeekAwards } from "../components/WeekAwards";
 import { WeekResultsTable } from "../components/WeekResultsTable";
 import { GameBreakdown, WeekSummary } from "../components/WeekSummary";
 import { rememberSeason } from "../lib/seasonSelection";
@@ -128,6 +129,7 @@ export function WeekBody({
             tiebreakerGameId={view.tiebreakerGameId}
             currentUserId={userId}
           />
+          <WeekAwards games={view.games} results={view.results} tiebreakerGameId={view.tiebreakerGameId} />
           <GameBreakdown games={view.games} results={view.results} />
         </>
       )}

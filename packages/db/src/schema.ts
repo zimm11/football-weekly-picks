@@ -100,6 +100,11 @@ export const weeks = pgTable(
      * the last game), worked out from the slate on every read. Players guess this game's total.
      */
     tiebreakerGameId: uuid().references((): AnyPgColumn => games.id, { onDelete: "set null" }),
+    /**
+     * When the admin last closed the week. Null while it isn't final, and for weeks closed before results
+     * recaps existed, which never get one.
+     */
+    finalizedAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [unique("weeks_season_number_key").on(t.seasonId, t.number)],
@@ -171,6 +176,22 @@ export const tiebreakerGuesses = pgTable(
     /** Guessed combined points of both teams. */
     total: integer().notNull(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.weekId, t.userId] })],
+).enableRLS();
+
+/**
+ * A player has been shown a closed week's results recap. It counts only if it is no older than the week's
+ * `finalizedAt`, so a week reopened and closed again is recapped again.
+ */
+export const weekRecapViews = pgTable(
+  "week_recap_views",
+  {
+    weekId: uuid()
+      .notNull()
+      .references(() => weeks.id, { onDelete: "cascade" }),
+    userId: userRef(),
+    seenAt: timestamp({ withTimezone: true }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.weekId, t.userId] })],
 ).enableRLS();

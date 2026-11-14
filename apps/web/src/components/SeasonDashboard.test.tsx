@@ -31,8 +31,8 @@ const standings: Standings = {
   years: [2026],
   year: 2026,
   weeks: [
-    { id: "w1", number: 1, winners: ["Pat"], topPoints: 14, averagePoints: 10 },
-    { id: "w2", number: 2, winners: ["Sam"], topPoints: 12, averagePoints: 8.5 },
+    { id: "w1", number: 1, winners: ["Pat"], lowPointLosers: ["Sam"], topPoints: 14, averagePoints: 10 },
+    { id: "w2", number: 2, winners: ["Sam"], lowPointLosers: ["Pat"], topPoints: 12, averagePoints: 8.5 },
   ],
   entries: [
     player("pat", "Pat", {

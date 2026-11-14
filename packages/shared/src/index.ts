@@ -5,6 +5,7 @@ import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
 import { TEAM_ABBRS } from "./teams";
 import { isValidTimeZone } from "./time";
 
+export * from "./awards";
 export * from "./insights";
 export * from "./operator";
 export * from "./rules";
@@ -137,6 +138,8 @@ export type LeagueDetail = {
   members: Member[];
   /** Newest first. Members don't see draft weeks. */
   weeks: WeekSummary[];
+  /** The most recently finalized week whose results this player hasn't been shown yet, if any. */
+  recapWeekId: string | null;
 };
 
 export type InvitePreview = {
@@ -193,7 +196,13 @@ export type Standings = {
   /** `removed`: no longer in the league, but played in a counted week. */
   entries: (SeasonEntry & Omit<PlayerSeasonStats, "userId"> & { displayName: string; removed: boolean })[];
   /** Final weeks, in order, with their winner(s). Each entry's `weekly` lines up with this list. */
-  weeks: ({ id: string; number: number; winners: string[] } & WeekSummaryStats)[];
+  weeks: ({
+    id: string;
+    number: number;
+    winners: string[];
+    /** Display names of the week's Low Point Loser(s). */
+    lowPointLosers: string[];
+  } & WeekSummaryStats)[];
 };
 
 // ---------- Display helpers ----------

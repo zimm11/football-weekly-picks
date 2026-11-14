@@ -326,11 +326,26 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(page.getByRole("heading", { name: "Post a league message" })).not.toBeVisible();
   await expect(page.getByText("Winner: Commish")).toBeVisible();
 
-  // Now the player can see everyone's picks, and the standings credit the winner.
+  // The admin closed the week, so the recap isn't sprung on them as well.
+  await page.getByRole("link", { name: "Picks", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "No week is open" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // The player's next visit opens with the recap, which names them the Low Point Loser. It shows once.
+  await player.reload();
+  const recap = player.getByRole("dialog", { name: "Week 1 is final" });
+  await expect(recap).toContainText("You're this week's Low Point Loser");
+  await expect(recap.getByRole("region", { name: "Week awards" })).toContainText("Commish");
+  await recap.getByRole("button", { name: "Close" }).click();
+  await expect(recap).toHaveCount(0);
   await player.reload();
   await expect(player.getByRole("heading", { name: "No week is open" })).toBeVisible();
+  await expect(player.getByRole("dialog")).toHaveCount(0);
+
+  // Now the player can see everyone's picks, and the standings credit the winner.
   await player.getByRole("link", { name: "Results", exact: true }).click();
   await expect(player.getByText("Won by Commish")).toBeVisible();
+  await expect(player.getByText("LPL: Pat")).toBeVisible();
   await player.getByRole("link", { name: /Week 1/ }).click();
   const results = player.getByRole("table", { name: "Week results" });
   await expect(results.getByRole("row", { name: /Commish/ })).toContainText("KC POW");
