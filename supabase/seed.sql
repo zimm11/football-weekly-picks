@@ -8,7 +8,7 @@
 --   * The 2026 season with Weeks 6–9 already closed, so standings, the week-by-week grid and rank
 --     movement have some history to show.
 --       - Week 9: real matchups and final scores, made-up spreads, and picks from all four players.
---         Alex skipped Thursday and chose no POW, so Alex shows the automatic Monday night POW.
+--         Alex skipped Thursday and chose no POW, so Alex has no POW that week.
 --       - Weeks 6–8: made-up eight-game slates (Thursday, five Sunday afternoon games, Sunday night,
 --         Monday night) with made-up scores and spreads. Week 6 and Week 7 each have a push.
 --         Alex missed Week 7 entirely; Sam chose no POW in Week 8.
