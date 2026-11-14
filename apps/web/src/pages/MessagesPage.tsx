@@ -1,7 +1,10 @@
-import type { MessageThread, ThreadDetail } from "@picks/shared";
-import { useEffect, useState } from "react";
+import type { MessageReaction, MessageThread, MessageQuote as Quote, ThreadDetail } from "@picks/shared";
+import { useEffect, useRef, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
 import { useUnsavedGuard } from "../components/ConfirmDialog";
+import { MessageQuote } from "../components/MessageQuote";
+import { MessageReactions } from "../components/MessageReactions";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, Notice } from "../components/ui/card";
 import { Field, fieldClass, Input } from "../components/ui/input";
@@ -13,18 +16,26 @@ export function MessageComposer({
   initialTitle = "",
   initialBody = "",
   reply = false,
+  quote,
+  onCancelQuote,
   onSubmit,
 }: {
   initialTitle?: string;
   initialBody?: string;
   reply?: boolean;
+  quote?: Quote;
+  onCancelQuote?: () => void;
   onSubmit: (value: { title: string; body: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initialBody);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const guard = useUnsavedGuard(!!(title || body), "message edits");
+  const replyInput = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (quote?.id) replyInput.current?.focus();
+  }, [quote?.id]);
+  const guard = useUnsavedGuard(!!(title || body || quote), "message edits");
   return (
     <form
       className="grid gap-3"
@@ -55,8 +66,17 @@ export function MessageComposer({
           />
         </Field>
       )}
+      {quote && (
+        <section className="grid gap-2" aria-label="Reply quote preview">
+          <MessageQuote quote={quote} />
+          <Button type="button" variant="ghost" disabled={busy} onClick={onCancelQuote}>
+            Remove quote
+          </Button>
+        </section>
+      )}
       <Field label={reply ? "Reply" : "Message"}>
         <textarea
+          ref={replyInput}
           aria-label={reply ? "Reply" : "Message"}
           className={`${fieldClass} min-h-32 py-3`}
           required
@@ -129,6 +149,7 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
           className="grid gap-1 rounded-md border bg-card p-4 no-underline hover:bg-secondary"
         >
           <span className="font-display text-xl font-bold break-words">
+            {t.pinned && <Badge className="mr-2">Pinned announcement</Badge>}
             {t.title} {t.unread && <span className="text-sm text-primary">Unread</span>}
           </span>
           <span className="text-sm text-muted-foreground">
@@ -146,6 +167,9 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
   const endpoint = api.leagues[":leagueId"].messages[":threadId"];
   const thread = useLoad(() => unwrap<ThreadDetail>(endpoint.$get({ param })), threadId);
   const [refreshing, setRefreshing] = useState(false);
+  const [pinning, setPinning] = useState(false);
+  const [quote, setQuote] = useState<Quote>();
+  const [replyBusy, setReplyBusy] = useState(false);
   const [readError, setReadError] = useState("");
   useEffect(() => {
     const version = thread.data?.version;
@@ -178,13 +202,78 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
       {readError && <Notice kind="alert">Could not mark this thread read: {readError}</Notice>}
       {thread.data ? (
         <>
-          <h3 className="text-2xl break-words">{thread.data.title}</h3>
+          <div className="grid gap-3 sm:flex sm:items-center sm:justify-between">
+            <div className="grid min-w-0 gap-2">
+              {thread.data.pinned && <Badge>Pinned announcement</Badge>}
+              <h3 className="text-2xl break-words">{thread.data.title}</h3>
+            </div>
+            {thread.data.canPin && (
+              <Button
+                variant="outline"
+                disabled={pinning}
+                onClick={async () => {
+                  setPinning(true);
+                  try {
+                    const result = await unwrap<{ pinned: boolean }>(
+                      endpoint.pin.$put({
+                        param,
+                        json: { pinned: !thread.data?.pinned },
+                      }),
+                    );
+                    thread.setData((current) => current && { ...current, pinned: result.pinned });
+                    notifyDone(result.pinned ? "Announcement pinned." : "Announcement unpinned.");
+                  } catch (err) {
+                    notifyError(messageOf(err));
+                  } finally {
+                    setPinning(false);
+                  }
+                }}
+              >
+                {pinning ? "Saving…" : thread.data.pinned ? "Unpin announcement" : "Pin announcement"}
+              </Button>
+            )}
+          </div>
           {thread.data.posts.map((p) => (
-            <Card key={p.id}>
+            <Card
+              key={p.id}
+              id={`message-${p.id}`}
+              tabIndex={-1}
+              aria-label={`Message ${p.position} by ${p.authorName}`}
+            >
               <p className="m-0 text-sm text-muted-foreground">
                 {p.authorName} · {new Date(p.createdAt).toLocaleString()}
               </p>
+              {p.quote && <MessageQuote quote={p.quote} />}
               <p className="m-0 whitespace-pre-wrap break-words">{p.body}</p>
+              <MessageReactions
+                reactions={p.reactions}
+                onChange={async (emoji, active) => {
+                  const reactions = await unwrap<MessageReaction[]>(
+                    endpoint.posts[":postId"].reactions.$put({
+                      param: { ...param, postId: p.id },
+                      json: { emoji, active },
+                    }),
+                  );
+                  thread.setData(
+                    (current) =>
+                      current && {
+                        ...current,
+                        posts: current.posts.map((post) =>
+                          post.id === p.id ? { ...post, reactions } : post,
+                        ),
+                      },
+                  );
+                }}
+              />
+              <Button
+                variant="ghost"
+                className="justify-self-start"
+                aria-label={`Quote message ${p.position} by ${p.authorName}`}
+                disabled={replyBusy}
+                onClick={() => setQuote({ id: p.id, authorName: p.authorName, body: p.body })}
+              >
+                Quote reply
+              </Button>
             </Card>
           ))}
           <Button
@@ -206,11 +295,21 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
           <Card>
             <MessageComposer
               reply
+              quote={quote}
+              onCancelQuote={() => setQuote(undefined)}
               onSubmit={async (json) => {
-                await unwrap(endpoint.replies.$post({ param, json: { body: json.body } }));
-                notifyDone("Reply posted.");
-                thread.reload();
-                window.dispatchEvent(new Event("messages-changed"));
+                setReplyBusy(true);
+                try {
+                  await unwrap(
+                    endpoint.replies.$post({ param, json: { body: json.body, quotedPostId: quote?.id } }),
+                  );
+                  setQuote(undefined);
+                  notifyDone("Reply posted.");
+                  thread.reload();
+                  window.dispatchEvent(new Event("messages-changed"));
+                } finally {
+                  setReplyBusy(false);
+                }
               }}
             />
           </Card>

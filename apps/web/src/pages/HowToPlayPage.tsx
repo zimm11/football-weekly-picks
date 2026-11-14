@@ -257,7 +257,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Talk it over in Messages",
                 detail:
-                  "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read.",
+                  "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap an emoji below any message or reply to react, and tap again to remove it. Counts show how many players reacted; your selections are highlighted. Reactions don't mark threads unread. Admins can pin a thread as an announcement to keep it at the top of the board. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
               },
               {
                 title: "Manage your account",

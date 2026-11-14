@@ -192,7 +192,7 @@ For quick access, use **Add to home screen** above your league content before st
    again and the week is
    excluded from standings until finalized again; the corrected week is then recapped again.
 7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
-   with posts you haven't opened.
+   with posts you haven't opened. React to messages and replies with 👍, 😂, 🔥, 🎉, 🏈 or 😮; tap again to remove your reaction. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. Admins can **Pin announcement** inside a thread to keep it at the top of the board.
 
 ### Sharing league administration
 
@@ -239,6 +239,14 @@ emails sent by the local Auth service.
 The app's `/how-to-play` page explains the player and admin flows and includes a separate home-screen installation guide.
 [`packages/shared/src/rules.ts`](packages/shared/src/rules.ts) is the implementation of scoring and locks,
 and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the weekly awards.
+
+### Messages
+
+Active league members can react to any message or reply, once per emoji per player. Counts and your
+own selections are visible to members. Reactions do not bump threads or create unread indicators.
+Only admins can pin or unpin threads as announcements; pinned threads appear first without changing
+unread status. Quoted replies can reference only messages in the same thread and show the original
+author and text with a link back. You can remove a quote before posting without losing your reply.
 
 ### Scoring
 
