@@ -117,6 +117,10 @@ export function JoinPage({ code }: { code: string }) {
               Go to the league
             </Link>
           </>
+        ) : invite.data.full ? (
+          <p className="m-0">
+            This league is full. Ask the admin to make room by removing a player, then open the link again.
+          </p>
         ) : (
           <>
             <p className="m-0">You've been invited to join this league.</p>
