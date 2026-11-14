@@ -6,7 +6,7 @@ import {
   LockIcon,
   TrophyIcon,
 } from "@phosphor-icons/react";
-import { POW_BONUS } from "@picks/shared";
+import { type AuthProvider, POW_BONUS } from "@picks/shared";
 import { type Credentials, SignInForm, type SignInMode } from "../components/SignInForm";
 import { TeamLogo } from "../components/TeamLogo";
 import { Badge } from "../components/ui/badge";
@@ -17,9 +17,16 @@ import { Link } from "../router";
 export function LandingPage({
   onSignIn,
   onResetRequest,
+  providers,
+  onProviderSignIn,
+  initialError,
 }: {
   onSignIn: (mode: SignInMode, credentials: Credentials) => Promise<string | undefined>;
   onResetRequest: (email: string) => Promise<string | undefined>;
+  providers?: readonly AuthProvider[];
+  onProviderSignIn?: (provider: AuthProvider) => Promise<string | undefined>;
+  /** A failed Google sign-in that sent the player back here. */
+  initialError?: string;
 }) {
   return (
     <div className="grid gap-10 py-4 sm:gap-14 sm:py-8">
@@ -137,7 +144,13 @@ export function LandingPage({
         </div>
         <Card aria-label="Sign in or create an account">
           <h3 className="text-2xl">Welcome to POW Pick'em</h3>
-          <SignInForm onSubmit={onSignIn} onResetRequest={onResetRequest} />
+          <SignInForm
+            onSubmit={onSignIn}
+            onResetRequest={onResetRequest}
+            providers={providers}
+            onProviderSignIn={onProviderSignIn}
+            initialError={initialError}
+          />
         </Card>
       </section>
     </div>

@@ -1,23 +1,31 @@
 import type { ApiType } from "@picks/api/app";
+import type { AuthProvider } from "@picks/shared";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { hc } from "hono/client";
 import { setClockOffset } from "./clock";
 
-type PublicConfig = { supabaseUrl: string; supabasePublishableKey: string; clockOffsetMs?: number };
+type PublicConfig = {
+  supabaseUrl: string;
+  supabasePublishableKey: string;
+  authProviders?: AuthProvider[];
+  clockOffsetMs?: number;
+};
 
+let config: Promise<PublicConfig> | undefined;
 let supabase: Promise<SupabaseClient> | undefined;
 
-/**
- * Fetches public config from the API at runtime, so the web build needs no baked-in env vars.
- * Caches the promise (not the client) so concurrent callers share one auth client.
- */
+/** Fetches public config from the API at runtime, so the web build needs no baked-in env vars. */
+export function getConfig(): Promise<PublicConfig> {
+  config ??= fetch("/api/config").then((res) => res.json() as Promise<PublicConfig>);
+  return config;
+}
+
+/** Caches the promise (not the client) so concurrent callers share one auth client. */
 export function getSupabase(): Promise<SupabaseClient> {
-  supabase ??= fetch("/api/config")
-    .then((res) => res.json() as Promise<PublicConfig>)
-    .then((config) => {
-      setClockOffset(config.clockOffsetMs);
-      return createClient(config.supabaseUrl, config.supabasePublishableKey);
-    });
+  supabase ??= getConfig().then((config) => {
+    setClockOffset(config.clockOffsetMs);
+    return createClient(config.supabaseUrl, config.supabasePublishableKey);
+  });
   return supabase;
 }
 

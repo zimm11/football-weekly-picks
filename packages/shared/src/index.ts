@@ -20,6 +20,14 @@ export * from "./time";
  * Zod schemas validate request bodies; the plain types describe responses.
  */
 
+/**
+ * Sign-in providers the app can offer besides email and password, as Supabase Auth names them. Google only for
+ * now; another provider (Apple, for the iOS app) is added here and in `SignInForm`'s `PROVIDERS`.
+ * Which ones are switched on comes from the API's `AUTH_PROVIDERS` setting (see docs/auth-providers.md).
+ */
+export const AUTH_PROVIDERS = ["google"] as const;
+export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
+
 // ---------- Requests ----------
 
 export const updateProfileSchema = z.object({

@@ -1,5 +1,5 @@
 import { CaretDownIcon, FootballIcon } from "@phosphor-icons/react";
-import type { Me } from "@picks/shared";
+import type { AuthProvider, Me } from "@picks/shared";
 import type { Session } from "@supabase/supabase-js";
 import { type ReactNode, useEffect, useState } from "react";
 import { Card, Notice } from "@/components/ui/card";
@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
-import { api, getSupabase, messageOf, unwrap } from "./api";
+import { api, getConfig, getSupabase, messageOf, unwrap } from "./api";
+import { readAuthError } from "./authError";
 import { clockOffset, onClockChange } from "./clock";
 import { Avatar } from "./components/Avatar";
 import { useHomeScreenHelp } from "./components/HomeScreenInstall";
@@ -34,17 +35,12 @@ import { useNow } from "./pages/useNow";
 import { WeekPage } from "./pages/WeekPage";
 import { Link, matchRoute, navigate, usePath } from "./router";
 
-/**
- * Supabase sends people back from an expired or already-used email link with the reason in the URL fragment
- * (`#error=access_denied&error_code=otp_expired&error_description=...`). Reads it once and clears it.
- */
+/** Reads a failed sign-in's reason from the URL once (`readAuthError`), and clears it from the address bar. */
 function takeAuthLinkError(): string | undefined {
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  if (!params.has("error")) return undefined;
-  window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
-  return params.get("error_code") === "otp_expired"
-    ? "That reset link has expired or was already used. Request a new one below."
-    : (params.get("error_description") ?? "That link didn't work. Request a new one below.");
+  const found = readAuthError(window.location.hash, window.location.search);
+  if (!found) return undefined;
+  window.history.replaceState(window.history.state, "", window.location.pathname + found.search);
+  return found.message;
 }
 
 /** Renders nothing (and runs no timer) unless the local API reports a `CLOCK_OVERRIDE`. */
@@ -113,6 +109,7 @@ function Shell({ account, children }: { account?: ReactNode; children: ReactNode
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [linkError] = useState(takeAuthLinkError);
+  const [providers, setProviders] = useState<AuthProvider[]>([]);
   const path = usePath();
   const route = matchRoute(path);
 
@@ -137,6 +134,14 @@ export function App() {
     return () => unsubscribe?.();
   }, []);
 
+  useEffect(() => {
+    // Without the config there is no sign-in at all, and getSupabase reports that; here, just offer no buttons.
+    getConfig().then(
+      (config) => setProviders(config.authProviders ?? []),
+      () => {},
+    );
+  }, []);
+
   async function signIn(mode: SignInMode, credentials: Credentials) {
     const sb = await getSupabase();
     if (mode === "sign-in") return (await sb.auth.signInWithPassword(credentials)).error?.message;
@@ -148,6 +153,17 @@ export function App() {
     if (error) return error.message;
     // Hosted Supabase requires email confirmation by default, so sign-up returns no session.
     return data.session ? undefined : "Check your email to confirm your account, then sign in.";
+  }
+
+  async function signInWithProvider(provider: AuthProvider) {
+    const sb = await getSupabase();
+    // Come back to this exact page (e.g. /join/<code>). The URL must match a redirect URL allowed in Supabase Auth,
+    // otherwise Supabase falls back to the Site URL and an invite link is lost (docs/auth-providers.md).
+    const { error } = await sb.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.href.split("#")[0] },
+    });
+    return error?.message;
   }
 
   async function requestReset(email: string) {
@@ -178,7 +194,13 @@ export function App() {
     if (route.page === "leagues") {
       return (
         <Shell>
-          <LandingPage onSignIn={signIn} onResetRequest={requestReset} />
+          <LandingPage
+            onSignIn={signIn}
+            onResetRequest={requestReset}
+            providers={providers}
+            onProviderSignIn={signInWithProvider}
+            initialError={linkError}
+          />
         </Shell>
       );
     }
@@ -209,6 +231,8 @@ export function App() {
               onResetRequest={requestReset}
               startForgot={route.page === "reset-password"}
               initialError={linkError}
+              providers={route.page === "reset-password" ? [] : providers}
+              onProviderSignIn={signInWithProvider}
             />
           </Card>
         </div>
@@ -216,16 +240,30 @@ export function App() {
     );
   }
   // Keyed by user so nothing from a previous account survives a switch.
-  return <SignedIn key={session.user.id} userId={session.user.id} email={session.user.email} route={route} />;
+  const { full_name, name } = session.user.user_metadata ?? {};
+  const suggestedName =
+    typeof full_name === "string" ? full_name : typeof name === "string" ? name : undefined;
+  return (
+    <SignedIn
+      key={session.user.id}
+      userId={session.user.id}
+      email={session.user.email}
+      suggestedName={suggestedName?.trim().slice(0, 40)}
+      route={route}
+    />
+  );
 }
 
 function SignedIn({
   userId,
   email,
+  suggestedName,
   route,
 }: {
   userId: string;
   email?: string;
+  /** A name Google supplied (`full_name` / `name`), to pre-fill the leaderboard name on first sign-in. */
+  suggestedName?: string;
   route: ReturnType<typeof matchRoute>;
 }) {
   const [me, setMe] = useState<Me>();
@@ -326,7 +364,7 @@ function SignedIn({
               </div>
               <Card>
                 <NameForm
-                  initialName={me.displayName ?? ""}
+                  initialName={me.displayName ?? suggestedName ?? ""}
                   submitLabel={me.displayName ? "Save name" : "Continue"}
                   onSubmit={saveName}
                   onCancel={me.displayName ? () => setEditingName(false) : undefined}

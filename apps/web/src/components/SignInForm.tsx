@@ -1,3 +1,5 @@
+import { GoogleLogoIcon } from "@phosphor-icons/react";
+import type { AuthProvider } from "@picks/shared";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/card";
@@ -5,6 +7,10 @@ import { Field, Input } from "@/components/ui/input";
 
 export type Credentials = { email: string; password: string };
 export type SignInMode = "sign-in" | "sign-up";
+
+const PROVIDERS = {
+  google: { name: "Google", Icon: GoogleLogoIcon },
+} satisfies Record<AuthProvider, unknown>;
 
 type Props = {
   /** Resolves to an error message, or undefined on success. */
@@ -15,10 +21,25 @@ type Props = {
   startForgot?: boolean;
   /** A problem to show before the user has done anything, e.g. an expired reset link. */
   initialError?: string;
+  /** Sign-in providers to offer above the email form, in this order. */
+  providers?: readonly AuthProvider[];
+  /**
+   * Sends the browser to the provider. Resolves to an error message; on success the page navigates away,
+   * so the button stays busy.
+   */
+  onProviderSignIn?: (provider: AuthProvider) => Promise<string | undefined>;
 };
 
-export function SignInForm({ onSubmit, onResetRequest, startForgot = false, initialError }: Props) {
+export function SignInForm({
+  onSubmit,
+  onResetRequest,
+  startForgot = false,
+  initialError,
+  providers = [],
+  onProviderSignIn,
+}: Props) {
   const [forgot, setForgot] = useState(startForgot);
+  const [redirecting, setRedirecting] = useState<AuthProvider>();
   const [email, setEmail] = useState("");
   const [error, setError] = useState(initialError);
   const [sentTo, setSentTo] = useState<string>();
@@ -42,6 +63,17 @@ export function SignInForm({ onSubmit, onResetRequest, startForgot = false, init
     setError(failure);
     if (!failure) setSentTo(email);
     setPending(false);
+  }
+
+  async function continueWith(provider: AuthProvider) {
+    if (!onProviderSignIn) return;
+    setRedirecting(provider);
+    setError(undefined);
+    const failure = await onProviderSignIn(provider);
+    if (failure) {
+      setError(failure);
+      setRedirecting(undefined);
+    }
   }
 
   function switchTo(next: boolean) {
@@ -88,8 +120,35 @@ export function SignInForm({ onSubmit, onResetRequest, startForgot = false, init
     );
   }
 
+  const busy = pending || !!redirecting;
+  const offered = onProviderSignIn ? providers : [];
+
   return (
     <form onSubmit={handle} className="grid gap-4">
+      {offered.length > 0 && (
+        <>
+          <div className="grid gap-2">
+            {offered.map((provider) => {
+              const { name, Icon } = PROVIDERS[provider];
+              return (
+                <Button
+                  key={provider}
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => continueWith(provider)}
+                >
+                  <Icon aria-hidden weight="bold" />
+                  {redirecting === provider ? `Opening ${name}…` : `Continue with ${name}`}
+                </Button>
+              );
+            })}
+          </div>
+          <p className="m-0 flex items-center gap-3 text-sm text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+            or use email
+          </p>
+        </>
+      )}
       {emailField}
       <div className="grid gap-1">
         <Field label="Password">
@@ -106,10 +165,10 @@ export function SignInForm({ onSubmit, onResetRequest, startForgot = false, init
       </div>
       {error && <Notice kind="alert">{error}</Notice>}
       <div className="grid gap-2">
-        <Button type="submit" value="sign-in" disabled={pending}>
+        <Button type="submit" value="sign-in" disabled={busy}>
           Sign in
         </Button>
-        <Button type="submit" value="sign-up" variant="outline" disabled={pending}>
+        <Button type="submit" value="sign-up" variant="outline" disabled={busy}>
           Create account
         </Button>
       </div>

@@ -61,4 +61,47 @@ describe("SignInForm", () => {
     await screen.getByRole("button", { name: "Send reset link" }).click();
     await expect.element(screen.getByRole("alert")).toHaveTextContent("Too many requests");
   });
+
+  it("offers no provider buttons unless providers are switched on", async () => {
+    const screen = await render(
+      <SignInForm onSubmit={vi.fn()} onResetRequest={vi.fn()} onProviderSignIn={vi.fn()} />,
+    );
+    await expect.element(screen.getByLabelText("Email")).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Continue with Google" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("starts provider sign-in and stays busy while the browser leaves", async () => {
+    const onProviderSignIn = vi.fn().mockResolvedValue(undefined);
+    const screen = await render(
+      <SignInForm
+        onSubmit={vi.fn()}
+        onResetRequest={vi.fn()}
+        providers={["google"]}
+        onProviderSignIn={onProviderSignIn}
+      />,
+    );
+    await screen.getByRole("button", { name: "Continue with Google" }).click();
+    expect(onProviderSignIn).toHaveBeenCalledWith("google");
+    await expect.element(screen.getByRole("button", { name: "Opening Google…" })).toBeDisabled();
+    await expect.element(screen.getByRole("button", { name: "Create account" })).toBeDisabled();
+    await expect.element(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
+  });
+
+  it("shows a provider failure and lets the player try again", async () => {
+    const screen = await render(
+      <SignInForm
+        onSubmit={vi.fn()}
+        onResetRequest={vi.fn()}
+        providers={["google"]}
+        onProviderSignIn={vi.fn().mockResolvedValue("Unsupported provider: provider is not enabled")}
+      />,
+    );
+    await screen.getByRole("button", { name: "Continue with Google" }).click();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("Unsupported provider: provider is not enabled");
+    await expect.element(screen.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
+  });
 });

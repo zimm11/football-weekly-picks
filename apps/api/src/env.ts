@@ -1,4 +1,5 @@
 import { parseDatabaseUrl } from "@picks/db";
+import { AUTH_PROVIDERS } from "@picks/shared";
 import { z } from "zod";
 
 /** Legacy anon JWTs remain supported; privileged keys must never reach /api/config. */
@@ -18,6 +19,17 @@ const sharedFields = {
   SUPABASE_URL: z.url(),
   SUPABASE_PUBLISHABLE_KEY: z.string().refine(isPublishableKey, "Use a publishable key or legacy anon key"),
   NODE_ENV: z.string().optional(),
+  /**
+   * Comma-separated sign-in providers to offer besides email and password. Only `google` for now; empty shows
+   * email and password only. Switch it on only after Google is set up in Supabase Auth (docs/auth-providers.md).
+   */
+  AUTH_PROVIDERS: z
+    .string()
+    .default("")
+    .transform((list) =>
+      [...new Set(list.split(",").map((name) => name.trim().toLowerCase()))].filter(Boolean),
+    )
+    .pipe(z.array(z.enum(AUTH_PROVIDERS))),
   /**
    * Comma-separated Supabase user ids of the accounts that run the app. They get the operator screen
    * (feedback and app-wide counts). Empty or unset means nobody does.

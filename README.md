@@ -68,6 +68,7 @@ Running it again overwrites `.env`.
 | `EMAIL_FROM`               | Sender of notification emails                                | `POW Pick'em <noreply@pow-pickem.com>`                            |
 | `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                    | `1000` (`10000` locally)                                          |
 | `EMAIL_MONTHLY_LIMIT`      | Most notification emails sent per UTC calendar month         | `10000` (`100000` locally)                                        |
+| `AUTH_PROVIDERS`           | Optional sign-in buttons besides email: `google`             | Unset: email and password only                                    |
 
 The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
 needs no environment variables. Database credentials stay on the API server.
@@ -514,6 +515,8 @@ Run these once from `apps/api` (`pnpm exec wrangler login` first):
    | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the Worker                                                |
 
 7. Verify the database TLS configuration described below before deploying.
+8. Optional: Google sign-in. [docs/auth-providers.md](docs/auth-providers.md) lists every setting in Google
+   Cloud and Supabase Auth; then `"AUTH_PROVIDERS": "google"` in `wrangler.jsonc`'s `vars` switches the button on.
 
 ### Email
 

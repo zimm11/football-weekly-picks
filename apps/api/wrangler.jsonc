@@ -32,7 +32,9 @@
   // what's in the outbox. It's idempotent, so a late or doubled run is harmless.
   "triggers": { "crons": ["*/5 * * * *"] },
   // Secrets (`wrangler secret put`): SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, optionally OPERATOR_USER_IDS, and
-  // UNSUBSCRIBE_SECRET to turn email on. Optional vars: EMAIL_FROM, EMAIL_DAILY_LIMIT, EMAIL_MONTHLY_LIMIT.
+  // UNSUBSCRIBE_SECRET to turn email on. Optional vars: EMAIL_FROM, EMAIL_DAILY_LIMIT, EMAIL_MONTHLY_LIMIT, and
+  // AUTH_PROVIDERS ("google" shows Continue with Google; add it here only once Google is set up in Supabase Auth,
+  // docs/auth-providers.md).
   "vars": { "NODE_ENV": "production", "APP_URL": "https://www.pow-pickem.com" },
   "observability": {
     "enabled": true,

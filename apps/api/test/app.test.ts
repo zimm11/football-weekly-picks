@@ -13,7 +13,7 @@ import { and, between, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { EmailSendError, type OutgoingEmail } from "../src/email";
-import { loadEnv } from "../src/env";
+import { loadEnv, loadWorkerEnv } from "../src/env";
 import { type NflProvider, type ProviderGame, parseEspnScoreboard } from "../src/nfl";
 import { type EmailDeps, runEmailJobs } from "../src/outbox";
 import { RESULTS_REFRESH_MS } from "../src/weeks";
@@ -1555,5 +1555,22 @@ describe("loadEnv", () => {
     expect(() => loadEnv({ ...base, DATABASE_URL: "postgresql://u:p\nq@db.example.com/postgres" })).toThrow(
       /line break/,
     );
+  });
+
+  it("offers no sign-in providers unless AUTH_PROVIDERS lists them", () => {
+    expect(loadEnv(base).AUTH_PROVIDERS).toEqual([]);
+    expect(loadEnv({ ...base, AUTH_PROVIDERS: "" }).AUTH_PROVIDERS).toEqual([]);
+    expect(loadEnv({ ...base, AUTH_PROVIDERS: " Google ,google," }).AUTH_PROVIDERS).toEqual(["google"]);
+  });
+
+  it("rejects a sign-in provider the app doesn't support", () => {
+    expect(() => loadEnv({ ...base, AUTH_PROVIDERS: "google,apple" })).toThrow(/AUTH_PROVIDERS/);
+    expect(() => loadEnv({ ...base, AUTH_PROVIDERS: "github" })).toThrow(/AUTH_PROVIDERS/);
+  });
+
+  it("gives the Worker the same sign-in providers", () => {
+    const { DATABASE_URL: _, ...workerBase } = base;
+    expect(loadWorkerEnv({ ...workerBase, AUTH_PROVIDERS: "google" }).AUTH_PROVIDERS).toEqual(["google"]);
+    expect(() => loadWorkerEnv({ ...workerBase, AUTH_PROVIDERS: "apple" })).toThrow(/AUTH_PROVIDERS/);
   });
 });

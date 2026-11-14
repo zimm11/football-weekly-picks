@@ -48,6 +48,7 @@ async function main() {
     publicConfig: {
       supabaseUrl: env.SUPABASE_URL,
       supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY,
+      authProviders: env.AUTH_PROVIDERS,
       ...(clock && { clockOffsetMs: clock.offsetMs }),
     },
   });

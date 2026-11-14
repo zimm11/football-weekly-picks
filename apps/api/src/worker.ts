@@ -75,6 +75,7 @@ function build() {
     publicConfig: {
       supabaseUrl: config.SUPABASE_URL,
       supabasePublishableKey: config.SUPABASE_PUBLISHABLE_KEY,
+      authProviders: config.AUTH_PROVIDERS,
     },
   });
   // `pnpm worker:dev` sets NODE_ENV=development; deployed Workers always run with wrangler.jsonc's "production".

@@ -1,6 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { type Db, leagueMembers, leagues, profiles, seasons, weeks } from "@picks/db";
-import type { Member, Role } from "@picks/shared";
+import type { AuthProvider, Member, Role } from "@picks/shared";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -12,6 +12,8 @@ import type { EmailDeps } from "./outbox";
 export type PublicConfig = {
   supabaseUrl: string;
   supabasePublishableKey: string;
+  /** Sign-in providers to offer besides email and password. Missing or empty: email and password only. */
+  authProviders?: AuthProvider[];
   /** Set only while a local `CLOCK_OVERRIDE` is active: how far the API's clock is shifted from real time. */
   clockOffsetMs?: number;
 };
