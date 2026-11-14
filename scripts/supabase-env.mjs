@@ -41,6 +41,8 @@ const env = {
   DATABASE_URL: get("DB_URL"),
   SUPABASE_URL: get("API_URL"),
   SUPABASE_PUBLISHABLE_KEY: get("PUBLISHABLE_KEY", "ANON_KEY"),
+  // The local stack's test inbox (Mailpit), where E2E tests read auth emails such as password resets.
+  INBOX_URL: `http://127.0.0.1:${ports.supabase.mail}`,
 };
 process.stdout.write(
   `${Object.entries(env)
