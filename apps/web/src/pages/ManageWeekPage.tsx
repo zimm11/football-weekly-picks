@@ -238,7 +238,8 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
             <p className="m-0 text-sm text-muted-foreground">
               {missingScores > 0
                 ? `${missingScores} of ${view.games.length} games still need a final score.`
-                : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}
+                : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}{" "}
+              Pulling results updates scores only; spreads stay as they were when the week opened.
             </p>
             <div className="grid gap-2 sm:flex">
               <Button
@@ -263,7 +264,8 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
         {view.status === "final" && (
           <>
             <p className="m-0 text-sm text-muted-foreground">
-              Reopen to correct a score or spread. Picks are hidden again until you close it.
+              Reopen to correct a score or spread. Picks are hidden again until you close it. Spreads stay as
+              they were when the week opened unless you edit them by hand.
             </p>
             <div className="grid gap-2 sm:flex">
               <Button
