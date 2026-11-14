@@ -522,18 +522,19 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(PLAYER, "POST", `/weeks/${weekId}/results`)).status).toBe(403);
 
     // Thursday: NYG (-2.5) wins by 7. Sunday: ATL (+3.5) loses by 10. Monday is still being played.
+    // The provider's lines have moved since the week opened; players' spreads must not follow them.
     provided = provided.map((g) =>
       g.externalId === "t1"
-        ? { ...g, homeScore: 24, awayScore: 17 }
+        ? { ...g, spread: -7, homeScore: 24, awayScore: 17 }
         : g.externalId === "t2"
-          ? { ...g, homeScore: 10, awayScore: 20 }
-          : g,
+          ? { ...g, spread: 1, homeScore: 10, awayScore: 20 }
+          : { ...g, spread: -6 },
     );
     const synced = (await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/results`)).body;
-    expect(synced.games.map((g) => [g.homeScore, g.awayScore])).toEqual([
-      [24, 17],
-      [10, 20],
-      [null, null],
+    expect(synced.games.map((g) => [g.homeScore, g.awayScore, g.spread])).toEqual([
+      [24, 17, -2.5],
+      [10, 20, 3.5],
+      [null, null, -4.5],
     ]);
     expect((await call(ADMIN, "POST", `/weeks/${weekId}/finalize`)).status).toBe(409);
 
@@ -553,6 +554,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body.results).toBeNull();
     const closed = await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/finalize`);
     expect(closed.body.status).toBe("final");
+    expect(closed.body.games.map((g) => g.spread)).toEqual([-2.5, 3.5, -4.5]);
   });
 
   it("reveals everyone's picks and the winner once the week is final", async () => {
@@ -772,8 +774,15 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
 
   it("lets the admin reopen a week to correct it", async () => {
     expect((await call(PLAYER, "POST", `/weeks/${weekId}/reopen`)).status).toBe(403);
+    expect((await call(ADMIN, "POST", `/weeks/${weekId}/import`)).status).toBe(409); // closed
     const reopened = (await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/reopen`)).body;
     expect(reopened).toMatchObject({ status: "open", results: null });
+
+    // Players picked against these spreads: a reopened week can't re-pull them, only edit them by hand.
+    expect(reopened.games.map((g) => g.spread)).toEqual([-2.5, 3.5, -4.5]);
+    expect((await call(ADMIN, "POST", `/weeks/${weekId}/import`)).status).toBe(409);
+    const corrected = await call<WeekView>(ADMIN, "PATCH", `/games/${game.sun}`, { spread: 3 });
+    expect(corrected.body.games.find((g) => g.id === game.sun)?.spread).toBe(3);
   });
 
   it("lets the admin rename the league and change its time zone", async () => {
