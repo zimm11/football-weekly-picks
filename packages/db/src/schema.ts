@@ -242,3 +242,25 @@ export const messageReads = pgTable(
   },
   (t) => [primaryKey({ columns: [t.threadId, t.userId] })],
 ).enableRLS();
+
+/** A bug report, feature request or note a player sent to the people who run the app. Read on the operator screen. */
+export const feedback = pgTable(
+  "feedback",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    /** Who sent it. Null once that account is deleted; the report is kept. */
+    userId: uuid().references(() => authUsers.id, { onDelete: "set null" }),
+    kind: text({ enum: ["bug", "feature", "other"] }).notNull(),
+    message: text().notNull(),
+    /** The app path the player was on when they opened the form, e.g. "/leagues/<id>/standings". */
+    page: text(),
+    /** The browser's user agent, to help reproduce a bug. */
+    userAgent: text(),
+    /** open: not dealt with yet. done: the operator has handled it. */
+    status: text({ enum: ["open", "done"] })
+      .notNull()
+      .default("open"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("feedback_user_created_idx").on(t.userId, t.createdAt)],
+).enableRLS();

@@ -15,6 +15,9 @@ test("members create threads, reply, and guard unsaved messages", async ({ page,
   await expect(page.getByText("Who is your POW?", { exact: true })).toBeVisible();
   await page.getByLabel("Reply", { exact: true }).fill("I'm picking the Eagles.");
   await page.getByRole("button", { name: "Post reply" }).click();
+  // Text matching can find the still-filled textarea before the request finishes.
+  // Wait for the successful submission to clear it before reloading.
+  await expect(page.getByRole("textbox", { name: "Reply", exact: true })).toHaveValue("");
   await expect(page.getByText("I'm picking the Eagles.", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("I'm picking the Eagles.", { exact: true })).toBeVisible();
@@ -51,6 +54,7 @@ test("new threads and replies show unread indicators until opened", async ({ pag
     await player.getByRole("link", { name: "Message board" }).click();
     await page.getByLabel("Reply", { exact: true }).fill("One more update.");
     await page.getByRole("button", { name: "Post reply" }).click();
+    await expect(page.getByRole("textbox", { name: "Reply", exact: true })).toHaveValue("");
     await expect(page.getByText("One more update.", { exact: true })).toBeVisible();
     await player.reload();
     await expect(player.getByRole("link", { name: /League news/ })).toContainText("Unread");

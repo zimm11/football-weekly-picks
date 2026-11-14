@@ -25,6 +25,7 @@ async function main() {
     nfl: espnProvider(),
     insights: liveInsights(),
     now: clock?.now,
+    operatorUserIds: env.OPERATOR_USER_IDS,
     publicConfig: {
       supabaseUrl: env.SUPABASE_URL,
       supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY,
