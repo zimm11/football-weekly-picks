@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { api, getSupabase, messageOf, unwrap } from "./api";
+import { clockOffset, onClockChange } from "./clock";
 import { NameForm } from "./components/NameForm";
 import { type Credentials, SignInForm, type SignInMode } from "./components/SignInForm";
+import { SimulatedClockBanner } from "./components/SimulatedClockBanner";
 import { buttonVariants } from "./components/ui/button";
 import { notifyDone } from "./notify";
 import { HowToPlayPage } from "./pages/HowToPlayPage";
@@ -20,8 +22,24 @@ import { LandingPage } from "./pages/LandingPage";
 import { LeaguePage } from "./pages/LeaguePage";
 import { JoinPage, LeaguesPage } from "./pages/LeaguesPage";
 import { ManageWeekPage } from "./pages/ManageWeekPage";
+import { useNow } from "./pages/useNow";
 import { WeekPage } from "./pages/WeekPage";
 import { Link, matchRoute, usePath } from "./router";
+
+/** Renders nothing (and runs no timer) unless the local API reports a `CLOCK_OVERRIDE`. */
+function SimulatedClock() {
+  const [offsetMs, setOffsetMs] = useState(clockOffset);
+  useEffect(() => {
+    // The offset may have arrived between the first render and this effect.
+    setOffsetMs(clockOffset());
+    return onClockChange(() => setOffsetMs(clockOffset()));
+  }, []);
+  return offsetMs === 0 ? null : <SimulatedClockTicker offsetMs={offsetMs} />;
+}
+
+function SimulatedClockTicker({ offsetMs }: { offsetMs: number }) {
+  return <SimulatedClockBanner now={useNow()} offsetMs={offsetMs} />;
+}
 
 /** The bar across the top of every screen, and the column the screen sits in. */
 function Shell({ account, children }: { account?: ReactNode; children: ReactNode }) {
@@ -63,6 +81,7 @@ function Shell({ account, children }: { account?: ReactNode; children: ReactNode
           </nav>
         </div>
       </header>
+      <SimulatedClock />
       {/* On a phone the league tab bar is pinned to the bottom edge, so leave room to scroll past it. */}
       <main className="mx-auto max-w-4xl px-4 pt-5 pb-28 md:pb-12">{children}</main>
       <Toaster />

@@ -113,7 +113,7 @@ Conventions:
 - Query by role, label, or text (`getByRole("button", { name: "Eagles" })`), never by CSS class. Add `aria-label`s so elements are reachable this way.
 - Keep components presentational (data and callbacks in via props) so they're testable without mocks. Containers in `App.tsx` do the fetching.
 - E2E tests sign up a fresh user per test (the `signedIn` fixture), so they never share state. Tests delete only rows they created; never truncate.
-- Time-dependent logic takes a `now` parameter, so tests pass a fixed date rather than mocking timers.
+- Time-dependent logic takes a `now` parameter, so tests pass a fixed date rather than mocking timers. In the API, read time from the `now` dep; in the web app, from `useNow()` or `now()` in `src/clock.ts`, never `new Date()`. That keeps the local `CLOCK_OVERRIDE` (README, "Simulating a different date and time") working.
 
 ## Conventions
 

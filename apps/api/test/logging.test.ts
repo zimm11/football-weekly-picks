@@ -1,6 +1,7 @@
 import { DrizzleQueryError } from "drizzle-orm/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
+import { shiftedClock } from "../src/clock";
 import { loadEnv } from "../src/env";
 import { logError } from "../src/logging";
 
@@ -77,6 +78,36 @@ describe("safe logging", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain("select *");
     expect(await failure.text()).not.toContain(secret);
     expect(await health.text()).not.toContain(secret);
+  });
+});
+
+describe("clock override", () => {
+  const base = {
+    DATABASE_URL: "postgresql://u:p@127.0.0.1/db",
+    SUPABASE_URL: publicConfig.supabaseUrl,
+    SUPABASE_PUBLISHABLE_KEY: publicConfig.supabasePublishableKey,
+  };
+
+  it("accepts an ISO time with an offset outside production", () => {
+    expect(loadEnv({ ...base, CLOCK_OVERRIDE: "2026-09-13T12:30:00-04:00" }).CLOCK_OVERRIDE).toBe(
+      "2026-09-13T12:30:00-04:00",
+    );
+  });
+
+  it("rejects it in production and when it is not a full timestamp", () => {
+    expect(() =>
+      loadEnv({ ...base, NODE_ENV: "production", CLOCK_OVERRIDE: "2026-09-13T12:30:00Z" }),
+    ).toThrow(/not allowed when NODE_ENV=production/);
+    expect(() => loadEnv({ ...base, CLOCK_OVERRIDE: "Sunday" })).toThrow(/CLOCK_OVERRIDE/);
+  });
+
+  it("starts at the override and keeps running", () => {
+    let real = new Date("2026-11-14T00:00:00Z").getTime();
+    const clock = shiftedClock(new Date("2026-09-13T16:30:00Z"), () => new Date(real));
+    expect(clock.now().toISOString()).toBe("2026-09-13T16:30:00.000Z");
+    real += 60_000;
+    expect(clock.now().toISOString()).toBe("2026-09-13T16:31:00.000Z");
+    expect(clock.offsetMs).toBeLessThan(0);
   });
 });
 

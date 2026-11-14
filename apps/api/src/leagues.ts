@@ -77,7 +77,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
       }
       await tx
         .update(leagueMembers)
-        .set(role === null ? { removedAt: new Date(), role: "member" } : { role })
+        .set(role === null ? { removedAt: now(), role: "member" } : { role })
         .where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, userId)));
     });
   }
@@ -103,7 +103,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
           if (!league) throw new Error("League insert returned no row");
           await tx
             .insert(leagueMembers)
-            .values({ leagueId: league.id, userId: c.var.user.id, role: "admin" });
+            .values({ leagueId: league.id, userId: c.var.user.id, role: "admin", joinedAt: now() });
           return league.id;
         });
         return c.json({ id }, 201);
@@ -224,11 +224,11 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date() }: AppDep
         const league = await leagueByInvite(c.req.param("code"));
         await db
           .insert(leagueMembers)
-          .values({ leagueId: league.id, userId: c.var.user.id })
+          .values({ leagueId: league.id, userId: c.var.user.id, joinedAt: now() })
           // A removed player rejoining starts a fresh membership; weeks they picked in before still count.
           .onConflictDoUpdate({
             target: [leagueMembers.leagueId, leagueMembers.userId],
-            set: { removedAt: null, joinedAt: new Date() },
+            set: { removedAt: null, joinedAt: now() },
             setWhere: isNotNull(leagueMembers.removedAt),
           });
         return c.json({ leagueId: league.id });

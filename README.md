@@ -63,6 +63,20 @@ Running it again overwrites `.env`.
 The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
 needs no environment variables. Database credentials stay on the API server.
 
+#### Simulating a different date and time (local only)
+
+To test pick locks, the Sunday POW cutoff or week phases without waiting for game day, start the API with
+`CLOCK_OVERRIDE` set to an ISO 8601 time with an offset:
+
+```sh
+CLOCK_OVERRIDE=2026-09-13T12:30:00-04:00 pnpm dev
+```
+
+The API's clock starts at that moment and keeps running in real time. The web app picks up the same offset
+from `/api/config` and shows a **Simulated time** banner under the header. Restart `pnpm dev` to change or
+clear it. The API refuses to start with `CLOCK_OVERRIDE` when `NODE_ENV=production`, so it can't reach the
+deployed service. Rows the database timestamps itself (such as message times) still use the real clock.
+
 ### Ports, worktrees, and stopping the stack
 
 Run `pnpm ports` in each checkout to see its web, API, Supabase, Studio, test inbox, and PostgreSQL URLs.
