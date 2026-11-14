@@ -124,6 +124,29 @@ URL, sign in, and press **Join league**. In the main checkout, that URL is
 Use a normal browser window for the admin and a private window or different browser profile for a player.
 Sessions are stored per browser profile, so both accounts can stay signed in side by side.
 
+### Feedback and app operator
+
+Signed-in players can choose **Send feedback** from their account menu to report a bug, request a
+feature, or send a note. Reports stay in the database; no email service is needed. Each player can send
+up to five reports per rolling 24 hours. Reports include the sender, originating app path, and browser
+user agent, without URL queries, fragments, or invite codes.
+
+The **Operator** menu opens an app-wide dashboard with account and league growth, active players and
+leagues, pick and message counts, eight weeks of activity, and the latest 25 accounts and leagues.
+Its feedback inbox supports **Mark done**, **Reopen**, and loading older reports. Usage is derived from
+stored picks and messages: it does not measure visits, sessions, or time spent. Private pick choices
+and league message bodies are never included.
+
+Operator access is separate from league admin access. On the **API service**, set `OPERATOR_USER_IDS`
+to your Supabase Auth user UUID (or a comma-separated list). Find it under **Authentication → Users**
+in your Supabase dashboard. Restart/redeploy the API, then reload the app. An empty or unset value
+grants nobody access; players cannot grant themselves access through their profile or league role.
+To revoke access, remove the UUID and restart/redeploy the API.
+
+For local development, `pnpm env:local` makes the seeded `admin@example.com` account an operator.
+This local setting is not applied to production. The feedback migration must be deployed before the
+new API, using the normal migration and deployment workflow.
+
 ### Walking through a week
 
 1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has four tabs: **Picks**,

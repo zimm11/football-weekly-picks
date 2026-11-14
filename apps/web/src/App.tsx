@@ -18,11 +18,13 @@ import { type Credentials, SignInForm, type SignInMode } from "./components/Sign
 import { SimulatedClockBanner } from "./components/SimulatedClockBanner";
 import { buttonVariants } from "./components/ui/button";
 import { notifyDone } from "./notify";
+import { FeedbackPage } from "./pages/FeedbackPage";
 import { HowToPlayPage } from "./pages/HowToPlayPage";
 import { LandingPage } from "./pages/LandingPage";
 import { LeaguePage } from "./pages/LeaguePage";
 import { JoinPage, LeaguesPage } from "./pages/LeaguesPage";
 import { ManageWeekPage } from "./pages/ManageWeekPage";
+import { OperatorPage } from "./pages/OperatorPage";
 import { useNow } from "./pages/useNow";
 import { WeekPage } from "./pages/WeekPage";
 import { Link, matchRoute, navigate, usePath } from "./router";
@@ -239,6 +241,17 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
           <DropdownMenuItem onSelect={() => setEditingName(true)}>Change your name</DropdownMenuItem>
         )}
         <DropdownMenuItem onSelect={() => navigate("/reset-password")}>Change password</DropdownMenuItem>
+        {me?.displayName && route.page !== "feedback" && (
+          // Carries the screen they were on, so a bug report says where it happened.
+          <DropdownMenuItem
+            onSelect={() => navigate(`/feedback?from=${encodeURIComponent(window.location.pathname)}`)}
+          >
+            Send feedback
+          </DropdownMenuItem>
+        )}
+        {me?.isOperator && (
+          <DropdownMenuItem onSelect={() => navigate("/operator")}>Operator</DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={signOut}>Sign out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -298,7 +311,9 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
               )}
               {route.page === "week" && <WeekPage weekId={route.weekId} userId={userId} />}
               {route.page === "manage-week" && <ManageWeekPage weekId={route.weekId} userId={userId} />}
-              {route.page === "not-found" && (
+              {route.page === "feedback" && <FeedbackPage />}
+              {route.page === "operator" && me.isOperator && <OperatorPage />}
+              {(route.page === "not-found" || (route.page === "operator" && !me.isOperator)) && (
                 <p>
                   Page not found. <Link to="/">Go to your leagues</Link>
                 </p>

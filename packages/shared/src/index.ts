@@ -6,6 +6,7 @@ import { TEAM_ABBRS } from "./teams";
 import { isValidTimeZone } from "./time";
 
 export * from "./insights";
+export * from "./operator";
 export * from "./rules";
 export * from "./seasons";
 export * from "./stats";
@@ -104,7 +105,8 @@ export type SubmitPicks = z.infer<typeof submitPicksSchema>;
 export type Role = "admin" | "member";
 export type WeekStatus = "draft" | "open" | "final";
 
-export type Me = { id: string; email?: string; displayName: string | null };
+/** `isOperator` is true for the accounts that run the app; it unlocks the operator screen. */
+export type Me = { id: string; email?: string; displayName: string | null; isOperator: boolean };
 
 export type LeagueSummary = { id: string; name: string; role: Role };
 export type WeekSummary = {

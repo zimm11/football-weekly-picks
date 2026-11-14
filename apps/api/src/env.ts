@@ -35,6 +35,20 @@ const envSchema = z
     SUPABASE_PUBLISHABLE_KEY: z.string().refine(isPublishableKey, "Use a publishable key or legacy anon key"),
     NODE_ENV: z.string().optional(),
     /**
+     * Comma-separated Supabase user ids of the accounts that run the app. They get the operator screen
+     * (feedback and app-wide counts). Empty or unset means nobody does.
+     */
+    OPERATOR_USER_IDS: z
+      .string()
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((id) => id.trim().toLowerCase())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.uuid("OPERATOR_USER_IDS must be a comma-separated list of user ids"))),
+    /**
      * Local testing only: pretend the API started at this moment (ISO 8601 with an offset, e.g.
      * `2026-09-13T12:30:00-04:00`). The clock keeps running from there. Refused when NODE_ENV=production.
      */

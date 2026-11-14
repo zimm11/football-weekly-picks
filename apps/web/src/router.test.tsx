@@ -31,6 +31,12 @@ describe("useLeaveGuard", () => {
 });
 
 describe("matchRoute", () => {
+  it("opens feedback and operator pages without accepting extra segments", () => {
+    for (const page of ["feedback", "operator"]) {
+      expect(matchRoute(`/${page}`)).toEqual({ page });
+      expect(matchRoute(`/${page}/unknown`)).toEqual({ page: "not-found" });
+    }
+  });
   it("opens the login page directly", () => {
     expect(matchRoute("/login")).toEqual({ page: "login" });
     expect(matchRoute("/login/unknown")).toEqual({ page: "not-found" });

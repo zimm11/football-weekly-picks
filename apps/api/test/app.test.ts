@@ -149,7 +149,11 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
   });
 
   it("stores a display name", async () => {
-    expect((await call(ADMIN, "GET", "/me")).body).toEqual({ id: ADMIN, displayName: null });
+    expect((await call(ADMIN, "GET", "/me")).body).toEqual({
+      id: ADMIN,
+      displayName: null,
+      isOperator: false,
+    });
     expect((await call(ADMIN, "PUT", "/me", { displayName: "  Commish  " })).body).toMatchObject({
       displayName: "Commish",
     });
@@ -1073,6 +1077,14 @@ describe("loadEnv", () => {
     expect(loadEnv({ ...base, DATABASE_URL: ` ${base.DATABASE_URL}\n` }).DATABASE_URL).toBe(
       base.DATABASE_URL,
     );
+  });
+
+  it("reads operator ids as a list, and refuses anything that isn't a user id", () => {
+    expect(loadEnv(base).OPERATOR_USER_IDS).toEqual([]);
+    expect(
+      loadEnv({ ...base, OPERATOR_USER_IDS: ` ${ADMIN}, ${PLAYER.toUpperCase()} ,` }).OPERATOR_USER_IDS,
+    ).toEqual([ADMIN, PLAYER]);
+    expect(() => loadEnv({ ...base, OPERATOR_USER_IDS: "me@example.com" })).toThrow(/OPERATOR_USER_IDS/);
   });
 
   it("rejects a DATABASE_URL with a line break inside it", () => {

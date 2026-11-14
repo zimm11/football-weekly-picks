@@ -77,6 +77,8 @@ export type Route =
   | { page: "login" }
   | { page: "reset-password" }
   | { page: "how-to-play" }
+  | { page: "feedback" }
+  | { page: "operator" }
   | { page: "join"; code: string }
   | {
       page: "league";
@@ -94,6 +96,8 @@ export function matchRoute(path: string): Route {
   if (first === "login" && !second) return { page: "login" };
   if (first === "reset-password" && !second) return { page: "reset-password" };
   if (first === "how-to-play" && !second) return { page: "how-to-play" };
+  if (first === "feedback" && !second) return { page: "feedback" };
+  if (first === "operator" && !second) return { page: "operator" };
   if (second && rest.length === 0) {
     if (first === "join") return { page: "join", code: decodeURIComponent(second) };
     if (first === "leagues") return { page: "league", leagueId: second, tab: "picks" };
