@@ -14,6 +14,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
+import { now } from "../clock";
 import { useConfirm } from "../components/ConfirmDialog";
 import { LeagueLayout, type LeagueTab } from "../components/LeagueNav";
 import { PickSplitsTable, WeekByWeekTable, YourSeason } from "../components/SeasonDashboard";
@@ -61,7 +62,7 @@ export function LeaguePage({
 
   useEffect(() => {
     if (league.data && selectedYear === undefined) {
-      setSelectedYear(preferredSeasonYear(league.data.weeks, new Date()));
+      setSelectedYear(preferredSeasonYear(league.data.weeks, now()));
     }
   }, [league.data, selectedYear]);
 
@@ -74,8 +75,8 @@ export function LeaguePage({
   if (league.error && !league.data) return <Notice kind="alert">{league.error}</Notice>;
   if (!league.data) return <p className="text-muted-foreground">Loading…</p>;
   const detail = league.data;
-  const currentYear = seasonYear(new Date());
-  const year = selectedYear ?? preferredSeasonYear(detail.weeks, new Date());
+  const currentYear = seasonYear(now());
+  const year = selectedYear ?? preferredSeasonYear(detail.weeks, now());
   const years = [...new Set([currentYear, year, ...detail.weeks.map((week) => week.year)])].sort(
     (a, b) => b - a,
   );
