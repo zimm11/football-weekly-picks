@@ -94,6 +94,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      # Supabase's ports overlap Linux's ephemeral range. Reserve them before
+      # image pulls can claim a checked-free port for an outbound connection.
+      # Keep any reservations already configured on the runner.
+      - name: Reserve Supabase ports from ephemeral allocation
+        run: |
+          reserved=$(sysctl -n net.ipv4.ip_local_reserved_ports)
+          sudo sysctl -w "net.ipv4.ip_local_reserved_ports=${reserved:+$reserved,}54320-55319"
+
       - name: Select free local ports
         run: node scripts/ci-ports.mjs >> "$GITHUB_ENV"
 
