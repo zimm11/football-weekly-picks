@@ -375,6 +375,8 @@ function LeagueTabPanel({
 }) {
   const isAdmin = league.role === "admin";
   const adminCount = league.members.filter((member) => member.role === "admin").length;
+  // The last admin has to hand the league to someone else before leaving it.
+  const soleAdmin = isAdmin && adminCount === 1;
   const [busy, setBusy] = useState(false);
   const [changingRole, setChangingRole] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -452,6 +454,25 @@ function LeagueTabPanel({
         api.leagues[":leagueId"].members[":userId"].$delete({ param: { ...param, userId: member.userId } }),
       `${member.displayName} removed.`,
     );
+  }
+
+  async function leave() {
+    const ok = await confirm({
+      title: `Leave ${league.name}?`,
+      detail:
+        "You lose access to the league and its picks. Weeks already played keep your results, and you can rejoin with an invite link.",
+      action: "Leave league",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await unwrap(api.leagues[":leagueId"].members[":userId"].$delete({ param: { ...param, userId } }));
+      notifyDone(`You left ${league.name}.`);
+      navigate("/");
+    } catch (err) {
+      notifyError(messageOf(err));
+      setBusy(false);
+    }
   }
 
   async function changeRole(member: LeagueDetail["members"][number]) {
@@ -597,6 +618,24 @@ function LeagueTabPanel({
           </form>
         </Card>
       )}
+
+      <Card aria-label="Leave league">
+        <Eyebrow>Leave league</Eyebrow>
+        <p className="m-0 text-sm text-muted-foreground">
+          {soleAdmin
+            ? "You're the only admin. Make another member an admin before you leave."
+            : "You'll lose access to this league. Your results from weeks already played stay in the standings."}
+        </p>
+        <Button
+          type="button"
+          variant="destructive"
+          className="justify-self-start"
+          disabled={busy || soleAdmin}
+          onClick={leave}
+        >
+          Leave league
+        </Button>
+      </Card>
     </div>
   );
 }

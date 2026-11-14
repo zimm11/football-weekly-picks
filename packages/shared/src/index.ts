@@ -22,6 +22,11 @@ export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1, "Enter a name").max(40),
 });
 
+/** Most active players a league can have, admins included. */
+export const MAX_LEAGUE_MEMBERS = 100;
+/** Most leagues one player can be an active member of, whether they created or joined them. */
+export const MAX_LEAGUES_PER_USER = 25;
+
 export const createLeagueSchema = z.object({
   name: z.string().trim().min(1, "Enter a league name").max(80),
   timeZone: z.string().refine(isValidTimeZone, "Unknown time zone").default("America/New_York"),
@@ -131,7 +136,13 @@ export type LeagueDetail = {
   weeks: WeekSummary[];
 };
 
-export type InvitePreview = { leagueId: string; leagueName: string; alreadyMember: boolean };
+export type InvitePreview = {
+  leagueId: string;
+  leagueName: string;
+  alreadyMember: boolean;
+  /** The league has reached its player limit, so the invite can't be used right now. */
+  full: boolean;
+};
 
 export type Game = {
   id: string;

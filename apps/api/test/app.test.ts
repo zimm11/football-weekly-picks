@@ -83,14 +83,17 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     now: () => now,
   });
 
-  async function call<T = unknown>(user: string, method: string, path: string, json?: unknown) {
-    const res = await app.request(`/api${path}`, {
-      method,
-      headers: { Authorization: `Bearer ${user}`, "Content-Type": "application/json" },
-      body: json === undefined ? undefined : JSON.stringify(json),
-    });
-    return { status: res.status, body: (await res.json()) as T };
-  }
+  const callOn =
+    (target: ReturnType<typeof createApp>) =>
+    async <T = unknown>(user: string, method: string, path: string, json?: unknown) => {
+      const res = await target.request(`/api${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${user}`, "Content-Type": "application/json" },
+        body: json === undefined ? undefined : JSON.stringify(json),
+      });
+      return { status: res.status, body: (await res.json()) as T };
+    };
+  const call = callOn(app);
   const errorOf = (res: { body: unknown }) => (res.body as { error: string }).error;
 
   // State threaded through the flow below; the tests run in order.
@@ -163,6 +166,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       leagueId,
       leagueName: "Test League",
       alreadyMember: false,
+      full: false,
     });
     expect((await call(PLAYER, "POST", `/invites/${inviteCode}/join`)).body).toEqual({ leagueId });
     // Joining twice is harmless.
@@ -799,6 +803,20 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(OUTSIDER, "GET", `/leagues/${leagueId}`)).status).toBe(404);
   });
 
+  it("lets any player leave, except the league's only admin", async () => {
+    await call(OUTSIDER, "POST", `/invites/${inviteCode}/join`);
+    const leave = (userId: string) => call(userId, "DELETE", `/leagues/${leagueId}/members/${userId}`);
+    // A member can remove themselves, but still nobody else.
+    expect((await call(OUTSIDER, "DELETE", `/leagues/${leagueId}/members/${PLAYER}`)).status).toBe(403);
+    expect((await leave(OUTSIDER)).status).toBe(200);
+    expect((await call(OUTSIDER, "GET", `/leagues/${leagueId}`)).status).toBe(404);
+    expect((await leave(OUTSIDER)).status).toBe(404);
+
+    const refused = await leave(ADMIN);
+    expect(refused.status).toBe(409);
+    expect(errorOf(refused)).toMatch(/only admin/);
+  });
+
   it("keeps future drafts out of default standings and respects an explicitly selected empty season", async () => {
     expect(
       (await call(ADMIN, "POST", `/leagues/${leagueId}/weeks`, { year: 2030, number: 1, importGames: false }))
@@ -823,6 +841,59 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(rotated.body.inviteCode).not.toBe(inviteCode);
     expect((await call(OUTSIDER, "POST", `/invites/${inviteCode}/join`)).status).toBe(404);
     expect((await call(PLAYER, "POST", `/leagues/${leagueId}/invite`)).status).toBe(403);
+  });
+
+  it("caps how many players a league can have", async () => {
+    const limited = createApp({
+      db,
+      verifyToken,
+      publicConfig,
+      nfl: noGames,
+      limits: { membersPerLeague: 2, leaguesPerUser: 100 },
+    });
+    const on = callOn(limited);
+    const created = await on<{ id: string }>(ADMIN, "POST", "/leagues", { name: "Tiny League" });
+    createdLeagues.push(created.body.id);
+    const code = (await on<LeagueDetail>(ADMIN, "GET", `/leagues/${created.body.id}`)).body.inviteCode;
+
+    expect((await on(PLAYER, "POST", `/invites/${code}/join`)).status).toBe(200);
+    expect((await on(OUTSIDER, "GET", `/invites/${code}`)).body).toMatchObject({ full: true });
+    const refused = await on(OUTSIDER, "POST", `/invites/${code}/join`);
+    expect(refused.status).toBe(409);
+    expect(errorOf(refused)).toMatch(/full/);
+    // Members already in a full league aren't turned away, and don't see it as full.
+    expect((await on(PLAYER, "POST", `/invites/${code}/join`)).status).toBe(200);
+    expect((await on(PLAYER, "GET", `/invites/${code}`)).body).toMatchObject({ full: false });
+
+    // Removing a player makes room, and the removed player then counts as a new join.
+    await on(ADMIN, "DELETE", `/leagues/${created.body.id}/members/${PLAYER}`);
+    expect((await on(OUTSIDER, "POST", `/invites/${code}/join`)).status).toBe(200);
+    expect((await on(PLAYER, "POST", `/invites/${code}/join`)).status).toBe(409);
+  });
+
+  it("caps how many leagues a player can be in", async () => {
+    const current = (await call<unknown[]>(OUTSIDER, "GET", "/leagues")).body.length;
+    const limited = createApp({
+      db,
+      verifyToken,
+      publicConfig,
+      nfl: noGames,
+      limits: { membersPerLeague: 100, leaguesPerUser: current + 1 },
+    });
+    const on = callOn(limited);
+    const own = await on<{ id: string }>(OUTSIDER, "POST", "/leagues", { name: "Last One" });
+    expect(own.status).toBe(201);
+    createdLeagues.push(own.body.id);
+
+    const tooMany = await on(OUTSIDER, "POST", "/leagues", { name: "One Too Many" });
+    expect(tooMany.status).toBe(409);
+    expect(errorOf(tooMany)).toMatch(/most one player can be in/);
+
+    const other = await call<{ id: string }>(ADMIN, "POST", "/leagues", { name: "Another League" });
+    createdLeagues.push(other.body.id);
+    const code = (await call<LeagueDetail>(ADMIN, "GET", `/leagues/${other.body.id}`)).body.inviteCode;
+    expect((await on(OUTSIDER, "POST", `/invites/${code}/join`)).status).toBe(409);
+    expect((await call(OUTSIDER, "GET", "/leagues")).body).toHaveLength(current + 1);
   });
 
   it("still creates the week when the schedule can't be loaded", async () => {
