@@ -1,8 +1,12 @@
 import { zValidator } from "@hono/zod-validator";
-import { messagePosts, messageReads, messageThreads, profiles } from "@picks/db";
+import { messagePosts, messageReactions, messageReads, messageThreads, profiles } from "@picks/db";
 import {
   createThreadSchema,
+  MESSAGE_REACTIONS,
+  type MessageReaction,
   type MessageThread,
+  messageReactionSchema,
+  pinThreadSchema,
   readThreadSchema,
   replySchema,
   type ThreadDetail,
@@ -11,20 +15,46 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
-import { type AppDeps, body, fail, leagueParam, requireMember } from "./context";
+import { type AppDeps, body, fail, leagueParam, requireAdmin, requireMember } from "./context";
 
 const threadParam = zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
 
 export function messageRoutes({ db, verifyToken }: AppDeps) {
   const auth = requireAuth(verifyToken);
   async function thread(leagueId: string, threadId: string, userId: string) {
-    await requireMember(db, leagueId, userId);
+    const { role } = await requireMember(db, leagueId, userId);
     const [row] = await db
       .select()
       .from(messageThreads)
       .where(and(eq(messageThreads.id, threadId), eq(messageThreads.leagueId, leagueId)));
     if (!row) fail(404, "Thread not found.");
-    return row;
+    return { ...row, canPin: role === "admin" };
+  }
+  async function reactions(threadId: string, userId: string) {
+    const rows = await db
+      .select({
+        postId: messageReactions.postId,
+        emoji: messageReactions.emoji,
+        userId: messageReactions.userId,
+      })
+      .from(messageReactions)
+      .innerJoin(messagePosts, eq(messagePosts.id, messageReactions.postId))
+      .where(eq(messagePosts.threadId, threadId));
+    const result = new Map<string, MessageReaction[]>();
+    for (const row of rows) {
+      const option = MESSAGE_REACTIONS.find((r) => r.emoji === row.emoji);
+      if (!option) continue;
+      const list = result.get(row.postId) ?? [];
+      let reaction = list.find((r) => r.emoji === option.emoji);
+      if (!reaction) {
+        reaction = { emoji: option.emoji, count: 0, reacted: false };
+        list.push(reaction);
+      }
+      reaction.count++;
+      reaction.reacted ||= row.userId === userId;
+      result.set(row.postId, list);
+    }
+    return result;
   }
   return new Hono<{ Variables: AuthVariables }>()
     .get("/leagues/:leagueId/messages", auth, leagueParam, async (c) => {
@@ -43,10 +73,11 @@ export function messageRoutes({ db, verifyToken }: AppDeps) {
           and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, c.var.user.id)),
         )
         .where(eq(messageThreads.leagueId, leagueId))
-        .orderBy(desc(messageThreads.updatedAt), desc(messageThreads.id));
+        .orderBy(desc(messageThreads.pinned), desc(messageThreads.updatedAt), desc(messageThreads.id));
       const result: MessageThread[] = rows.map(({ thread: t, authorName, readVersion }) => ({
         id: t.id,
         title: t.title,
+        pinned: t.pinned,
         authorName: authorName ?? "Player",
         version: t.version,
         createdAt: t.createdAt.toISOString(),
@@ -82,13 +113,28 @@ export function messageRoutes({ db, verifyToken }: AppDeps) {
         .leftJoin(profiles, eq(profiles.userId, messagePosts.authorId))
         .where(eq(messagePosts.threadId, threadId))
         .orderBy(asc(messagePosts.position));
+      const byPost = await reactions(threadId, c.var.user.id);
+      const postsById = new Map(rows.map((r) => [r.post.id, r]));
       const result: ThreadDetail = {
         id: t.id,
         title: t.title,
+        pinned: t.pinned,
         version: t.version,
+        canPin: t.canPin,
         posts: rows.map(({ post, authorName }) => ({
           id: post.id,
+          reactions: byPost.get(post.id) ?? [],
           body: post.body,
+          quote: (() => {
+            const original = post.quotedPostId ? postsById.get(post.quotedPostId) : undefined;
+            return original
+              ? {
+                  id: original.post.id,
+                  authorName: original.authorName ?? "Player",
+                  body: original.post.body,
+                }
+              : null;
+          })(),
           position: post.position,
           authorName: authorName ?? "Player",
           createdAt: post.createdAt.toISOString(),
@@ -96,6 +142,48 @@ export function messageRoutes({ db, verifyToken }: AppDeps) {
       };
       return c.json(result);
     })
+    .put("/leagues/:leagueId/messages/:threadId/pin", auth, threadParam, body(pinThreadSchema), async (c) => {
+      const { leagueId, threadId } = c.req.valid("param");
+      const { role } = await requireMember(db, leagueId, c.var.user.id);
+      requireAdmin(role);
+      await thread(leagueId, threadId, c.var.user.id);
+      const { pinned } = c.req.valid("json");
+      await db.update(messageThreads).set({ pinned }).where(eq(messageThreads.id, threadId));
+      return c.json({ pinned });
+    })
+    .put(
+      "/leagues/:leagueId/messages/:threadId/posts/:postId/reactions",
+      auth,
+      zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid(), postId: z.uuid() })),
+      body(messageReactionSchema),
+      async (c) => {
+        const { leagueId, threadId, postId } = c.req.valid("param");
+        await thread(leagueId, threadId, c.var.user.id);
+        const [post] = await db
+          .select({ id: messagePosts.id })
+          .from(messagePosts)
+          .where(and(eq(messagePosts.id, postId), eq(messagePosts.threadId, threadId)));
+        if (!post) fail(404, "Message not found.");
+        const { emoji, active } = c.req.valid("json");
+        if (active) {
+          await db
+            .insert(messageReactions)
+            .values({ postId, userId: c.var.user.id, emoji })
+            .onConflictDoNothing();
+        } else {
+          await db
+            .delete(messageReactions)
+            .where(
+              and(
+                eq(messageReactions.postId, postId),
+                eq(messageReactions.userId, c.var.user.id),
+                eq(messageReactions.emoji, emoji),
+              ),
+            );
+        }
+        return c.json((await reactions(threadId, c.var.user.id)).get(postId) ?? []);
+      },
+    )
     .post(
       "/leagues/:leagueId/messages/:threadId/replies",
       auth,
@@ -111,10 +199,19 @@ export function messageRoutes({ db, verifyToken }: AppDeps) {
             .where(eq(messageThreads.id, threadId))
             .returning();
           if (!t) fail(404, "Thread not found.");
+          const { body: content, quotedPostId } = c.req.valid("json");
+          if (quotedPostId) {
+            const [original] = await tx
+              .select({ id: messagePosts.id })
+              .from(messagePosts)
+              .where(and(eq(messagePosts.id, quotedPostId), eq(messagePosts.threadId, threadId)));
+            if (!original) fail(404, "Quoted message not found in this thread.");
+          }
           await tx.insert(messagePosts).values({
             threadId,
             authorId: c.var.user.id,
-            body: c.req.valid("json").body,
+            body: content,
+            quotedPostId,
             position: t.version,
           });
         });

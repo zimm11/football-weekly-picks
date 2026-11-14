@@ -2,6 +2,7 @@ import { createDb, leagueMembers, leagues, profiles } from "@picks/db";
 import type {
   GameInsights,
   LeagueDetail,
+  MessageReaction,
   MessageThread,
   Standings,
   ThreadDetail,
@@ -286,9 +287,123 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(ADMIN, "GET", `/leagues/${other.body.id}/messages/${created.body.id}`)).status).toBe(
       404,
     );
+    const postId = detail.posts[0]?.id;
+    const reactionPath = `${path}/posts/${postId}/reactions`;
+    const react = (user: string, emoji = "👍", active = true) =>
+      call<MessageReaction[]>(user, "PUT", reactionPath, { emoji, active });
+    expect((await react(OUTSIDER)).status).toBe(404);
+    expect((await react(PLAYER, "not-an-emoji")).status).toBe(400);
+    const concurrent = await Promise.all([react(PLAYER), react(PLAYER), react(ADMIN)]);
+    expect(concurrent.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect((await react(PLAYER)).body).toEqual([{ emoji: "👍", count: 2, reacted: true }]);
+    expect((await react(PLAYER, "🔥")).body).toEqual(
+      expect.arrayContaining([
+        { emoji: "👍", count: 2, reacted: true },
+        { emoji: "🔥", count: 1, reacted: true },
+      ]),
+    );
+    await react(PLAYER, "👍", false);
+    expect((await react(PLAYER, "👍", false)).body).toEqual(
+      expect.arrayContaining([{ emoji: "👍", count: 1, reacted: false }]),
+    );
+    const reacted = (await call<ThreadDetail>(PLAYER, "GET", path)).body;
+    expect(reacted.version).toBe(3);
+    expect(reacted.posts[0]?.reactions).toEqual(
+      expect.arrayContaining([
+        { emoji: "👍", count: 1, reacted: false },
+        { emoji: "🔥", count: 1, reacted: true },
+      ]),
+    );
+    expect((await call<MessageThread[]>(ADMIN, "GET", base)).body[0]?.unread).toBe(false);
+    const secondThread = await call<{ id: string }>(ADMIN, "POST", base, { title: "Other", body: "Hi" });
+    expect(
+      (
+        await call(ADMIN, "PUT", `${base}/${secondThread.body.id}/posts/${postId}/reactions`, {
+          emoji: "👍",
+          active: true,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await call(
+          ADMIN,
+          "PUT",
+          `/leagues/${other.body.id}/messages/${created.body.id}/posts/${postId}/reactions`,
+          { emoji: "👍", active: true },
+        )
+      ).status,
+    ).toBe(404);
+    const replyPath = `${path}/posts/${detail.posts[1]?.id}/reactions`;
+    expect((await call(PLAYER, "PUT", replyPath, { emoji: "😂", active: true })).status).toBe(200);
     await call(ADMIN, "DELETE", `/leagues/${leagueId}/members/${PLAYER}`);
     expect((await call(PLAYER, "GET", path)).status).toBe(404);
+    expect((await react(PLAYER)).status).toBe(404);
     await call(PLAYER, "POST", `/invites/${inviteCode}/join`);
+  });
+
+  it("restricts announcement pins to admins and quotes to the same thread", async () => {
+    const base = `/leagues/${leagueId}/messages`;
+    const create = (title: string) =>
+      call<{ id: string }>(PLAYER, "POST", base, { title, body: `${title} body` });
+    const first = await create("Announcement");
+    const path = `${base}/${first.body.id}`;
+    const original = (await call<ThreadDetail>(ADMIN, "GET", path)).body;
+    const postId = original.posts[0]?.id;
+    expect(original).toMatchObject({ pinned: false, canPin: true });
+    expect((await call<ThreadDetail>(PLAYER, "GET", path)).body.canPin).toBe(false);
+    await call(ADMIN, "POST", `${path}/read`, { version: 1 });
+    const second = await create("Newer discussion");
+    const pin = (user: string, pinned: boolean) => call(user, "PUT", `${path}/pin`, { pinned });
+    expect((await pin(PLAYER, true)).status).toBe(403);
+    expect((await pin(OUTSIDER, true)).status).toBe(404);
+    expect((await call(ADMIN, "PUT", `${path}/pin`, { pinned: "yes" })).status).toBe(400);
+    expect((await pin(ADMIN, true)).status).toBe(200);
+    expect((await pin(ADMIN, true)).status).toBe(200);
+    const list = (await call<MessageThread[]>(ADMIN, "GET", base)).body;
+    expect(list[0]).toMatchObject({
+      id: first.body.id,
+      pinned: true,
+      unread: false,
+      version: 1,
+      updatedAt: original.posts[0]?.createdAt,
+    });
+    expect((await call<ThreadDetail>(PLAYER, "GET", path)).body.pinned).toBe(true);
+    expect((await pin(ADMIN, false)).status).toBe(200);
+    expect((await call<MessageThread[]>(ADMIN, "GET", base)).body[0]?.id).toBe(second.body.id);
+    const reply = (quotedPostId: string) =>
+      call(PLAYER, "POST", `${path}/replies`, { body: "Agreed!", quotedPostId });
+    const otherPost = (await call<ThreadDetail>(PLAYER, "GET", `${base}/${second.body.id}`)).body.posts[0];
+    expect((await reply(otherPost?.id ?? "")).status).toBe(404);
+    expect((await reply("00000000-0000-4000-8000-000000009999")).status).toBe(404);
+    expect((await reply("bad-id")).status).toBe(400);
+    expect((await call<ThreadDetail>(PLAYER, "GET", path)).body.version).toBe(1);
+    expect((await reply(postId ?? "")).status).toBe(201);
+    const quoted = (await call<ThreadDetail>(ADMIN, "GET", path)).body;
+    expect(quoted.version).toBe(2);
+    expect(quoted.posts[1]).toMatchObject({
+      body: "Agreed!",
+      position: 2,
+      quote: { id: postId, authorName: "Pat", body: "Announcement body" },
+    });
+    expect(quoted.posts[0]?.quote).toBeNull();
+    const other = await call<{ id: string }>(ADMIN, "POST", "/leagues", { name: "Quote isolation" });
+    createdLeagues.push(other.body.id);
+    expect(
+      (await call(ADMIN, "PUT", `/leagues/${other.body.id}/messages/${first.body.id}/pin`, { pinned: true }))
+        .status,
+    ).toBe(404);
+    const foreign = await call<{ id: string }>(ADMIN, "POST", `/leagues/${other.body.id}/messages`, {
+      title: "Private",
+      body: "Other league only",
+    });
+    const foreignPost = (
+      await call<ThreadDetail>(ADMIN, "GET", `/leagues/${other.body.id}/messages/${foreign.body.id}`)
+    ).body.posts[0];
+    expect((await reply(foreignPost?.id ?? "")).status).toBe(404);
+    expect(
+      (await call(OUTSIDER, "POST", `${path}/replies`, { body: "No access", quotedPostId: postId })).status,
+    ).toBe(404);
   });
 
   it("only lets the admin set up weeks", async () => {

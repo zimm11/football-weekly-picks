@@ -226,9 +226,27 @@ export const createThreadSchema = z.object({
   title: z.string().trim().min(1, "Enter a title").max(120),
   body: z.string().trim().min(1, "Enter a message").max(5000),
 });
-export const replySchema = createThreadSchema.pick({ body: true });
+export const replySchema = createThreadSchema.pick({ body: true }).extend({
+  quotedPostId: z.uuid().optional(),
+});
+export const pinThreadSchema = z.object({ pinned: z.boolean() });
 export const readThreadSchema = z.object({ version: z.int().min(1) });
+export const MESSAGE_REACTIONS = [
+  { emoji: "👍", label: "Like" },
+  { emoji: "😂", label: "Laugh" },
+  { emoji: "🔥", label: "Fire" },
+  { emoji: "🎉", label: "Celebrate" },
+  { emoji: "🏈", label: "Football" },
+  { emoji: "😮", label: "Wow" },
+] as const;
+export const messageReactionSchema = z.object({
+  emoji: z.enum(["👍", "😂", "🔥", "🎉", "🏈", "😮"]),
+  active: z.boolean(),
+});
+export type MessageEmoji = z.infer<typeof messageReactionSchema>["emoji"];
+export type MessageReaction = { emoji: MessageEmoji; count: number; reacted: boolean };
 export type MessageThread = {
+  pinned: boolean;
   id: string;
   title: string;
   authorName: string;
@@ -237,11 +255,21 @@ export type MessageThread = {
   updatedAt: string;
   unread: boolean;
 };
+export type MessageQuote = { id: string; authorName: string; body: string };
 export type MessagePost = {
+  quote: MessageQuote | null;
+  reactions: MessageReaction[];
   id: string;
   body: string;
   authorName: string;
   position: number;
   createdAt: string;
 };
-export type ThreadDetail = { id: string; title: string; version: number; posts: MessagePost[] };
+export type ThreadDetail = {
+  id: string;
+  title: string;
+  version: number;
+  pinned: boolean;
+  canPin: boolean;
+  posts: MessagePost[];
+};

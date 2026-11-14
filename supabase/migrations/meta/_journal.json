@@ -43,6 +43,20 @@
       "when": 1794694654361,
       "tag": "20261114221734_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794697698703,
+      "tag": "20261114230818_message_reactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794698118531,
+      "tag": "20261114231518_message_pins_quotes",
+      "breakpoints": true
     }
   ]
 }

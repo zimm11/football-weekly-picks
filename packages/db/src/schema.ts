@@ -206,6 +206,8 @@ export const messageThreads = pgTable(
       .references(() => leagues.id, { onDelete: "cascade" }),
     authorId: userRef(),
     title: text().notNull(),
+    /** Admin-pinned announcements appear before other conversations. */
+    pinned: boolean().notNull().default(false),
     /** Sequential post count; also the unread watermark. Updated under a row lock. */
     version: integer().notNull().default(1),
     createdAt: createdAt(),
@@ -224,10 +226,25 @@ export const messagePosts = pgTable(
       .references(() => messageThreads.id, { onDelete: "cascade" }),
     authorId: userRef(),
     body: text().notNull(),
+    /** Optional original message quoted by this reply; the API restricts it to the same thread. */
+    quotedPostId: uuid().references((): AnyPgColumn => messagePosts.id, { onDelete: "set null" }),
     position: integer().notNull(),
     createdAt: createdAt(),
   },
   (t) => [unique("message_posts_thread_position_key").on(t.threadId, t.position)],
+).enableRLS();
+
+/** A player's emoji on a message; each emoji can be added once and removed independently. */
+export const messageReactions = pgTable(
+  "message_reactions",
+  {
+    postId: uuid()
+      .notNull()
+      .references(() => messagePosts.id, { onDelete: "cascade" }),
+    userId: userRef(),
+    emoji: text().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.userId, t.emoji] })],
 ).enableRLS();
 
 /** Highest post actually viewed by a player; older tabs cannot move it backwards. */

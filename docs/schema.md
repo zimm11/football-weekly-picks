@@ -20,6 +20,9 @@ erDiagram
   auth_users ||--o{ league_members : "user_id"
   message_threads ||--o{ message_posts : "thread_id"
   auth_users ||--o{ message_posts : "author_id"
+  message_posts |o--o{ message_posts : "quoted_post_id"
+  message_posts ||--o{ message_reactions : "post_id"
+  auth_users ||--o{ message_reactions : "user_id"
   message_threads ||--o{ message_reads : "thread_id"
   auth_users ||--o{ message_reads : "user_id"
   leagues ||--o{ message_threads : "league_id"
@@ -80,8 +83,14 @@ erDiagram
     uuid thread_id FK
     uuid author_id FK
     text body
+    uuid quoted_post_id FK
     integer position
     timestamptz created_at
+  }
+  message_reactions {
+    uuid post_id PK, FK
+    uuid user_id PK, FK
+    text emoji PK
   }
   message_reads {
     uuid thread_id PK, FK
@@ -93,6 +102,7 @@ erDiagram
     uuid league_id FK
     uuid author_id FK
     text title
+    boolean pinned
     integer version
     timestamptz created_at
     timestamptz updated_at
@@ -213,10 +223,21 @@ The opening message and subsequent replies, ordered within a thread.
 | `thread_id` | uuid | no | FK → `message_threads.id` |  |
 | `author_id` | uuid | no | FK → `auth.users.id` |  |
 | `body` | text | no |  |  |
+| `quoted_post_id` | uuid | yes | FK → `message_posts.id` | Optional original message quoted by this reply; the API restricts it to the same thread. |
 | `position` | integer | no |  |  |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 Unique together: (`thread_id`, `position`).
+
+### `message_reactions`
+
+A player's emoji on a message; each emoji can be added once and removed independently.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `post_id` | uuid | no | PK, FK → `message_posts.id` |  |
+| `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
+| `emoji` | text | no | PK |  |
 
 ### `message_reads`
 
@@ -238,6 +259,7 @@ A league-wide conversation, independent of the selected season.
 | `league_id` | uuid | no | FK → `leagues.id` |  |
 | `author_id` | uuid | no | FK → `auth.users.id` |  |
 | `title` | text | no |  |  |
+| `pinned` | boolean | no |  | Admin-pinned announcements appear before other conversations. Has a default. |
 | `version` | integer | no |  | Sequential post count; also the unread watermark. Updated under a row lock. Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |
 | `updated_at` | timestamptz | no |  | Has a default. |
