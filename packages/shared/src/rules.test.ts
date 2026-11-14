@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  autoPowCutoff,
   checkPickSubmission,
   checkTiebreakerGuess,
   coveringSide,
@@ -88,7 +87,6 @@ describe("checkPickSubmission", () => {
       existing: [],
       picks: [],
       powGameId: null,
-      tiebreakerGameId: "mon",
       timeZone: ET,
       now,
       ...input,
@@ -166,7 +164,6 @@ describe("checkPickSubmission", () => {
     ) =>
       checkPickSubmission({
         games: withResult,
-        tiebreakerGameId: "mon",
         timeZone: ET,
         now: WEDNESDAY,
         ...input,
@@ -196,37 +193,28 @@ describe("checkPickSubmission", () => {
     ).toBeNull();
   });
 
-  describe("automatic Monday night POW", () => {
-    // A week with a Tuesday game, so there is something other than Monday still open on Sunday morning.
-    const TUE = et(2026, 11, 17, 20, 15);
-    const withTuesday = [...games, { id: "tue", kickoff: TUE, label: "MIA at BUF", final: false }];
+  describe("a player with no POW on Sunday morning", () => {
+    // A Monday doubleheader, so there is more than one Monday game to choose from.
+    const MON_EARLY = et(2026, 11, 16, 19, 15);
+    const doubleheader = [...games, { id: "mon2", kickoff: MON_EARLY, label: "DEN at LV", final: false }];
     const checkWeek = (
       now: Date,
       input: Pick<Parameters<typeof checkPickSubmission>[0], "existing" | "picks" | "powGameId">,
-    ) => checkPickSubmission({ games: withTuesday, tiebreakerGameId: "mon", timeZone: ET, now, ...input });
-    const tuesdayPow = { existing: [], picks: [{ gameId: "tue", side: "home" as const }], powGameId: "tue" };
-
-    it("takes over at 6am on Sunday for a player with no POW", () => {
-      expect(autoPowCutoff(withTuesday, "mon", ET)).toEqual(et(2026, 11, 15, 6));
-      expect(checkWeek(et(2026, 11, 15, 5, 59), tuesdayPow)).toBeNull();
-      expect(checkWeek(SUNDAY_7AM, tuesdayPow)).toMatch(/POW is automatically LAC at BAL/);
-      // Choosing the Monday night game itself is still fine.
-      expect(
-        checkWeek(SUNDAY_7AM, { existing: [], picks: [{ gameId: "mon", side: "home" }], powGameId: "mon" }),
-      ).toBeNull();
+    ) => checkPickSubmission({ games: doubleheader, timeZone: ET, now, ...input });
+    const powOn = (gameId: string) => ({
+      existing: [],
+      picks: [{ gameId, side: "home" as const }],
+      powGameId: gameId,
     });
 
-    it("leaves a POW chosen before the cutoff alone", () => {
-      const existing = [{ gameId: "tue", side: "home" as const, isPow: true }];
-      expect(checkWeek(SUNDAY_7AM, { existing, picks: [], powGameId: "tue" })).toBeNull();
+    it("can choose either Monday game, but no Sunday game", () => {
+      expect(checkWeek(SUNDAY_7AM, powOn("mon"))).toBeNull();
+      expect(checkWeek(SUNDAY_7AM, powOn("mon2"))).toBeNull();
+      expect(checkWeek(SUNDAY_7AM, powOn("snf"))).toMatch(/can't be your POW/);
     });
 
-    it("doesn't apply without Sunday games or a later tiebreaker game", () => {
-      const noSunday = withTuesday.filter((g) => g.id !== "sun" && g.id !== "snf");
-      expect(autoPowCutoff(noSunday, "mon", ET)).toBeNull();
-      expect(autoPowCutoff(withTuesday, null, ET)).toBeNull();
-      // The admin made Thursday the tiebreaker: it is already over by Sunday, so there is nothing to assign.
-      expect(autoPowCutoff(withTuesday, "thu", ET)).toBeNull();
+    it("can't make a late Monday pick the POW", () => {
+      expect(checkWeek(et(2026, 11, 16, 7), powOn("mon"))).toMatch(/can't be your POW/);
     });
   });
 
@@ -369,26 +357,14 @@ describe("scoreWeek", () => {
     expect(a).toMatchObject({ points: 0, wins: 0, losses: 0, pushes: 1, powWon: false });
   });
 
-  it("gives a player with no POW the Monday night game as their POW", () => {
-    const entries = score([pick("a", "mon", "home"), pick("b", "mon", "away")]);
-    expect(entry(entries, "a")).toMatchObject({ points: 8, powGameId: "mon", powWon: true });
-    expect(entry(entries, "b")).toMatchObject({ points: 0, powGameId: "mon", powWon: false });
-  });
-
-  it("keeps a chosen POW rather than the automatic one", () => {
-    const entries = score([pick("a", "thu", "home", true), pick("a", "mon", "home")]);
-    expect(entry(entries, "a")).toMatchObject({ points: 11, powGameId: "thu" });
+  it("gives a player who chose no POW no POW at all", () => {
+    const entries = score([pick("a", "mon", "home")]);
+    expect(entry(entries, "a")).toMatchObject({ points: 3, wins: 1, powGameId: null, powWon: false });
   });
 
   it("breaks a points tie on games won", () => {
-    // a: Monday (3). b: Sunday 1pm (1) + Sunday night (2). Neutralize the automatic Monday POW with losing POWs.
-    const entries = score([
-      pick("a", "mon", "home"),
-      pick("a", "sun", "home", true),
-      pick("b", "sun", "away"),
-      pick("b", "snf", "away"),
-      pick("b", "thu", "away", true),
-    ]);
+    // a: Monday (3). b: Sunday 1pm (1) + Sunday night (2).
+    const entries = score([pick("a", "mon", "home"), pick("b", "sun", "away"), pick("b", "snf", "away")]);
     expect(entry(entries, "a")).toMatchObject({ points: 3, wins: 1, rank: 2 });
     expect(entry(entries, "b")).toMatchObject({ points: 3, wins: 2, rank: 1, isWinner: true });
   });

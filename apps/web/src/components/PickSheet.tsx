@@ -3,7 +3,6 @@ import {
   coveringSide,
   formatLine,
   type Game,
-  isAutoPow,
   LOCK_HOUR,
   lineFor,
   type Pick,
@@ -67,14 +66,6 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
   // Once it is 6am on the day of the game holding the POW, the POW can't move.
   const powFrozen = !!savedPowGame && windowOf(savedPowGame) !== "open";
   const tiebreakerGame = games.find((g) => g.id === tiebreakerGameId);
-  // After 6am on Sunday a player with no saved POW gets the tiebreaker (Monday night) game, and only that one.
-  const autoPow = isAutoPow({
-    games: games.map((g) => ({ id: g.id, kickoff: new Date(g.kickoff) })),
-    tiebreakerGameId,
-    hasPow: savedPow !== null,
-    timeZone,
-    now,
-  });
   const tiebreakerWindow = tiebreakerGame ? windowOf(tiebreakerGame) : "closed";
   const tiebreakerLocked =
     tiebreakerWindow === "closed" || (tiebreakerWindow === "late" && tiebreakerTotal !== null);
@@ -121,9 +112,9 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
   const left = unsavedGames.filter((g) => windowOf(g) !== "closed").length;
   const missed = unsavedGames.length - left;
   const needsTotal = !!tiebreakerGame && tiebreakerTotal === null && !tiebreakerLocked;
-  // Leaving the POW to its default is allowed, but it is a choice the player hasn't made yet. It stops
-  // counting once it can no longer be made: after 6am on Sunday, or when every game has locked.
-  const needsPow = savedPow === null && !autoPow && games.some((g) => windowOf(g) === "open");
+  // There is no automatic POW: a player who doesn't choose one has none. It stops counting as something to
+  // do once no game can take it (every game is past 6am on its day).
+  const needsPow = savedPow === null && games.some((g) => windowOf(g) === "open");
 
   // Warn before a tab tap, a link or a reload throws away picks that haven't been saved.
   const unsavedDialog = useUnsavedGuard(dirty, "picks");
@@ -139,17 +130,12 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
         missed={missed}
         needsTotal={needsTotal}
         needsPow={needsPow}
-        pow={
-          savedPowGame
-            ? matchup(savedPowGame)
-            : tiebreakerGame && saved.has(tiebreakerGame.id)
-              ? `defaults to ${matchup(tiebreakerGame)}`
-              : null
-        }
+        pow={savedPowGame ? matchup(savedPowGame) : null}
       />
       <p className="m-0 text-sm text-muted-foreground">
         Picks and your POW lock at {LOCK_HOUR}am on game day. A missed pick can still go in until kickoff, but
-        it can't be your POW. Your POW is worth {POW_BONUS} extra points if it wins.
+        it can't be your POW. Your POW is worth {POW_BONUS} extra points if it wins. If you don't choose a
+        POW, you don't get one.
       </p>
 
       {days.map(({ day, games: dayGames }) => (
@@ -158,9 +144,8 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
           {dayGames.map((game) => {
             const window = windowOf(game);
             const sideLocked = window === "closed" || (window === "late" && saved.has(game.id));
-            const autoPowHere = autoPow && game.id === tiebreakerGameId;
-            const powLocked = window !== "open" || powFrozen || !sides[game.id] || (autoPow && !autoPowHere);
-            const isPow = pow === game.id || (autoPowHere && pow === null && !!sides[game.id]);
+            const powLocked = window !== "open" || powFrozen || !sides[game.id];
+            const isPow = pow === game.id;
             const covered = coveringSide({ ...game, kickoff: new Date(game.kickoff) });
             const mine = sides[game.id];
             return (
@@ -258,11 +243,11 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
         </div>
       )}
 
-      {!pow && tiebreakerGame && (
+      {!pow && (
         <p className="m-0 text-sm text-muted-foreground">
-          {autoPow
-            ? `It is after ${LOCK_HOUR}am on Sunday, so your POW is automatically your pick in ${matchup(tiebreakerGame)}.`
-            : `No POW chosen. If you leave it that way, your pick in ${matchup(tiebreakerGame)} becomes your POW.`}
+          {needsPow
+            ? "No POW chosen. Tap POW on a pick whose game hasn't locked yet; if you don't, you won't have one this week."
+            : "No POW this week: every game has locked."}
         </p>
       )}
 
@@ -325,7 +310,7 @@ function PickStatus({
   needsTotal: boolean;
   /** No POW saved, and there is still time to choose one. */
   needsPow: boolean;
-  /** The saved POW, or the default it falls back to. Null when there isn't one yet. */
+  /** The saved POW. Null when there isn't one. */
   pow: string | null;
 }) {
   const box = "flex items-center gap-3 rounded-md border border-l-4 p-3";
@@ -361,7 +346,8 @@ function PickStatus({
             {missed === 0
               ? `All ${plural(gameCount, "game", "games")} picked and saved.`
               : `${savedLine}; ${plural(missed, "game", "games")} locked without a pick.`}
-            {pow && ` POW: ${pow}.`} Nothing more to do. You can still change a pick until it locks.
+            {pow ? ` POW: ${pow}.` : " No POW this week."} Nothing more to do. You can still change a pick
+            until it locks.
           </p>
         </div>
       </section>

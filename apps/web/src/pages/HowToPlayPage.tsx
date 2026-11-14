@@ -118,10 +118,10 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               bonus.
             </p>
             <p className="m-0 text-sm text-muted-foreground">
-              If you leave your POW unchosen, your pick on the tiebreaker game becomes your POW. From{" "}
-              {LOCK_HOUR}am on Sunday, that default is enforced when the slate has Sunday games and a later
-              tiebreaker game; you can no longer choose a different game. You still need to save a pick on
-              that game to earn its points.
+              There is no automatic POW: if you don't choose one, you don't get one that week. A game can be
+              your POW only until {LOCK_HOUR}am on its game day, so if Sunday locks before you choose, you can
+              still make a Monday game your POW (either one, on a Monday doubleheader) before {LOCK_HOUR}am
+              Monday. A late pick, added after {LOCK_HOUR}am on game day, can't be your POW.
             </p>
           </Card>
         </div>

@@ -350,7 +350,6 @@ export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: App
               existing,
               picks: input.picks,
               powGameId: input.powGameId,
-              tiebreakerGameId,
               timeZone: ctx.league.timeZone,
               now: at,
             }) ??

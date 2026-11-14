@@ -19,6 +19,7 @@ const games: Game[] = [
 ];
 const WEDNESDAY = new Date("2026-11-11T17:00:00Z");
 const SUNDAY_7AM = new Date("2026-11-15T12:00:00Z");
+const MONDAY_7AM = new Date("2026-11-16T12:00:00Z");
 
 async function renderSheet(props: { now?: Date; picks?: Pick[]; tiebreakerTotal?: number | null } = {}) {
   const onSave = vi.fn().mockResolvedValue(undefined);
@@ -84,15 +85,16 @@ describe("PickSheet", () => {
   });
 
   it("stops asking for a POW once it can no longer be chosen", async () => {
-    // After 6am on Sunday the Monday night pick is the POW, so there is nothing left to choose.
+    // After 6am on Monday every game has locked, so a player with no POW has none this week.
     const { screen } = await renderSheet({
-      now: SUNDAY_7AM,
+      now: MONDAY_7AM,
       picks: ["thu", "sun", "mon"].map((gameId) => ({ gameId, side: "home" as const, isPow: false })),
       tiebreakerTotal: 44,
     });
     const status = screen.getByRole("region", { name: "Pick status" });
     await expect.element(status.getByText("You're set for the week")).toBeVisible();
-    await expect.element(status.getByText(/POW: defaults to LAC at BAL\./)).toBeVisible();
+    await expect.element(status.getByText(/No POW this week\./)).toBeVisible();
+    await expect.element(screen.getByText("No POW this week: every game has locked.")).toBeVisible();
   });
 
   it("says the player is set once every pick and the tiebreaker guess are saved", async () => {
@@ -120,9 +122,9 @@ describe("PickSheet", () => {
     await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeEnabled();
   });
 
-  it("says the Monday night pick becomes the POW when none is chosen", async () => {
+  it("says there is no automatic POW when none is chosen", async () => {
     const { screen } = await renderSheet();
-    await expect.element(screen.getByText(/your pick in LAC at BAL becomes your POW/)).toBeVisible();
+    await expect.element(screen.getByText(/No POW chosen\..*you won't have one this week/)).toBeVisible();
   });
 
   it("on game day, takes a late pick but not as the POW, and locks games that kicked off", async () => {
@@ -138,12 +140,12 @@ describe("PickSheet", () => {
     await expect.element(screen.getByRole("button", { name: "POW: LAC at BAL" })).toBeEnabled();
   });
 
-  it("after 6am on Sunday, makes the Monday night game the only possible POW", async () => {
-    // A Tuesday game is still days away, but a player with no POW can no longer choose it.
-    const withTuesday = [...games, game("tue", "MIA", "BUF", "2026-11-18T01:15:00Z", -6.5, 2)];
+  it("after 6am on Sunday, still lets a player with no POW choose either Monday game", async () => {
+    // A Monday doubleheader: both games are still open on Sunday morning.
+    const doubleheader = [...games, game("mon2", "DEN", "LV", "2026-11-17T00:15:00Z", 1.5, 3)];
     const screen = await render(
       <PickSheet
-        games={withTuesday}
+        games={doubleheader}
         picks={[]}
         tiebreakerGameId="mon"
         tiebreakerTotal={null}
@@ -152,18 +154,16 @@ describe("PickSheet", () => {
         onSave={vi.fn()}
       />,
     );
-    await screen.getByRole("button", { name: "Bills -6.5" }).click();
-    await expect.element(screen.getByRole("button", { name: "POW: MIA at BUF" })).toBeDisabled();
-    await expect
-      .element(
-        screen.getByText("It is after 6am on Sunday, so your POW is automatically your pick in LAC at BAL."),
-      )
-      .toBeVisible();
-    // Picking the Monday night game shows it as the POW.
+    await screen.getByRole("button", { name: "Chiefs -3.5" }).click();
+    await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeDisabled();
+    await screen.getByRole("button", { name: "Raiders +1.5" }).click();
     await screen.getByRole("button", { name: "Ravens -4.5" }).click();
+    await expect.element(screen.getByRole("button", { name: "POW: DEN at LV" })).toBeEnabled();
+    await expect.element(screen.getByRole("button", { name: "POW: LAC at BAL" })).toBeEnabled();
+    // Nothing is chosen for the player: the Monday night pick isn't shown as a POW.
     await expect
       .element(screen.getByRole("button", { name: "POW: LAC at BAL" }))
-      .toHaveAttribute("aria-pressed", "true");
+      .toHaveAttribute("aria-pressed", "false");
   });
 
   it("freezes saved picks and a saved POW after 6am on game day", async () => {

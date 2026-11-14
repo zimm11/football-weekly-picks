@@ -467,9 +467,11 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     // The player is late: Thursday is gone, and Sunday can be picked but not as the POW.
     expect(errorOf(await put(PLAYER, { picks: { thu: "away" } }))).toMatch(/already kicked off/);
     expect(errorOf(await put(PLAYER, { picks: { sun: "away" }, pow: "sun" }))).toMatch(/can't be your POW/);
-    const late = await put(PLAYER, { picks: { sun: "away", mon: "home" }, total: 50 });
+    // With Sunday locked, the player can still make Monday their POW.
+    const late = await put(PLAYER, { picks: { sun: "away", mon: "home" }, pow: "mon", total: 50 });
     expect(late.status).toBe(200);
     expect(late.body.myPicks).toHaveLength(2);
+    expect(late.body.myPicks.find((p) => p.isPow)?.gameId).toBe(game.mon);
 
     // A rejected submission saves nothing.
     const adminView = (await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body;
@@ -482,15 +484,15 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     const put = (user: string, input: Parameters<typeof picksBody>[0]) =>
       call<WeekView>(user, "PUT", `/weeks/${weekId}/picks`, picksBody(input));
 
-    const changed = await put(PLAYER, { picks: { mon: "away" }, total: 50 });
+    const changed = await put(PLAYER, { picks: { mon: "away" }, pow: "mon", total: 50 });
     expect(changed.status).toBe(409);
     expect(errorOf(changed)).toMatch(/LAC at BAL is final/);
     expect(errorOf(await put(ADMIN, { picks: { mon: "home" }, pow: "thu", total: 41 }))).toMatch(/is final/);
-    expect(errorOf(await put(PLAYER, { total: 47 }))).toMatch(/tiebreaker game is final/);
+    expect(errorOf(await put(PLAYER, { pow: "mon", total: 47 }))).toMatch(/tiebreaker game is final/);
 
     // Clearing the result reopens it.
     await call(ADMIN, "PATCH", `/games/${game.mon}`, { homeScore: null, awayScore: null });
-    expect((await put(PLAYER, { picks: { mon: "home" }, total: 50 })).status).toBe(200);
+    expect((await put(PLAYER, { picks: { mon: "home" }, pow: "mon", total: 50 })).status).toBe(200);
   });
 
   it("tells each player how many games they have picked", async () => {
@@ -509,7 +511,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(adminView.results).toBeNull();
     expect(adminView.submissions).toEqual([
       { userId: ADMIN, displayName: "Commish", pickCount: 2, hasPow: true },
-      { userId: PLAYER, displayName: "Pat", pickCount: 2, hasPow: false },
+      { userId: PLAYER, displayName: "Pat", pickCount: 2, hasPow: true },
     ]);
 
     const standings = (await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings`)).body;
@@ -560,7 +562,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
   it("reveals everyone's picks and the winner once the week is final", async () => {
     const view = (await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body;
     // Admin: Thursday home wins (3 + 5 POW), Sunday home loses → 8.
-    // Player: Sunday away wins (1), Monday home wins (3 + 5, the automatic Monday POW) → 9.
+    // Player: Sunday away wins (1), Monday home wins (3 + 5, the Monday POW chosen on Sunday morning) → 9.
     expect(view.results?.entries).toMatchObject([
       {
         displayName: "Pat",
@@ -719,7 +721,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(afterRemoval.tiebreakerGameId).toBe(idOf(afterRemoval, "LV"));
   });
 
-  it("gives late players the Monday night POW after 6am on Sunday", async () => {
+  it("lets a player with no POW choose either Monday game after 6am on Sunday", async () => {
     // Week 12 from the test above: Thursday, then two Monday games (SEA is the earlier one, LV the tiebreaker).
     const week12 = (await call<LeagueDetail>(ADMIN, "GET", `/leagues/${leagueId}`)).body.weeks.find(
       (w) => w.number === 12,
@@ -741,11 +743,16 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       });
 
     now = new Date("2026-11-29T12:00:00Z"); // 7am Eastern on Sunday
-    // The earlier Monday game is still wide open, but it can't be chosen as the POW any more.
-    const rejected = await put({ SEA: "home" }, "SEA");
+    // Sunday has locked, so it can't take the POW, but either Monday game can.
+    const rejected = await put({ GB: "home" }, "GB");
     expect(rejected.status).toBe(409);
-    expect(errorOf(rejected)).toMatch(/POW is automatically SF at LV|POW is automatically DEN at LV/);
-    expect((await put({ SEA: "home", LV: "home" }, null)).status).toBe(200);
+    expect(errorOf(rejected)).toMatch(/can't be your POW/);
+    expect((await put({ SEA: "home", LV: "home" }, "SEA")).status).toBe(200);
+    expect((await put({}, "LV")).status).toBe(200);
+    // Leaving it unchosen is allowed too: there is no automatic POW.
+    const none = await put({}, null);
+    expect(none.status).toBe(200);
+    expect(none.body.myPicks.some((p) => p.isPow)).toBe(false);
   });
 
   it("lets only one of two simultaneous late picks through", async () => {
