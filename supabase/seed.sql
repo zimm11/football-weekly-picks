@@ -9,6 +9,7 @@
 --     movement have some history to show.
 --       - Week 9: real matchups and final scores, made-up spreads, and picks from all four players.
 --         Alex skipped Thursday and chose no POW, so Alex has no POW that week.
+--         Its finalization timestamp enables a one-time Week 9 recap for each seeded account.
 --       - Weeks 6–8: made-up eight-game slates (Thursday, five Sunday afternoon games, Sunday night,
 --         Monday night) with made-up scores and spreads. Week 6 and Week 7 each have a push.
 --         Alex missed Week 7 entirely; Sam chose no POW in Week 8.
@@ -168,7 +169,7 @@ from seed_past_games;
 -- (Week 6 Sam, Week 7 Pat, Week 8 Commish).
 -- Alex missed Week 7. POWs: Week 6 Commish MNF, Pat MIA at BUF (a push), Sam CHI at GB, Alex KC at DEN;
 -- Week 7 Commish Thursday, Pat Sunday night, Sam WSH at NYG; Week 8 Commish BUF at NYJ, Pat Monday night,
--- Alex DEN at LAC, and Sam none (so Sam gets the automatic Monday night POW).
+-- Alex DEN at LAC, and Sam none (so Sam has no POW that week: there is no automatic one).
 insert into picks (week_id, game_id, user_id, side, is_pow)
 select
   ('44444444-4444-4444-8444-' || lpad(g.w::text, 12, '0'))::uuid,

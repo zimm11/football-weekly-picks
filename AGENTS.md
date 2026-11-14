@@ -3,7 +3,7 @@
 The app is called **POW Pick'em** in everything players see, and lives at `www.pow-pickem.com`. "Football Weekly Picks" is the repository and service name only.
 
 An NFL pick'em league: each week players pick every game against the spread, mark one Pick of the Week (POW),
-and guess the Monday night total as a tiebreaker. A league admin sets up and closes each week. See "Domain rules".
+and guess the Monday night total as a tiebreaker. A league's admins set up and close each week. See "Domain rules".
 
 pnpm monorepo: React web app + Hono API (Node/TS) + Supabase (managed Auth + Postgres). Deployed to Render via
 GitHub Actions as two services: the web app is a client-side SPA on a Render static site (CDN), and the API is a
@@ -13,12 +13,12 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 
 ## Layout
 
-- `apps/api` — Hono API. `src/app.ts` builds the app (`createApp` takes deps, so tests inject fakes); routes live in `src/leagues.ts` (leagues, invites, standings) and `src/weeks.ts` (week setup, games, picks, results); `src/context.ts` has the access checks; `src/nfl.ts` is the schedule/odds/results provider (ESPN's public scoreboard feed). `src/insights.ts` is the provider behind each game's matchup sheet: team form, injuries and news from ESPN's game summary, and win/cover prices from Kalshi's public market API, cached in memory. `src/index.ts` is the Node entrypoint.
-- `apps/web` — Vite + React. `src/api.ts` has the typed Hono client (`hc<ApiType>`) and the Supabase client. `src/components/` holds presentational components, `src/pages/` the containers that fetch, `src/router.tsx` a small History API router. Styling is Tailwind v4 with shadcn/ui components copied into `src/components/ui/` (see "Design").
+- `apps/api` — Hono API. `src/app.ts` builds the app (`createApp` takes deps, so tests inject fakes) and has the health, config and profile routes; the rest live in `src/leagues.ts` (leagues, members, invites, standings), `src/weeks.ts` (week setup, games, picks, results, recap, insights) and `src/messages.ts` (the message board); `src/context.ts` has the access checks; `src/nfl.ts` is the schedule/odds/results provider (ESPN's public scoreboard feed). `src/insights.ts` is the provider behind each game's matchup sheet: team form, injuries and news from ESPN's game summary, and win/cover prices from Kalshi's public market API, cached in memory. `src/env.ts` validates the environment, `src/logging.ts` is the safe logger, `src/clock.ts` the local clock override, and `src/index.ts` the Node entrypoint.
+- `apps/web` — Vite + React. `src/api.ts` has the typed Hono client (`hc<ApiType>`) and the Supabase client. `src/App.tsx` holds the session, the header and account menu, and picks the page for the route. `src/components/` holds presentational components, `src/pages/` the containers that fetch, `src/router.tsx` a small History API router. Styling is Tailwind v4 with shadcn/ui components copied into `src/components/ui/` (see "Design").
 - `e2e/` — Playwright end-to-end tests and config.
-- `scripts/` — `ports.mjs` (per-worktree ports), `supabase.mjs` (CLI wrapper), `supabase-env.mjs` (writes `.env`), `check-db-url.mjs` (checks a connection string without printing the password: `pbpaste | node scripts/check-db-url.mjs`), `render-deploy.mjs` (deploy step).
-- `packages/db` — Drizzle schema (`src/schema.ts`, the **source of truth** for the DB) and the `createDb` client.
-- `packages/shared` — Zod schemas and types shared by API, web, and the future mobile app. `src/rules.ts` is the rules engine (point values, locks, scoring, tiebreakers) as pure functions; change league rules there. `src/seasons.ts` holds season defaults, guided week suggestions, display phases, and actionable pick counts.
+- `scripts/` — `ports.mjs` (per-worktree ports), `ci-ports.mjs` (a free port group for CI), `supabase.mjs` (CLI wrapper), `supabase-env.mjs` (writes `.env`), `check-db-url.mjs` (checks a connection string without printing the password: `pbpaste | node scripts/check-db-url.mjs`), `icons.mjs` (draws the app icons), `render-deploy.mjs` (deploy step). The `*.test.mjs` files beside them run under Node's test runner.
+- `packages/db` — Drizzle schema (`src/schema.ts`, the **source of truth** for the DB), the `createDb` client, and the TLS policy (`src/connection.ts`).
+- `packages/shared` — Zod schemas and types shared by API, web, and the future mobile app. `src/rules.ts` is the rules engine (point values, locks, scoring, tiebreakers) as pure functions; change league rules there. `src/awards.ts` derives the weekly awards, `src/stats.ts` the season and week analytics shown on Standings and Results, and `src/seasons.ts` holds season defaults, guided week suggestions, display phases, and actionable pick counts. `src/index.ts` also holds the league size limits.
 - `supabase/` — Supabase CLI config, generated SQL migrations, and `seed.sql` (local only: four test accounts, a league, and four closed weeks; the README lists the logins). Update the seed when a schema change would break it.
 
 ## Commands (run from repo root)
@@ -30,23 +30,27 @@ addons, files read from disk at runtime) needs a Dockerfile change.
 - `pnpm build` — production builds: web to `apps/web/dist` (the static site), API bundled by esbuild to `apps/api/dist/index.js` (the Docker image)
 - `pnpm db:erd` — regenerate `docs/schema.md` from the Drizzle schema (`pnpm db:generate` does this too)
 - `pnpm env:local` — write `.env` from the running local Supabase stack
-- `pnpm check` — lint + typecheck + unit/component tests
+- `pnpm check` — lint + typecheck + unit/component/script tests (`pnpm lint`, `pnpm typecheck`, `pnpm test`)
+- `pnpm playwright:install` — one-time Chromium and WebKit install for component and E2E tests
 - `pnpm test:e2e` — Playwright E2E (needs `pnpm db:start`; starts web + API itself, or reuses `pnpm dev`)
 - `pnpm test:e2e:ui` — Playwright UI mode, for debugging
-- `pnpm test:all` — everything
+- `pnpm test:all` — unit/API/component/script tests, then E2E; excludes lint, typecheck, and builds
 - `pnpm format` — Biome auto-fix
 - `pnpm icons` — redraw the app icons in `apps/web/public` (only after changing the design in `scripts/icons.mjs`)
 
 ## Domain rules
 
-- **Structure:** league → seasons (by year) → weeks (1–18, regular season only) → games → picks. A league keeps its members across seasons. Whoever creates a league is its admin; others join through its invite link (`/join/<code>`).
+- **Structure:** league → seasons (by year) → weeks (1–18, regular season only) → games → picks. A league keeps its members across seasons. Whoever creates a league is its first admin; others join through its invite link (`/join/<code>`), which an admin can replace so old links stop working.
+- **Admins:** a league can have several, all equal. Any admin can make a member an admin, revoke another admin (or themselves), and remove members, including the creator. A league always keeps at least one admin. "The admin" below means any of them.
+- **Limits:** at most 100 active members in a league and 25 active leagues per player (`MAX_LEAGUE_MEMBERS`, `MAX_LEAGUES_PER_USER` in `packages/shared`). Creates and joins check them under a lock; rejoining a league you are already in counts against neither.
+- **Accounts:** email and password through Supabase Auth, then a display name (required before anything else). "Forgot password?" emails a link that signs the player in on `/reset-password`; the account menu reaches the same screen as "Change password". `/`, `/login` and `/how-to-play` work signed out.
 - **Week lifecycle:** `draft` (admin only: import games and spreads from the provider, then add/remove games, edit spreads and point values) → `open` (players pick; spreads are fixed unless the admin edits them) → `final` (scored; everyone's picks revealed). The admin pulls results from the provider or types scores in, then closes the week; a closed week can be reopened to correct it.
 - **Picks are private until the week is final.** No endpoint returns another player's picks, points or standings contribution for a week that isn't `final`.
 - **Points:** Thursday and Monday 3; Sunday night, Tuesday, Wednesday, Friday, Saturday 2; other Sunday games 1; Thanksgiving and Christmas Day 4. A winning POW adds 5. A push scores nothing and is neither a win nor a loss. Spreads are stored as the home team's line.
 - **Locks (league time zone):** at 6am on game day, existing picks on that day's games freeze and none of those games can become, stop being, or lose the POW. A missing pick can still be added until kickoff. A game with a result entered is closed to picks whatever the clock says. There is no automatic POW: a player who doesn't choose one has none that week. Because the POW can only go on a game before 6am on its day, a player who hasn't chosen by Sunday morning can still choose any Monday game (either one on a doubleheader), and a late pick can never be the POW. The tiebreaker game is the admin's explicit choice if they made one, otherwise the last Monday game (else the last game), worked out from the slate on every read.
-- **Screens:** inside a league, five tabs (a bar along the bottom on phones, a row under the league name on wider screens): `/leagues/:id` is **Picks** (the pick sheet for the current open week: prioritize missing picks that can still be submitted, then editable picks, then any available games, else the latest open week; keep the displayed sheet stable during background refreshes), `/leagues/:id/results` lists closed weeks, `/leagues/:id/standings` is the season table, `/leagues/:id/messages` is the league-wide message board (threads, replies, and per-player unread indicators), and `/leagues/:id/league` has members and the admin's tools (set up a week, invite link, settings). `/weeks/:id` is one week as every player sees it: the pick sheet while open, results once final; saving picks stays on the sheet. `/weeks/:id/manage` is admin-only week management (games, spreads, results, open/close). Keep picking and managing on separate screens.
+- **Screens:** inside a league, five tabs (a bar along the bottom on phones, a row under the league name on wider screens): `/leagues/:id` is **Picks** (the pick sheet for the current open week: prioritize missing picks that can still be submitted, then editable picks, then any available games, else the latest open week; keep the displayed sheet stable during background refreshes), `/leagues/:id/results` lists closed weeks, `/leagues/:id/standings` is the season table, `/leagues/:id/messages` is the league-wide message board (threads, replies, and per-player unread indicators), and `/leagues/:id/league` has members and the admin's tools (set up a week, invite link, settings). `/weeks/:id` is one week as every player sees it: the pick sheet while open, results once final; saving picks stays on the sheet. `/weeks/:id/manage` is admin-only week management (games, spreads, results, open/close); after opening or finalizing a week it offers to post a message-board thread announcing it. Keep picking and managing on separate screens.
 - **Season and week UI:** one season selector applies across the season-based league tabs and is remembered per league in browser session storage. New seasons are staged explicitly and created with their first week. Future drafts do not displace the default published season. The admin chooses from weeks 1–18 with existing states shown; existing weeks open management instead of creating duplicates. Display phases are derived from kickoffs and scores (Draft → Accepting picks → Games underway → Awaiting finalization → Final); the database still stores only draft/open/final. Only an admin finalizes a week, using **Finalize week**.
-- **Membership and history:** removing a player marks the membership (`removed_at`) instead of deleting it. Each closed week is scored for the people who were in the league when it was played: a player removed after the week's last kickoff stays in it, and one who joined after it isn't added. Don't score past weeks from the current member list.
+- **Membership and history:** removing a player, or a player leaving (League tab → Leave league; the only admin can't until someone else is one), marks the membership (`removed_at`) instead of deleting it. They lose access and can rejoin through an invite link. Each closed week is scored for the people who were in the league when it was played: a player removed after the week's last kickoff stays in it, and one who joined after it isn't added. Don't score past weeks from the current member list.
 - **Pick submissions** run in one transaction that locks the week row and takes a per-player advisory lock, so the lock rules can't be raced. Keep reads, validation and writes inside it.
 - **Weekly winner:** most points, then most games won, then closest guess at the tiebreaker game's total (on equal distance, the guess that didn't go over).
 - **Season standings:** total points, then POWs won, wins, Monday night wins, Sunday night wins.
@@ -99,12 +103,13 @@ Every git worktree runs its own isolated stack, so agents can work in parallel.
 
 ## Testing
 
-| Layer     | Tool                                                               | Location                      | Covers                                                                 |
-| --------- | ------------------------------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------- |
-| Unit      | Vitest (Node)                                                      | `packages/*/src/**/*.test.ts` | Pure logic and Zod schemas                                             |
-| API       | Vitest + `app.request()`                                           | `apps/api/test/`              | Routes, auth, DB behavior. DB suites skip unless `DATABASE_URL` is set |
-| Component | Vitest browser mode (Playwright Chromium) + `vitest-browser-react` | `apps/web/src/**/*.test.tsx`  | Single components given props. No network                              |
-| E2E       | Playwright Test (Chromium + mobile WebKit)                         | `e2e/tests/`                  | Real user flows across web → API → Supabase                            |
+| Layer     | Tool                                                               | Location                                               | Covers                                                                    |
+| --------- | ------------------------------------------------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Unit      | Vitest (Node)                                                      | `packages/*/src/**/*.test.ts`                          | Pure logic and Zod schemas                                                |
+| API       | Vitest + `app.request()`                                           | `apps/api/test/`                                       | Routes, auth, DB behavior. DB suites skip unless `DATABASE_URL` is set    |
+| Component | Vitest browser mode (Playwright Chromium) + `vitest-browser-react` | `apps/web/src/**/*.test.tsx`                           | Single components given props. No network                                 |
+| E2E       | Playwright Test (Chromium + mobile WebKit)                         | `e2e/tests/`                                           | Real user flows across web → API → Supabase                               |
+| Script    | Node test runner                                                   | `scripts/*.test.mjs`, `packages/db/scripts/*.test.mjs` | Deploy and database tooling, credential redaction, CI ports, the manifest |
 
 **Workflow for agents. Follow this before saying a change is done:**
 
@@ -112,11 +117,12 @@ Every git worktree runs its own isolated stack, so agents can work in parallel.
 2. If the change touches UI, routes, auth, or the schema: run `pnpm test:e2e` with `pnpm db:start` running.
 3. For UI changes, also check visually: with `pnpm dev` running, use the Playwright MCP tools to open the web URL from `pnpm ports`, step through the changed flow, and take a screenshot.
 4. Add or update tests at the lowest layer that can catch the bug. E2E covers critical user journeys only.
+5. When a rule or a player-facing flow changes, update the places that describe it: the How to play page (`apps/web/src/pages/HowToPlayPage.tsx`), the README ("Walking through a week", "League rules"), "Domain rules" here, and the comments at the top of `supabase/seed.sql`.
 
 Conventions:
 
 - Query by role, label, or text (`getByRole("button", { name: "Eagles" })`), never by CSS class. Add `aria-label`s so elements are reachable this way.
-- Keep components presentational (data and callbacks in via props) so they're testable without mocks. Containers in `App.tsx` do the fetching.
+- Keep components presentational (data and callbacks in via props) so they're testable without mocks. The containers in `src/pages/` (and `App.tsx` for the session and profile) do the fetching.
 - E2E tests sign up a fresh user per test (the `signedIn` fixture), so they never share state. Tests delete only rows they created; never truncate.
 - Time-dependent logic takes a `now` parameter, so tests pass a fixed date rather than mocking timers. In the API, read time from the `now` dep; in the web app, from `useNow()` or `now()` in `src/clock.ts`, never `new Date()`. That keeps the local `CLOCK_OVERRIDE` (README, "Simulating a different date and time") working.
 

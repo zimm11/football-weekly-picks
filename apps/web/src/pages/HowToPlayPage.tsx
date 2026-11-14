@@ -1,5 +1,5 @@
 import { ArrowRightIcon, ListChecksIcon, TrophyIcon, UsersThreeIcon } from "@phosphor-icons/react";
-import { LOCK_HOUR, POW_BONUS } from "@picks/shared";
+import { LOCK_HOUR, MAX_LEAGUE_MEMBERS, MAX_LEAGUES_PER_USER, POW_BONUS } from "@picks/shared";
 import type { ReactNode } from "react";
 import { buttonVariants } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -172,8 +172,12 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               </p>
               <p className="m-0 text-sm text-muted-foreground">
                 The same order, read from the bottom, names the week's Low Point Loser (LPL): whoever finishes
-                last. Results also hand out a few awards, like the lone wolf who was alone on the right side
-                of a game.
+                last. Players still tied for last share it; nobody is the LPL if the whole league is tied.
+              </p>
+              <p className="m-0 text-sm text-muted-foreground">
+                A perfect week means picking every game and winning them all. A bullseye is an exact
+                tiebreaker guess. A lone wolf is the only player on the covering side of a game at least three
+                players picked.
               </p>
               <p className="m-0 text-sm text-muted-foreground">
                 The tiebreaker is the admin's chosen game, otherwise the last Monday game (or the last game if
@@ -207,8 +211,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
             steps={[
               {
                 title: "Get into your league",
-                detail:
-                  "Create an account or sign in, then choose your display name. Open the invite link your admin sends and press Join league. Your leagues are always one tap away from the POW Pick'em logo.",
+                detail: `Create an account or sign in, then choose your display name. Open the invite link your admin sends and press Join league. You can belong to up to ${MAX_LEAGUES_PER_USER} leagues. Your leagues are always one tap away from the POW Pick'em logo.`,
               },
               {
                 title: "Add it to your home screen",
@@ -218,7 +221,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Open Picks and choose your sides",
                 detail:
-                  "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. If there is no open week, wait for your admin to open one.",
+                  "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. Stats, news & market under a game opens team form, injuries, news, and prediction-market prices for it. If there is no open week, wait for your admin to open one.",
               },
               {
                 title: "Choose your POW and tiebreaker",
@@ -232,7 +235,17 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Check results and the season race",
                 detail:
-                  "Once the admin closes the week, open Results to see everyone's picks and the weekly winner. Open Standings to track season points, POW wins, and your progress week by week.",
+                  "Once the admin closes the week, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
+              },
+              {
+                title: "Talk it over in Messages",
+                detail:
+                  "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read.",
+              },
+              {
+                title: "Manage your account",
+                detail:
+                  "Tap your name in the header to change your name or password, or to sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings.",
               },
             ]}
           />
@@ -247,17 +260,22 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
           </h3>
         </div>
         <p className="m-0 text-muted-foreground">
-          The person who creates a league is its admin. Players make picks; admins also prepare the slate and
-          publish results. Each week moves from Draft → Accepting picks → Games underway → Awaiting
-          finalization → Final. Finalization is an admin action, so results stay private until then.
+          The person who creates a league is its first admin and can make other members admins too. Players
+          make picks; admins also prepare the slate and publish results. Each week moves from Draft →
+          Accepting picks → Games underway → Awaiting finalization → Final. Finalization is an admin action,
+          so results stay private until then.
         </p>
         <Card>
           <Steps
             steps={[
               {
                 title: "Create your league and invite the crew",
+                detail: `From Your leagues, enter a League name and press Create league. In the League tab, check the league time zone in settings and copy the invite link to share with players. The league and its members carry over between seasons. A league can hold up to ${MAX_LEAGUE_MEMBERS} players.`,
+              },
+              {
+                title: "Share the admin work",
                 detail:
-                  "From Your leagues, enter a League name and press Create league. In the League tab, check the league time zone in settings and copy the invite link to share with players. The league and its members carry over between seasons.",
+                  "In the League tab, press Make admin beside a member to give them the same access you have; Revoke admin takes it back and keeps them in the league as a player. Remove takes a member out of the league while keeping their results from weeks already played. Make a new link replaces the invite link, so the old one stops working. A league always keeps at least one admin: if you're the only one, make someone else an admin before leaving or stepping down.",
               },
               {
                 title: "Set up a draft week",
@@ -267,7 +285,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Review the slate, then open picks",
                 detail:
-                  "Check kickoffs, spreads, and point values. Add or remove games, choose the tiebreaker game if needed, and press Save changes after edits. When the slate is ready, press Open week for picks. Players can now find it on their Picks tab.",
+                  "Check kickoffs, spreads, and point values. Add or remove games, choose the tiebreaker game if needed, and press Save changes after edits. When the slate is ready, press Open week for picks. Players can now find it on their Picks tab, and you're offered a league message to announce it.",
               },
               {
                 title: "Make your picks and check submissions",
@@ -277,7 +295,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Record scores and finalize the week",
                 detail:
-                  "In Manage week, press Pull results from ESPN once games are final, or enter scores and press Save changes. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner, and updates season standings. Pulling results and finalizing never change spreads: games are scored against the spreads set when the week opened.",
+                  "In Manage week, press Pull results from ESPN once games are final, or enter scores and press Save changes. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Pulling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
               },
               {
                 title: "Correct results when needed",

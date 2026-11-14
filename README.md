@@ -4,8 +4,11 @@ The code behind **[POW Pick'em](https://www.pow-pickem.com)**, an NFL pick'em le
 against the spread, choose a Pick of the Week (POW), and compete for weekly wins and the season lead.
 A league admin prepares each slate and publishes the results.
 
-The app supports regular-season weeks 1–18, invite-only leagues, multiple seasons, private picks until
-finalization, and season standings with a week-by-week history. It has a phone-first, dark interface.
+The app supports regular-season weeks 1–18, invite-only leagues with shared administration, multiple
+seasons, private picks until finalization, and season standings with a week-by-week history. Each game has
+a matchup sheet with team stats, injuries, news, and prediction-market prices. Finalized weeks hand out
+awards and name a Low Point Loser, and each league has a message board. The interface is phone-first and
+dark, and the app can be added to a phone's home screen.
 
 - [Local setup](#local-setup)
 - [Trying the app locally](#trying-the-app-locally)
@@ -59,6 +62,7 @@ Running it again overwrites `.env`.
 | `DATABASE_URL`             | PostgreSQL connection string used by the API              | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` locally |
 | `SUPABASE_URL`             | Supabase Auth project URL                                 | `http://127.0.0.1:54321` locally                                  |
 | `SUPABASE_PUBLISHABLE_KEY` | Public Supabase publishable key, or legacy `anon` key     | Generated from the local stack                                    |
+| `INBOX_URL`                | Local test inbox, read by the password-reset E2E tests    | `http://127.0.0.1:54324` locally; not used by the API             |
 
 The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
 needs no environment variables. Database credentials stay on the API server.
@@ -114,7 +118,8 @@ The **Sunday Crew** league has a 2026 season with **Weeks 6–9 already finalize
 the week-by-week grid, and rank movement have history to explore. Week 9 uses the matchups and scores
 recorded in the seed with made-up spreads; Weeks 6–8 use made-up eight-game slates. The fixtures include
 pushes, weeks with no POW, and missed picks, including Alex missing all of Week 7. Later weeks are absent
-so you can create them yourself.
+so you can create them yourself. Each seeded account sees the Week 9 results recap the first time it
+opens the league.
 
 Local sign-up needs no email confirmation. You can create an account with a made-up email address and
 a password of at least six characters. To join the seeded league, open `/join/local-invite` on your web
@@ -126,27 +131,35 @@ Sessions are stored per browser profile, so both accounts can stay signed in sid
 
 ### Walking through a week
 
-1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has four tabs: **Picks**,
-   **Results**, **Standings**, and **League**. The **Season** selector applies across all four.
+1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has five tabs: **Picks**,
+   **Results**, **Standings**, **Messages**, and **League**. The **Season** selector applies to every tab
+   except Messages, which is league-wide.
 2. Open **League**, select an unused week, and press **Create week**. To prepare another year, choose
    **Start a new season** in the season selector; the season is created with its first week. Existing
    weeks open with **Manage week**. With **Import games and spreads from ESPN** checked, creation
    fetches the slate from ESPN and opens the draft's management screen. Imports need internet access.
 3. Review kickoffs, spreads, point values, and the tiebreaker game. Add or remove games as needed and
-   press **Save changes** after edits. A draft is visible only to the admin. Every game needs a spread
-   before you can press **Open week for picks**.
+   press **Save changes** after edits. A draft is visible only to admins. Every game needs a spread
+   before you can press **Open week for picks**. After the week opens, the app offers to post a league
+   message announcing it; you can edit the draft or skip it.
 4. Follow **Make your own picks**, or open **Picks**. Select teams, mark one POW, enter a guess for the
    tiebreaker game's combined score, and press **Save picks**. A partial sheet can be saved and completed
-   later. Then try the player account. The admin's management screen shows submission counts and
-   whether a POW was chosen; other players' choices remain private.
+   later. **Stats, news & market** on a game opens its matchup sheet. Then try the player account. The
+   admin's management screen shows submission counts and whether a POW was chosen; other players'
+   choices remain private.
 5. In **Manage week**, press **Pull results from ESPN** once games are final, or enter both scores for
    each game and press **Save changes**. Results imports update games originally imported from ESPN;
    manually added games need manually entered scores. Recording a result closes that game to picks
    immediately.
 6. When every game has a score, press **Finalize week** and confirm. This reveals everyone's picks,
-   names the weekly winner, and includes the week in standings. **Reopen week** lets you correct a score
-   or spread. While reopened, other players' picks are hidden again and the week is excluded from
-   standings until finalized again.
+   names the weekly winner and any Low Point Loser, hands out the week's awards, and includes the week in
+   standings. The app again offers to post a league message, with final results shown beside the draft
+   for reference. Each other player sees a one-time results recap the next time they open the league.
+   **Reopen week** lets you correct a score or spread. While reopened, other players' picks are hidden
+   again and the week is
+   excluded from standings until finalized again; the corrected week is then recapped again.
+7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
+   with posts you haven't opened.
 
 ### Sharing league administration
 
@@ -156,10 +169,26 @@ Admins can revoke each other's admin access or remove each other, including the 
 **Revoke admin** keeps that person in the league as a player with their picks and results. Admins can
 also step down themselves, provided at least one active admin remains.
 
+### Leaving, removal, and limits
+
+Any member can use **League → Leave league**; an admin can **Remove** another member. Either way the
+person loses access, weeks they already played keep their results, and they can rejoin through an invite
+link. A league's only admin must make someone else an admin before leaving. **Make a new link** replaces
+the invite link, so links already shared stop working. A league holds at most 100 players, and one
+account can be in at most 25 leagues; removed and departed members don't count toward either limit.
+
+### Accounts and passwords
+
+**Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
+password. Locally, that email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
+use **Change password** or **Change your name** from the account menu in the header.
+
 ### Testing locks and inspecting data
 
-Locks use the real clock and the league's time zone. An imported historical week may already be locked.
-To exercise different states, add games manually in a draft and open the week:
+Locks use the league's time zone and the real clock unless `CLOCK_OVERRIDE` is set locally (see
+[Simulating a different date and time](#simulating-a-different-date-and-time-local-only)). An imported
+historical week may already be locked. To exercise different states, add games manually in a draft and
+open the week:
 
 | Game timing                                 | What to expect                                                                                     |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -175,13 +204,17 @@ emails sent by the local Auth service.
 ## League rules
 
 The app's `/how-to-play` page explains the player and admin flows.
-[`packages/shared/src/rules.ts`](packages/shared/src/rules.ts) is the implementation of scoring and locks.
+[`packages/shared/src/rules.ts`](packages/shared/src/rules.ts) is the implementation of scoring and locks,
+and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the weekly awards.
 
 ### Scoring
 
 Pick the team that will cover the displayed spread. Spreads are stored as the home team's line: `-3.5`
 means the home team is favored by 3.5 points. A winning pick earns the game's points. Losing and missing
 picks earn zero; a push earns zero and counts as neither a win nor a loss.
+
+Spreads stay fixed after opening unless an admin edits them manually. Pulling results and finalizing
+never replace them with new provider lines; scoring uses the spreads currently saved in the app.
 
 Default point values use **Eastern time**, with holidays taking priority. Admins can override each game's value.
 
@@ -214,10 +247,24 @@ added after 6am on game day, can't be the POW.
 - **Season ranking:** total points from finalized weeks, then POWs won, total wins, Monday wins, and
   Sunday night wins. Remaining ties share a rank.
 
+### Awards and the Low Point Loser
+
+Each finalized week names its winner and hands out these, all worked out from the final results:
+
+| Award                 | Who gets it                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| Low Point Loser (LPL) | Last place by the weekly ranking. Shared if still level; nobody if the whole league tied. |
+| Perfect week          | Picked every game and won them all                                                        |
+| Bullseye              | Guessed the tiebreaker game's combined score exactly                                      |
+| Lone wolf             | The only player on the covering side of a game that at least three players picked         |
+
+### Week lifecycle, privacy, and history
+
 The stored week lifecycle is `draft → open → final`; only an admin finalizes a week. The interface derives
 additional phases such as **Games underway** and **Awaiting finalization** from kickoffs and scores.
-Picks stay private until finalization, including from the admin. Removing a member preserves their history;
-weekly participation uses membership dates rather than applying today's member list to past weeks.
+Picks stay private until finalization, including from admins. Removing a member, or a member leaving,
+preserves their history; weekly participation uses membership dates rather than applying today's member
+list to past weeks.
 
 ## Architecture and repository layout
 
@@ -226,8 +273,9 @@ This is a TypeScript pnpm workspace with a React SPA, a Hono API, and Supabase A
 ```text
 Browser ── /api/* ──> Hono API ── Drizzle ──> PostgreSQL
    │                     │
-   └── Supabase Auth     ├── verifies Supabase access tokens
-                         └── ESPN scoreboard (admin imports)
+   ├── Supabase Auth     ├── verifies Supabase access tokens
+   └── ESPN image CDN    ├── ESPN scoreboard (admin imports)
+       (team logos)      └── ESPN game summary + Kalshi markets (matchup sheet)
 ```
 
 Vite proxies `/api` to the API during development. In production, the Render static site proxies those
@@ -235,17 +283,17 @@ requests to the API service, keeping browser API requests on the same origin. Th
 Supabase Auth and sends its access token to the API as `Authorization: Bearer <access_token>`.
 Application data goes through the API; app tables have row-level security enabled without client policies.
 
-| Path                                     | Responsibility                                                                                                        |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [`apps/web`](apps/web)                   | React 19, Vite, Tailwind CSS v4, shadcn/ui, and a small History API router; pages fetch data and components render it |
-| [`apps/api`](apps/api)                   | Hono routes for profiles, leagues, invites, weeks, picks, and results; Node server and ESPN provider                  |
-| [`packages/shared`](packages/shared)     | Shared Zod schemas, types, scoring, locks, season selection, and statistics                                           |
-| [`packages/db`](packages/db)             | Drizzle schema, PostgreSQL client, TLS policy, migration generation, and schema documentation generator               |
-| [`supabase`](supabase)                   | Local service configuration, SQL migrations, migration metadata, and development seed                                 |
-| [`e2e`](e2e)                             | Playwright full-stack tests for desktop Chromium and mobile WebKit                                                    |
-| [`scripts`](scripts)                     | Worktree ports, Supabase wrappers, environment generation, connection diagnostics, and Render deployment              |
-| [`.github/workflows`](.github/workflows) | CI checks and production deployment                                                                                   |
-| [`docs/schema.md`](docs/schema.md)       | Generated ER diagram and table/column reference                                                                       |
+| Path                                     | Responsibility                                                                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [`apps/web`](apps/web)                   | React 19, Vite, Tailwind CSS v4, shadcn/ui, and a small History API router; pages fetch data and components render it   |
+| [`apps/api`](apps/api)                   | Hono routes for profiles, leagues, invites, weeks, picks, results, and messages; Node server, ESPN and Kalshi providers |
+| [`packages/shared`](packages/shared)     | Shared Zod schemas, types, scoring, locks, awards, season selection, and statistics                                     |
+| [`packages/db`](packages/db)             | Drizzle schema, PostgreSQL client, TLS policy, migration generation, and schema documentation generator                 |
+| [`supabase`](supabase)                   | Local service configuration, SQL migrations, migration metadata, and development seed                                   |
+| [`e2e`](e2e)                             | Playwright full-stack tests for desktop Chromium and mobile WebKit                                                      |
+| [`scripts`](scripts)                     | Worktree ports, Supabase wrappers, environment generation, connection diagnostics, app icons, and Render deployment     |
+| [`.github/workflows`](.github/workflows) | CI checks and production deployment                                                                                     |
+| [`docs/schema.md`](docs/schema.md)       | Generated ER diagram and table/column reference                                                                         |
 
 Useful starting points are [`apps/api/src/app.ts`](apps/api/src/app.ts) for API composition,
 [`apps/web/src/api.ts`](apps/web/src/api.ts) for the typed Hono client and Auth configuration, and
@@ -254,6 +302,15 @@ contracts live in `packages/shared`. Keep Hono routes chained so the client reta
 
 ESPN imports use a public, unofficial scoreboard feed with no API key. It may omit spreads or change shape;
 the admin can enter games, spreads, and scores manually. Imports and score pulls are explicit admin actions.
+
+The matchup sheet loads on demand from `GET /api/games/:gameId/insights`. Team form, injuries, leaders, and
+news come from ESPN's game summary; win and cover prices come from Kalshi's public market API. Neither needs
+a key, both are cached in memory, and either can fail on its own: the sheet shows whatever arrived. A game
+added by hand has no ESPN stats. The sheet contains public background only, never this league's picks.
+Team logos are loaded by the browser from ESPN's image CDN (`a.espncdn.com`).
+
+The web app has a manifest and icons so it can be installed to a home screen. There is no service worker,
+so nothing works offline.
 
 ## Development and testing
 
@@ -273,6 +330,7 @@ Run workspace commands from the repository root:
 | `pnpm test:e2e`    | Run full-stack Playwright tests                                                    |
 | `pnpm test:e2e:ui` | Open Playwright's interactive test runner                                          |
 | `pnpm test:all`    | Run `pnpm test` followed by E2E tests                                              |
+| `pnpm icons`       | Redraw the app icons in `apps/web/public` after changing `scripts/icons.mjs`       |
 
 `pnpm check` does not include E2E tests or production builds. `pnpm test:all` does not include lint or
 type checking. For a full local verification, run `pnpm check`, `pnpm test:e2e`, and `pnpm build` after
@@ -347,8 +405,10 @@ site continues to load.
 2. Set the API service's `DATABASE_URL` to the Supabase **session pooler** connection string, plus
    `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. The Blueprint sets `PORT=10000`.
 3. Configure Supabase Auth's Site URL and redirect URLs for the public web URL, including the custom
-   domain if used. Check that the static site's `/api/*` rewrite points at your API service; its
-   `onrender.com` destination is explicit in `render.yaml`.
+   domain if used. The redirect URLs must cover `/reset-password` (password reset emails) and the pages
+   people sign up from, such as `/join/<code>` (the confirmation email returns them there). Check that the
+   static site's `/api/*` rewrite points at your API service; its `onrender.com` destination is explicit
+   in `render.yaml`.
 4. Add these GitHub Actions secrets to the **`production` environment**:
 
    | Secret                  | Purpose                                                                                    |
@@ -422,6 +482,8 @@ pbpaste | node scripts/check-db-url.mjs
 | A new week has no import or a missing spread            | ESPN may have no schedule or odds for that week. Retry the import while still in draft, or add/edit games manually. |
 | Picks are locked in an imported week                    | Locks follow actual kickoffs and the league time zone. Use manually added future games to test picking.             |
 | Finalize week is unavailable                            | Every game needs both final scores. Enter scores for manually added games; ESPN results only update imported games. |
+| The matchup sheet is empty or missing a section         | ESPN or Kalshi had nothing for the game or didn't answer. Manually added games have no ESPN stats.                  |
+| A password reset email never arrives locally            | Local Auth doesn't send real email. Open the test inbox URL from `pnpm ports`.                                      |
 | Production health or migration connection check fails   | Check the session pooler URL, verified TLS, and Supabase SSL enforcement. Use the connection diagnostic above.      |
 
 See [`AGENTS.md`](AGENTS.md) for additional contributor guidance on UI conventions, API structure, and
