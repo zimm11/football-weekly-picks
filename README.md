@@ -129,6 +129,14 @@ URL, sign in, and press **Join league**. In the main checkout, that URL is
 Use a normal browser window for the admin and a private window or different browser profile for a player.
 Sessions are stored per browser profile, so both accounts can stay signed in side by side.
 
+### Adding POW Pick'em to your home screen
+
+In a browser, **Your leagues** and each league screen show **Add to home screen**. It opens
+instructions over the current screen, keeping unsaved picks in place. The prompt is hidden when
+running from the home-screen app. The public **How to play** guide also has a dedicated
+**Add to home screen** section with Safari and Chrome steps. Open the new icon after adding it;
+you may need to sign in again. The app requires an internet connection.
+
 ### Feedback and app operator
 
 Signed-in players can choose **Send feedback** from their account menu to report a bug, request a
@@ -153,6 +161,8 @@ This local setting is not applied to production. The feedback migration must be 
 new API, using the normal migration and deployment workflow.
 
 ### Walking through a week
+
+For quick access, use **Add to home screen** above your league content before starting the week.
 
 1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has five tabs: **Picks**,
    **Results**, **Standings**, **Messages**, and **League**. The **Season** selector applies to every tab
@@ -226,7 +236,7 @@ emails sent by the local Auth service.
 
 ## League rules
 
-The app's `/how-to-play` page explains the player and admin flows.
+The app's `/how-to-play` page explains the player and admin flows and includes a separate home-screen installation guide.
 [`packages/shared/src/rules.ts`](packages/shared/src/rules.ts) is the implementation of scoring and locks,
 and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the weekly awards.
 
