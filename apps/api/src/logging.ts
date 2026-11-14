@@ -89,7 +89,7 @@ export function logError(operation: keyof typeof operationMessages, error: unkno
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /(?:apps\/api\/src\/|\/app\/api\/)(app|auth|context|env|index|insights|leagues|logging|messages|nfl|weeks)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /(?:apps\/api\/src\/|\/app\/api\/)(app|auth|context|env|index|insights|leagues|logging|messages|nfl|operator|weeks)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;
@@ -97,7 +97,9 @@ export function logError(operation: keyof typeof operationMessages, error: unkno
   const fields =
     code === "INVALID_ENVIRONMENT" && Array.isArray(inputFields)
       ? inputFields.filter((field) =>
-          ["PORT", "DATABASE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"].includes(field),
+          ["PORT", "DATABASE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "OPERATOR_USER_IDS"].includes(
+            field,
+          ),
         )
       : undefined;
   console.error(JSON.stringify({ event: "error", operation, message, code, requestId, location, fields }));

@@ -14,6 +14,7 @@ role, can read or write them.
 
 ```mermaid
 erDiagram
+  auth_users |o--o{ feedback : "user_id"
   weeks ||--o{ games : "week_id"
   leagues ||--o{ league_members : "league_id"
   auth_users ||--o{ league_members : "user_id"
@@ -36,6 +37,16 @@ erDiagram
   games |o--o{ weeks : "tiebreaker_game_id"
   auth_users["auth.users (Supabase Auth)"] {
     uuid id PK
+  }
+  feedback {
+    uuid id PK
+    uuid user_id FK
+    text kind
+    text message
+    text page
+    text user_agent
+    text status
+    timestamptz created_at
   }
   games {
     uuid id PK
@@ -132,6 +143,21 @@ erDiagram
 Lines read parent to child and are labelled with the child's foreign-key column.
 
 ## Tables
+
+### `feedback`
+
+A bug report, feature request or note a player sent to the people who run the app. Read on the operator screen.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `user_id` | uuid | yes | FK → `auth.users.id` | Who sent it. Null once that account is deleted; the report is kept. |
+| `kind` | text | no |  | One of: `bug`, `feature`, `other`. |
+| `message` | text | no |  |  |
+| `page` | text | yes |  | The app path the player was on when they opened the form, e.g. "/leagues/<id>/standings". |
+| `user_agent` | text | yes |  | The browser's user agent, to help reproduce a bug. |
+| `status` | text | no |  | open: not dealt with yet. done: the operator has handled it. One of: `open`, `done`. Has a default. |
+| `created_at` | timestamptz | no |  | Has a default. |
 
 ### `games`
 

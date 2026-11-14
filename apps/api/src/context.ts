@@ -28,9 +28,15 @@ export type AppDeps = {
   now?: () => Date;
   /** Membership caps; injected so tests can use small numbers. Defaults to the shared limits. */
   limits?: { membersPerLeague: number; leaguesPerUser: number };
+  /** Accounts that run the app (`OPERATOR_USER_IDS`): they can read feedback and app-wide counts. */
+  operatorUserIds?: readonly string[];
 };
 
-type Status = 400 | 403 | 404 | 409 | 502;
+/** Whether this account runs the app. Decided by user id, which a player cannot change, never by email. */
+export const isOperator = (deps: Pick<AppDeps, "operatorUserIds">, userId: string) =>
+  deps.operatorUserIds?.includes(userId) ?? false;
+
+type Status = 400 | 403 | 404 | 409 | 429 | 502;
 
 export function fail(status: Status, message: string): never {
   throw new HTTPException(status, { message });

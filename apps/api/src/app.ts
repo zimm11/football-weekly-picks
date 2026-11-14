@@ -4,10 +4,11 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { type AuthVariables, requireAuth } from "./auth";
-import { type AppDeps, body } from "./context";
+import { type AppDeps, body, isOperator } from "./context";
 import { leagueRoutes } from "./leagues";
 import { logError, requestLogger } from "./logging";
 import { messageRoutes } from "./messages";
+import { operatorRoutes } from "./operator";
 import { weekRoutes } from "./weeks";
 
 export type { AppDeps } from "./context";
@@ -30,7 +31,11 @@ export function createApp(deps: AppDeps) {
     .get("/config", (c) => c.json(publicConfig))
     .get("/me", auth, async (c) => {
       const [profile] = await db.select().from(profiles).where(eq(profiles.userId, c.var.user.id));
-      const me: Me = { ...c.var.user, displayName: profile?.displayName ?? null };
+      const me: Me = {
+        ...c.var.user,
+        displayName: profile?.displayName ?? null,
+        isOperator: isOperator(deps, c.var.user.id),
+      };
       return c.json(me);
     })
     .put("/me", auth, body(updateProfileSchema), async (c) => {
@@ -39,12 +44,13 @@ export function createApp(deps: AppDeps) {
         .insert(profiles)
         .values({ userId: c.var.user.id, displayName })
         .onConflictDoUpdate({ target: profiles.userId, set: { displayName } });
-      const me: Me = { ...c.var.user, displayName };
+      const me: Me = { ...c.var.user, displayName, isOperator: isOperator(deps, c.var.user.id) };
       return c.json(me);
     })
     .route("/", leagueRoutes(deps))
     .route("/", weekRoutes(deps))
-    .route("/", messageRoutes(deps));
+    .route("/", messageRoutes(deps))
+    .route("/", operatorRoutes(deps));
 
   const app = new Hono<{ Variables: AuthVariables }>().use(requestLogger).route("/api", api);
   app.onError((err, c) => {
