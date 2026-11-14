@@ -40,6 +40,24 @@ export function ListSkeleton({ label, rows = 3 }: { label: string; rows?: number
   );
 }
 
+/** Checkbox rows with a label and a description, inside a card that is already on screen: settings. */
+export function SettingsSkeleton({ label, rows = 2 }: { label: string; rows?: number }) {
+  return (
+    <Loading label={label}>
+      {Array.from({ length: rows }, (_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: placeholders have no identity.
+        <div key={i} className="flex min-h-11 items-start gap-3 py-1">
+          <Skeleton className="size-5 shrink-0 rounded-sm" />
+          <div className="grid flex-1 gap-2">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        </div>
+      ))}
+    </Loading>
+  );
+}
+
 function GameCardSkeleton() {
   return (
     <div className="grid gap-3 rounded-xl bg-card p-3">

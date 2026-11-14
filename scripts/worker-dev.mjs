@@ -5,6 +5,9 @@
 //
 //   pnpm worker:dev   → http://localhost:<PORT + 1000> (override with WORKER_PORT)
 //
+// Email goes to the local test inbox, as with `pnpm dev`, not through Cloudflare. The Cron Trigger doesn't fire
+// on its own; run the email job with `curl "http://localhost:<port>/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*"`.
+//
 // Reads the local stack's settings from .env (`pnpm db:start`, then `pnpm env:local`) or, in CI, from the
 // environment. Hyperdrive isn't emulated locally: the Worker connects straight to the database at DATABASE_URL.
 import { execFileSync, spawn } from "node:child_process";
@@ -25,7 +28,15 @@ const port = process.env.WORKER_PORT ?? String(Number(process.env.PORT ?? 8787) 
 // The Worker gets only the settings it reads (as in production), through a private temporary file.
 const dir = mkdtempSync(path.join(tmpdir(), "picks-worker-"));
 const envFile = path.join(dir, ".env");
-const vars = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "OPERATOR_USER_IDS"]
+const vars = [
+  "SUPABASE_URL",
+  "SUPABASE_PUBLISHABLE_KEY",
+  "OPERATOR_USER_IDS",
+  "UNSUBSCRIBE_SECRET",
+  "INBOX_URL",
+  "EMAIL_DAILY_LIMIT",
+  "EMAIL_MONTHLY_LIMIT",
+]
   .filter((key) => process.env[key] !== undefined)
   .map((key) => `${key}=${JSON.stringify(process.env[key])}`);
 writeFileSync(envFile, `${vars.join("\n")}\n`, { mode: 0o600 });
@@ -44,6 +55,8 @@ const wrangler = spawn(
     ...["exec", "wrangler", "dev", "--env-file", envFile, "--port", port],
     // Local Postgres has no TLS, so the Worker mustn't insist on it (see src/worker.ts).
     ...["--var", "NODE_ENV:development", "--show-interactive-dev-session=false"],
+    // Links in emails point at this server, which serves the web app too.
+    ...["--var", `APP_URL:http://localhost:${port}`, "--test-scheduled"],
   ],
   {
     cwd: path.join(ROOT, "apps/api"),

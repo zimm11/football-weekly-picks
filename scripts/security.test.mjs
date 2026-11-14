@@ -46,12 +46,17 @@ test("CI selects a different port group when the default database port is occupi
 });
 
 test("E2E refuses remote databases and auth services before tests or captures can run", () => {
-  const local = { DATABASE_URL: "postgresql://u:p@127.0.0.1/db", SUPABASE_URL: "http://localhost:54321" };
+  const local = {
+    DATABASE_URL: "postgresql://u:p@127.0.0.1/db",
+    SUPABASE_URL: "http://localhost:54321",
+    INBOX_URL: "http://127.0.0.1:54324",
+  };
   assert.doesNotThrow(() => assertLocalTestEnv(local));
   for (const [name, value] of [
     ["DATABASE_URL", "postgresql://u:synthetic-password@db.example.com/db"],
     ["DATABASE_URL", "postgresql://u:synthetic-password@localhost/db?host=remote"],
     ["SUPABASE_URL", "https://project.supabase.co"],
+    ["INBOX_URL", "https://mail.example.com"],
   ]) {
     assert.throws(
       () => assertLocalTestEnv({ ...local, [name]: value }),

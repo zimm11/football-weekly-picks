@@ -21,6 +21,7 @@ import { SimulatedClockBanner } from "./components/SimulatedClockBanner";
 import { Splash } from "./components/Splash";
 import { buttonVariants } from "./components/ui/button";
 import { notifyDone } from "./notify";
+import { AccountPage } from "./pages/AccountPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { HowToPlayPage } from "./pages/HowToPlayPage";
 import { LandingPage } from "./pages/LandingPage";
@@ -28,6 +29,7 @@ import { LeaguePage } from "./pages/LeaguePage";
 import { JoinPage, LeaguesPage } from "./pages/LeaguesPage";
 import { ManageWeekPage } from "./pages/ManageWeekPage";
 import { OperatorPage } from "./pages/OperatorPage";
+import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { useNow } from "./pages/useNow";
 import { WeekPage } from "./pages/WeekPage";
 import { Link, matchRoute, navigate, usePath } from "./router";
@@ -123,7 +125,14 @@ export function App() {
     let unsubscribe: (() => void) | undefined;
     getSupabase().then((sb) => {
       sb.auth.getSession().then(({ data }) => setSession(data.session));
-      unsubscribe = sb.auth.onAuthStateChange((_e, s) => setSession(s)).data.subscription.unsubscribe;
+      unsubscribe = sb.auth.onAuthStateChange((event, s) => {
+        setSession(s);
+        // A reset link signs the player in. If Auth sent them somewhere other than the reset screen
+        // (e.g. a redirect URL it doesn't allow), still ask for the new password.
+        if (event === "PASSWORD_RECOVERY" && window.location.pathname !== "/reset-password") {
+          navigate("/reset-password");
+        }
+      }).data.subscription.unsubscribe;
     });
     return () => unsubscribe?.();
   }, []);
@@ -153,6 +162,14 @@ export function App() {
     return (
       <Shell>
         <HowToPlayPage signedIn={false} />
+      </Shell>
+    );
+  }
+  // Unsubscribe links work without signing in.
+  if (route.page === "unsubscribe" && !session) {
+    return (
+      <Shell>
+        <UnsubscribePage signedIn={false} />
       </Shell>
     );
   }
@@ -199,10 +216,18 @@ export function App() {
     );
   }
   // Keyed by user so nothing from a previous account survives a switch.
-  return <SignedIn key={session.user.id} userId={session.user.id} route={route} />;
+  return <SignedIn key={session.user.id} userId={session.user.id} email={session.user.email} route={route} />;
 }
 
-function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof matchRoute> }) {
+function SignedIn({
+  userId,
+  email,
+  route,
+}: {
+  userId: string;
+  email?: string;
+  route: ReturnType<typeof matchRoute>;
+}) {
   const [me, setMe] = useState<Me>();
   const [error, setError] = useState<string>();
   const [editingName, setEditingName] = useState(false);
@@ -248,6 +273,7 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
         {me?.displayName && (
           <DropdownMenuItem onSelect={() => setEditingName(true)}>Change your name</DropdownMenuItem>
         )}
+        <DropdownMenuItem onSelect={() => navigate("/account")}>Account settings</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/reset-password")}>Change password</DropdownMenuItem>
         {me?.displayName && route.page !== "feedback" && (
           // Carries the screen they were on, so a bug report says where it happened.
@@ -314,6 +340,8 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
                 <LeaguesPage playerName={me.displayName} />
               )}
               {route.page === "join" && <JoinPage code={route.code} />}
+              {route.page === "account" && <AccountPage email={email} />}
+              {route.page === "unsubscribe" && <UnsubscribePage signedIn />}
               {route.page === "league" && (
                 <LeaguePage
                   key={route.leagueId}

@@ -55,14 +55,19 @@ pnpm test:all           # unit, component, script, API, and E2E tests
 the generated `.env` includes working local credentials and the correct ports for this checkout.
 Running it again overwrites `.env`.
 
-| Variable                   | Purpose                                                   | Main checkout / default                                           |
-| -------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------- |
-| `PORT`                     | API listen port; also used by the dev proxy and E2E tests | `8787`                                                            |
-| `WEB_PORT`                 | Vite dev server and E2E web port                          | `5173`                                                            |
-| `DATABASE_URL`             | PostgreSQL connection string used by the API              | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` locally |
-| `SUPABASE_URL`             | Supabase Auth project URL                                 | `http://127.0.0.1:54321` locally                                  |
-| `SUPABASE_PUBLISHABLE_KEY` | Public Supabase publishable key, or legacy `anon` key     | Generated from the local stack                                    |
-| `INBOX_URL`                | Local test inbox, read by the password-reset E2E tests    | `http://127.0.0.1:54324` locally; not used by the API             |
+| Variable                   | Purpose                                                      | Main checkout / default                                           |
+| -------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `PORT`                     | API listen port; also used by the dev proxy and E2E tests    | `8787`                                                            |
+| `WEB_PORT`                 | Vite dev server and E2E web port                             | `5173`                                                            |
+| `DATABASE_URL`             | PostgreSQL connection string used by the API                 | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` locally |
+| `SUPABASE_URL`             | Supabase Auth project URL                                    | `http://127.0.0.1:54321` locally                                  |
+| `SUPABASE_PUBLISHABLE_KEY` | Public Supabase publishable key, or legacy `anon` key        | Generated from the local stack                                    |
+| `INBOX_URL`                | Local mailer: the stack's test inbox (refused in production) | `http://127.0.0.1:54324` locally                                  |
+| `APP_URL`                  | Web origin that links in emails point at                     | `http://localhost:5173` locally                                   |
+| `UNSUBSCRIBE_SECRET`       | Signs unsubscribe links (32+ characters); turns email on     | A fixed local-only value                                          |
+| `EMAIL_FROM`               | Sender of notification emails                                | `POW Pick'em <noreply@pow-pickem.com>`                            |
+| `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                    | `150` (`10000` locally)                                           |
+| `EMAIL_MONTHLY_LIMIT`      | Most notification emails sent per UTC calendar month         | `2500` (`100000` locally)                                         |
 
 The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
 needs no environment variables. Database credentials stay on the API server.
@@ -80,6 +85,19 @@ The API's clock starts at that moment and keeps running in real time. The web ap
 from `/api/config` and shows a **Simulated time** banner under the header. Restart `pnpm dev` to change or
 clear it. The API refuses to start with `CLOCK_OVERRIDE` when `NODE_ENV=production`, so it can't reach the
 deployed service. Rows the database timestamps itself (such as message times) still use the real clock.
+
+#### Email locally
+
+Every email (Supabase Auth's password resets and email changes, and the API's notification emails) goes to
+the local stack's **test inbox**; `pnpm ports` prints its URL. Nothing leaves your machine, under `pnpm dev`
+or `pnpm worker:dev`.
+
+- **New-thread emails** go out as soon as a thread is posted.
+- **Pick reminders** and retries come from the email job. In production the Worker's Cron Trigger runs it
+  every five minutes; `pnpm dev` runs it every minute instead. To see a reminder, start the API with
+  `CLOCK_OVERRIDE` set to an evening before a game day (after 7pm league time) with an open week.
+  Under `pnpm worker:dev` the cron doesn't fire by itself: run it with
+  `curl "http://localhost:<worker port>/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*"`.
 
 ### Ports, worktrees, and stopping the stack
 
@@ -220,7 +238,9 @@ account can be in at most 25 leagues; removed and departed members don't count t
 
 **Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
 password. Locally, that email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
-use **Change password** or **Change your name** from the account menu in the header.
+use **Change password** or **Change your name** from the account menu in the header. **Account settings**
+(`/account`) changes the email address (confirmed from both the old and the new address) and turns
+new-thread emails and pick reminders on or off.
 
 ### Testing locks and inspecting data
 
@@ -444,10 +464,11 @@ The app is one [Cloudflare Worker](https://developers.cloudflare.com/workers/), 
 | Hyperdrive                 | Pools database connections and verifies Supabase's certificate (`verify-full` with the Supabase CA)    |
 | `apps/web/public/_headers` | Caches hashed files under `/assets/` forever                                                           |
 
-Workers start in milliseconds, so there is no cold-start wait. The free plan covers this app: static asset
-requests are free, and API requests and Hyperdrive queries each allow 100,000 a day. A request may use
+Workers start in milliseconds, so there is no cold-start wait. The free plan covers the app itself: static
+asset requests are free, and API requests and Hyperdrive queries each allow 100,000 a day. A request may use
 10 ms of CPU on the free plan (time waiting on the database or ESPN doesn't count); Workers Logs show each
-request's CPU time.
+request's CPU time. **Email needs Workers Paid** ($5 a month): Cloudflare Email Sending can only send to
+your own verified addresses on the free plan (see "Email" below).
 
 `pnpm worker:dev` runs the same Worker locally against local Supabase. Day-to-day development stays on
 `pnpm dev` (Node), which `src/index.ts` serves.
@@ -480,6 +501,60 @@ Run these once from `apps/api` (`pnpm exec wrangler login` first):
    | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the Worker                                                |
 
 7. Verify the database TLS configuration described below before deploying.
+
+### Email
+
+Two kinds of email, both sent through [Cloudflare Email Sending](https://developers.cloudflare.com/email-service/)
+from `noreply@pow-pickem.com`:
+
+- **Sign-in emails** (password reset, email-change confirmation, and notices after a password or email
+  change) are sent by Supabase Auth over Cloudflare's SMTP relay. Branded templates live in
+  `supabase/templates/` and are wired up in `supabase/config.toml`.
+- **Notification emails** (a new message thread; a pick reminder at 7pm league time the evening before a game
+  day, to players with games still to pick) are sent by the Worker through its `send_email` binding (`EMAIL`
+  in `wrangler.jsonc`; no API key). They are queued in the `email_outbox` table, so each is sent once
+  (per-email dedupe keys) and retried with backoff if Cloudflare can't take it. Players turn either kind off
+  under **Account settings** or with the link in each email, which also carries one-click
+  `List-Unsubscribe` headers.
+
+The Worker's **Cron Trigger** (`*/5 * * * *` in `wrangler.jsonc`) runs the email job: it queues the pick
+reminders that are due and sends or retries whatever is waiting. A new thread's emails go out straight after
+the post, in the same request's `waitUntil`; anything left over is picked up by the next run. The job is
+idempotent. Runs that did something log an `email_jobs` line with counts; failures log Cloudflare's error code
+(for example `E_SENDER_NOT_VERIFIED` or `E_RECIPIENT_SUPPRESSED`), never the provider's message.
+
+**Budget.** Workers Paid includes 3,000 emails a month across the account, then $0.35 per 1,000. Before every
+notification email the API takes a slot from a per-day counter (`email_usage`) and stops at
+`EMAIL_DAILY_LIMIT` (150) or `EMAIL_MONTHLY_LIMIT` (2,500, per UTC calendar month), which leaves room for
+Auth's emails inside the included 3,000. Over budget, emails wait in the outbox until the next UTC day, and
+ones that expire meanwhile (a reminder after its game day's first kickoff) are skipped with
+`last_error = 'OVER_BUDGET'`. Cloudflare also sets a daily quota of its own that starts low on new accounts
+and grows with use; if it refuses a send with `E_DAILY_LIMIT_EXCEEDED`, the API stops for the rest of the
+day. The log shows `email_budget_reached` or the error code when either happens.
+
+One-time setup:
+
+1. **Workers Paid:** upgrade the account (Workers & Pages → Plans). Without it, sends to players fail with
+   `E_RECIPIENT_NOT_ALLOWED` and are marked failed.
+2. **Email Sending:** onboard the domain, from `apps/api`:
+   `pnpm exec wrangler email sending enable pow-pickem.com` (or Compute & AI → Email Service → Email Sending →
+   Onboard Domain). Cloudflare adds the SPF and DKIM records itself, since the zone is on Cloudflare; check
+   them with `pnpm exec wrangler email sending dns get pow-pickem.com`. Add a DMARC record too, starting with
+   `_dmarc.pow-pickem.com TXT "v=DMARC1; p=none;"`.
+3. **Supabase Auth** (dashboard, Authentication): under **SMTP Settings**, enable custom SMTP with host
+   `smtp.mx.cloudflare.net`, port `465`, user `api_token`, a Cloudflare API token with the **Email Sending:
+   Edit** permission (and nothing else) as password, and sender `noreply@pow-pickem.com` / `POW Pick'em`.
+   Under **Rate Limits**, set emails per hour to about **10**: Auth's emails bypass the API's budget, and this
+   keeps them inside the room it leaves. Under **Emails**, copy each template's subject and HTML from
+   `supabase/config.toml` and `supabase/templates/`. (Don't use `supabase config push`: it would also push
+   local settings such as the localhost site URL.) Make sure the redirect URLs include
+   `https://www.pow-pickem.com/reset-password` and `https://www.pow-pickem.com/account`. Leave **Confirm
+   email** off: sign-up stays instant.
+4. **Turn notification email on:** generate a secret and set it on the Worker, from `apps/api`:
+   `openssl rand -base64 32 | pnpm exec wrangler secret put UNSUBSCRIBE_SECRET`. Until it is set the Worker
+   queues and sends nothing (the cron runs and returns at once). Changing it later breaks the unsubscribe
+   links in emails already sent. `APP_URL` is a var in `wrangler.jsonc`; `EMAIL_FROM`, `EMAIL_DAILY_LIMIT` and
+   `EMAIL_MONTHLY_LIMIT` can be overridden the same way, if the plan changes.
 
 ### Release sequence
 

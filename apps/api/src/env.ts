@@ -32,7 +32,54 @@ const sharedFields = {
         .filter(Boolean),
     )
     .pipe(z.array(z.uuid("OPERATOR_USER_IDS must be a comma-separated list of user ids"))),
+
+  // ---------- Email (all optional: without UNSUBSCRIBE_SECRET, the API sends no notification emails) ----------
+  /** The public web origin that links in emails point at, e.g. `https://www.pow-pickem.com`. */
+  APP_URL: z
+    .url()
+    .transform((url) => url.replace(/\/+$/, ""))
+    .optional(),
+  /** The sender. Its domain must be onboarded to Cloudflare Email Sending (and allowed in wrangler.jsonc). */
+  EMAIL_FROM: z.string().trim().min(3).default("POW Pick'em <noreply@pow-pickem.com>"),
+  /** Signs unsubscribe links, and switches notification email on. At least 32 characters; rotating it breaks links in emails already sent. */
+  UNSUBSCRIBE_SECRET: z.string().min(32).optional(),
+  /** Local mailer: the Supabase stack's test inbox, used instead of Cloudflare. Refused when NODE_ENV=production. */
+  INBOX_URL: z.url().optional(),
+  /**
+   * The most notification emails the API hands the provider per UTC day and month. The monthly default stays
+   * under the 3,000 a month that Workers Paid includes, leaving room for Auth's emails, which share it.
+   */
+  EMAIL_DAILY_LIMIT: z.coerce.number().int().min(0).default(150),
+  EMAIL_MONTHLY_LIMIT: z.coerce.number().int().min(0).default(2500),
 };
+
+/** Email settings that only make sense together. Shared by both entrypoints' schemas. */
+function emailRules(
+  env: { NODE_ENV?: string; APP_URL?: string; UNSUBSCRIBE_SECRET?: string; INBOX_URL?: string },
+  ctx: z.RefinementCtx,
+) {
+  if (env.INBOX_URL && env.NODE_ENV === "production") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["INBOX_URL"],
+      message: "INBOX_URL is for local testing and is not allowed when NODE_ENV=production",
+    });
+  }
+  if (env.INBOX_URL && !env.UNSUBSCRIBE_SECRET) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["UNSUBSCRIBE_SECRET"],
+      message: "UNSUBSCRIBE_SECRET is required to send email (it signs unsubscribe links)",
+    });
+  }
+  if (env.UNSUBSCRIBE_SECRET && !env.APP_URL) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["APP_URL"],
+      message: "APP_URL is required to send email (links in emails point at it)",
+    });
+  }
+}
 
 const envSchema = z
   .object({
@@ -62,10 +109,14 @@ const envSchema = z
   .refine((env) => !(env.CLOCK_OVERRIDE && env.NODE_ENV === "production"), {
     path: ["CLOCK_OVERRIDE"],
     message: "CLOCK_OVERRIDE is for local testing and is not allowed when NODE_ENV=production",
-  });
+  })
+  .superRefine(emailRules);
 
-/** The Worker gets its database from the Hyperdrive binding, so it has no DATABASE_URL, PORT or clock override. */
-const workerEnvSchema = z.object(sharedFields);
+/**
+ * The Worker gets its database from the Hyperdrive binding and sends email through the EMAIL binding, so it
+ * has no DATABASE_URL, PORT or clock override.
+ */
+const workerEnvSchema = z.object(sharedFields).superRefine(emailRules);
 
 export type Env = z.infer<typeof envSchema>;
 

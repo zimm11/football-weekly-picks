@@ -1,18 +1,21 @@
-import { createDb, leagueMembers, leagues, profiles } from "@picks/db";
+import { createDb, emailOutbox, emailUsage, leagueMembers, leagues, profiles } from "@picks/db";
 import type {
   GameInsights,
   LeagueDetail,
+  Me,
   MessageReaction,
   MessageThread,
   Standings,
   ThreadDetail,
   WeekView,
 } from "@picks/shared";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, between, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
+import { EmailSendError, type OutgoingEmail } from "../src/email";
 import { loadEnv } from "../src/env";
 import { type NflProvider, type ProviderGame, parseEspnScoreboard } from "../src/nfl";
+import { type EmailDeps, runEmailJobs } from "../src/outbox";
 import { RESULTS_REFRESH_MS } from "../src/weeks";
 
 const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: "test" };
@@ -30,6 +33,10 @@ describe("without a database", () => {
   it("rejects requests without a token", async () => {
     expect((await app.request("/api/me")).status).toBe(401);
     expect((await app.request("/api/leagues")).status).toBe(401);
+  });
+
+  it("has no job endpoint: the email job runs only from the Cron Trigger", async () => {
+    expect((await app.request("/api/jobs/run", { method: "POST" })).status).toBe(404);
   });
 
   it("rejects requests with an invalid token", async () => {
@@ -89,6 +96,27 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       awayScore: null,
     },
   ];
+  // Email goes to this fake. Background sends are collected so a test can wait for them with `settle()`.
+  let sentEmails: OutgoingEmail[] = [];
+  let mailerError: Error | undefined;
+  const pending: Promise<unknown>[] = [];
+  const settle = async () => {
+    while (pending.length) await Promise.all(pending.splice(0));
+  };
+  // Mutable so the budget test can tighten it; generous everywhere else.
+  const limits = { daily: 10_000, monthly: 100_000 };
+  const email: EmailDeps = {
+    mailer: {
+      send: async (message) => {
+        if (mailerError) throw mailerError;
+        sentEmails.push(message);
+      },
+    },
+    appUrl: "https://picks.test",
+    unsubscribeSecret: "test-unsubscribe-secret-that-is-long-enough",
+    limits,
+    background: (task) => pending.push(task()),
+  };
   const app = createApp({
     db,
     verifyToken,
@@ -111,7 +139,19 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       },
     },
     now: () => now,
+    email,
   });
+  /** What the Worker's Cron Trigger runs. */
+  const runJobs = async () => ({ body: await runEmailJobs(db, email, now) });
+  const outboxFor = async (threadId: string) =>
+    (await db.select().from(emailOutbox).where(eq(emailOutbox.userId, ADMIN))).find((r) =>
+      r.dedupeKey.startsWith(`thread:${threadId}:`),
+    );
+  // The suite's clock stays in November and December 2026; put that range of the send counter back afterwards.
+  const usageRange = between(emailUsage.day, "2026-11-01", "2026-12-31");
+  let usageBefore: (typeof emailUsage.$inferSelect)[] = [];
+  const emailsTo = (user: string) =>
+    sentEmails.filter((m) => m.to === `api-test-${USERS.indexOf(user)}@example.com`);
 
   const callOn =
     (target: ReturnType<typeof createApp>) =>
@@ -137,6 +177,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
   const cleanUp = async () => {
     if (createdLeagues.length) await db.delete(leagues).where(inArray(leagues.id, createdLeagues));
     await db.delete(profiles).where(inArray(profiles.userId, USERS));
+    await db.delete(emailOutbox).where(inArray(emailOutbox.userId, USERS));
   };
 
   beforeAll(async () => {
@@ -146,10 +187,14 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       );
     }
     await db.delete(profiles).where(inArray(profiles.userId, USERS));
+    await db.delete(emailOutbox).where(inArray(emailOutbox.userId, USERS));
+    usageBefore = await db.select().from(emailUsage).where(usageRange);
   });
 
   afterAll(async () => {
     await cleanUp();
+    await db.delete(emailUsage).where(usageRange);
+    if (usageBefore.length) await db.insert(emailUsage).values(usageBefore);
     await db.$close();
   });
 
@@ -163,6 +208,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       id: ADMIN,
       displayName: null,
       isOperator: false,
+      notifications: { newThreads: true, pickReminders: true },
     });
     expect((await call(ADMIN, "PUT", "/me", { displayName: "  Commish  " })).body).toMatchObject({
       displayName: "Commish",
@@ -415,6 +461,173 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     ).toBe(404);
   });
 
+  it("emails other members about a new thread, and honors one-click unsubscribe", async () => {
+    await settle();
+    sentEmails = [];
+    const base = `/leagues/${leagueId}/messages`;
+    const created = await call<{ id: string }>(PLAYER, "POST", base, {
+      title: "Trade <talk>",
+      body: "Who's taking the <b>Chiefs</b> this week?",
+    });
+    await settle();
+    // The author and outsiders get nothing; the other member gets one email.
+    expect(emailsTo(PLAYER)).toEqual([]);
+    expect(emailsTo(OUTSIDER)).toEqual([]);
+    const [email] = emailsTo(ADMIN);
+    expect(sentEmails).toHaveLength(1);
+    expect(email?.subject).toBe("Test League: Trade <talk>");
+    expect(email?.html).toContain("Trade &lt;talk&gt;");
+    expect(email?.html).toContain("&lt;b&gt;Chiefs&lt;/b&gt;");
+    expect(email?.html).not.toContain("<b>Chiefs");
+    expect(email?.text).toContain(`https://picks.test${base}/${created.body.id}`);
+    expect(email?.listUnsubscribeUrl).toMatch(/^https:\/\/picks\.test\/api\/unsubscribe\?token=/);
+
+    // A tampered or missing token changes nothing.
+    const url = new URL(email?.listUnsubscribeUrl ?? "");
+    const token = url.searchParams.get("token") ?? "";
+    const unsubscribe = (query: string) =>
+      app.request(`/api/unsubscribe?${query}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "List-Unsubscribe=One-Click",
+      });
+    expect((await unsubscribe(`token=${encodeURIComponent(token.replace(/.$/, "x"))}`)).status).toBe(400);
+    expect(
+      (await unsubscribe(`token=${encodeURIComponent(token.replace("new_thread", "pick_reminder"))}`)).status,
+    ).toBe(400);
+    expect((await unsubscribe("")).status).toBe(400);
+    // The mail client's one-click POST turns new-thread emails off, and only those.
+    const res = await unsubscribe(url.search.slice(1));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ kind: "new_thread" });
+    expect((await call<Me>(ADMIN, "GET", "/me")).body.notifications).toEqual({
+      newThreads: false,
+      pickReminders: true,
+    });
+
+    sentEmails = [];
+    await call(PLAYER, "POST", base, { title: "Quiet", body: "Nobody gets this." });
+    await settle();
+    expect(sentEmails).toEqual([]);
+
+    // The settings screen turns it back on; the web page's form of unsubscribe (no body) works too.
+    expect((await call(ADMIN, "PUT", "/me/notifications", {})).status).toBe(400);
+    expect((await call(ADMIN, "PUT", "/me/notifications", { newThreads: true })).body).toEqual({
+      newThreads: true,
+      pickReminders: true,
+    });
+    expect((await call(OUTSIDER, "PUT", "/me/notifications", { newThreads: true })).status).toBe(409);
+    const fromPage = await app.request(`/api/unsubscribe?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+    });
+    expect(fromPage.status).toBe(200);
+    await call(ADMIN, "PUT", "/me/notifications", { newThreads: true });
+  });
+
+  it("retries an email the provider couldn't take, and gives up on one it rejected", async () => {
+    await settle();
+    const base = `/leagues/${leagueId}/messages`;
+
+    mailerError = new EmailSendError("E_RATE_LIMIT_EXCEEDED", "retry");
+    const flaky = await call<{ id: string }>(PLAYER, "POST", base, { title: "Flaky", body: "Retry me." });
+    await settle();
+    expect(await outboxFor(flaky.body.id)).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      lastError: "E_RATE_LIMIT_EXCEEDED",
+    });
+
+    mailerError = new EmailSendError("E_RECIPIENT_SUPPRESSED", "rejected");
+    const rejected = await call<{ id: string }>(PLAYER, "POST", base, { title: "Bad", body: "Rejected." });
+    await settle();
+    expect(await outboxFor(rejected.body.id)).toMatchObject({
+      status: "failed",
+      lastError: "E_RECIPIENT_SUPPRESSED",
+    });
+
+    // The next job run after the backoff sends the retry.
+    mailerError = undefined;
+    sentEmails = [];
+    const saved = now;
+    now = new Date(now.getTime() + 6 * 60_000);
+    await runJobs();
+    now = saved;
+    expect(emailsTo(ADMIN).map((m) => m.subject)).toEqual(["Test League: Flaky"]);
+    expect(await outboxFor(flaky.body.id)).toMatchObject({ status: "sent", attempts: 2 });
+  });
+
+  it("stops at the daily and monthly budget, holds the rest for tomorrow, and backs off on the provider's quota", async () => {
+    await settle();
+    sentEmails = [];
+    const base = `/leagues/${leagueId}/messages`;
+    const usage = async (day: string) =>
+      (await db.select().from(emailUsage).where(eq(emailUsage.day, day)))[0]?.sent ?? 0;
+    const post = async (title: string) => {
+      const res = await call<{ id: string }>(PLAYER, "POST", base, { title, body: "Budget test." });
+      await settle();
+      return res.body.id;
+    };
+
+    try {
+      // Room for exactly one more email today (Wednesday, UTC).
+      limits.daily = (await usage("2026-11-11")) + 1;
+      await post("Budget one");
+      const held = await post("Budget two");
+      expect(emailsTo(ADMIN).map((m) => m.subject)).toEqual(["Test League: Budget one"]);
+      expect(await outboxFor(held)).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        lastError: "OVER_BUDGET",
+        nextAttemptAt: new Date("2026-11-12T00:00:00Z"),
+      });
+      expect((await runJobs()).body).toMatchObject({ sent: 0, deferred: 0 }); // not due again until tomorrow
+
+      // Thursday (UTC): a fresh daily budget sends it.
+      now = new Date("2026-11-12T00:30:00Z");
+      limits.daily = 10_000;
+      expect((await runJobs()).body).toMatchObject({ sent: 1 });
+      expect(emailsTo(ADMIN).map((m) => m.subject)).toContain("Test League: Budget two");
+
+      // The month's total counts earlier days too: at the monthly limit, nothing goes out.
+      const [month] = await db
+        .select({ sent: sql<number>`sum(${emailUsage.sent})::int` })
+        .from(emailUsage)
+        // Up to the simulated today; real runs (e.g. E2E) may have rows for later November days.
+        .where(between(emailUsage.day, "2026-11-01", "2026-11-12"));
+      limits.monthly = month?.sent ?? 0;
+      const monthly = await post("Over the month");
+      expect(await outboxFor(monthly)).toMatchObject({ status: "pending", lastError: "OVER_BUDGET" });
+      limits.monthly = 100_000;
+
+      // Held past its expiry, it is dropped, and the record says why.
+      now = new Date("2026-11-13T12:00:00Z");
+      await runJobs();
+      expect(await outboxFor(monthly)).toMatchObject({ status: "skipped", lastError: "OVER_BUDGET" });
+
+      // The provider says its own quota is spent: the send is given back, today's budget is closed, and
+      // the email waits for tomorrow without using an attempt.
+      const before = await usage("2026-11-13");
+      mailerError = new EmailSendError("E_DAILY_LIMIT_EXCEEDED", "quota");
+      const quota = await post("Quota");
+      mailerError = undefined;
+      expect(await outboxFor(quota)).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        lastError: "E_DAILY_LIMIT_EXCEEDED",
+        nextAttemptAt: new Date("2026-11-14T00:00:00Z"),
+      });
+      expect(await usage("2026-11-13")).toBe(Math.max(before, limits.daily));
+      expect((await runJobs()).body).toMatchObject({ sent: 0 });
+      now = new Date("2026-11-14T00:30:00Z");
+      expect((await runJobs()).body).toMatchObject({ sent: 1 });
+    } finally {
+      mailerError = undefined;
+      limits.daily = 10_000;
+      limits.monthly = 100_000;
+      now = WEDNESDAY;
+    }
+  });
+
   it("only lets the admin set up weeks", async () => {
     const res = await call(PLAYER, "POST", `/leagues/${leagueId}/weeks`, { year: 2026, number: 10 });
     expect(res.status).toBe(403);
@@ -662,6 +875,37 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       `/weeks/${weekId}/picks`,
       picksBody({ picks: { sun: "home" }, pow: "thu", total: 41 }),
     );
+  });
+
+  it("emails reminders the evening before a game day to players with games still to pick", async () => {
+    sentEmails = [];
+
+    // Wednesday noon: Thursday's reminder isn't due until 7pm.
+    expect((await runJobs()).body.queued).toBe(0);
+
+    // 7:05pm Eastern on Wednesday. The admin picked Thursday's game; the player hasn't.
+    now = new Date("2026-11-12T00:05:00Z");
+    expect((await runJobs()).body).toMatchObject({ queued: 1, sent: 1 });
+    expect(emailsTo(ADMIN)).toEqual([]);
+    const [reminder] = emailsTo(PLAYER);
+    expect(reminder?.subject).toBe("Test League: 1 game to pick for Thursday");
+    expect(reminder?.text).toContain("Hi Pat");
+    expect(reminder?.text).toContain("Commanders at Giants, 8:15 PM EST");
+    expect(reminder?.text).toContain(`https://picks.test/weeks/${weekId}`);
+    expect(reminder?.listUnsubscribeUrl).toContain("/api/unsubscribe?token=");
+
+    // Running again (the Cron Trigger runs every five minutes) sends nothing new.
+    expect((await runJobs()).body).toMatchObject({ queued: 0, sent: 0 });
+    expect(sentEmails).toHaveLength(1);
+
+    // Saturday evening, for Sunday: the admin has picked it, and the player has turned reminders off.
+    await call(PLAYER, "PUT", "/me/notifications", { pickReminders: false });
+    now = new Date("2026-11-15T01:00:00Z");
+    expect((await runJobs()).body.queued).toBe(0);
+    await call(PLAYER, "PUT", "/me/notifications", { pickReminders: true });
+    expect((await runJobs()).body.queued).toBe(1);
+    expect(emailsTo(PLAYER).at(-1)?.subject).toBe("Test League: 1 game to pick for Sunday");
+    now = WEDNESDAY;
   });
 
   it("locks each game at kickoff", async () => {

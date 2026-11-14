@@ -14,6 +14,7 @@ role, can read or write them.
 
 ```mermaid
 erDiagram
+  auth_users ||--o{ email_outbox : "user_id"
   auth_users |o--o{ feedback : "user_id"
   weeks ||--o{ games : "week_id"
   leagues ||--o{ league_members : "league_id"
@@ -40,6 +41,24 @@ erDiagram
   games |o--o{ weeks : "tiebreaker_game_id"
   auth_users["auth.users (Supabase Auth)"] {
     uuid id PK
+  }
+  email_outbox {
+    uuid id PK
+    uuid user_id FK
+    text kind
+    text dedupe_key UK
+    jsonb message
+    text status
+    integer attempts
+    timestamptz next_attempt_at
+    timestamptz expires_at
+    text last_error
+    timestamptz sent_at
+    timestamptz created_at
+  }
+  email_usage {
+    date day PK
+    integer sent
   }
   feedback {
     uuid id PK
@@ -120,6 +139,8 @@ erDiagram
   profiles {
     uuid user_id PK, FK
     text display_name
+    boolean email_new_threads
+    boolean email_pick_reminders
     timestamptz created_at
   }
   seasons {
@@ -153,6 +174,34 @@ erDiagram
 Lines read parent to child and are labelled with the child's foreign-key column.
 
 ## Tables
+
+### `email_outbox`
+
+Emails waiting to be sent, and a short history of those that were. Rows are queued with their content already rendered; the address is looked up at send time from `auth.users`, so it is never copied here.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `user_id` | uuid | no | FK → `auth.users.id` |  |
+| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`. |
+| `dedupe_key` | text | no | unique | Identifies the email's purpose (e.g. `thread:<id>:<user>`) so a retried or repeated job never queues it twice. |
+| `message` | jsonb | no |  | Rendered message: subject, HTML and plain-text bodies, and the one-click unsubscribe URL for its headers. |
+| `status` | text | no |  | pending → sending → sent; or failed (gave up), or skipped (no address, opted out, or too late to be useful). One of: `pending`, `sending`, `sent`, `failed`, `skipped`. Has a default. |
+| `attempts` | integer | no |  | Has a default. |
+| `next_attempt_at` | timestamptz | no |  | When a pending row may next be tried; also when a `sending` claim is considered abandoned. Has a default. |
+| `expires_at` | timestamptz | no |  | After this the email is no longer worth sending and is skipped. |
+| `last_error` | text | yes |  | A known error code from the last failed attempt (never provider prose). |
+| `sent_at` | timestamptz | yes |  |  |
+| `created_at` | timestamptz | no |  | Has a default. |
+
+### `email_usage`
+
+Notification emails handed to Cloudflare Email Sending per UTC day. The API reserves a slot here before every send and stops at its daily and monthly limits, so it stays inside the plan's included sends with room left for Auth's own emails (which share them but don't pass through the API).
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `day` | date | no | PK | The UTC calendar day. |
+| `sent` | integer | no |  | Sends reserved that day. A send the provider refused is given back. Has a default. |
 
 ### `feedback`
 
@@ -285,12 +334,14 @@ Unique among rows matching a condition: (`week_id`, `user_id`), index `picks_one
 
 ### `profiles`
 
-What a player is called on leaderboards.
+What a player is called on leaderboards, and which emails they want.
 
 | Column | Type | Null | Key | Description |
 | --- | --- | --- | --- | --- |
 | `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
 | `display_name` | text | no |  |  |
+| `email_new_threads` | boolean | no |  | Email the player when someone starts a message thread in one of their leagues. Has a default. |
+| `email_pick_reminders` | boolean | no |  | Email the player the evening before a game day on which they still have games to pick. Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 ### `seasons`

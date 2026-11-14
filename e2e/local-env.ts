@@ -1,6 +1,6 @@
-/** Browser captures must never run against a production database or authentication service. */
+/** Browser captures must never run against a production database, authentication service, or mailbox. */
 export function assertLocalTestEnv(env: Record<string, string | undefined>) {
-  for (const name of ["DATABASE_URL", "SUPABASE_URL"] as const) {
+  for (const name of ["DATABASE_URL", "SUPABASE_URL", "INBOX_URL"] as const) {
     let url: URL;
     try {
       url = new URL(env[name] ?? "");

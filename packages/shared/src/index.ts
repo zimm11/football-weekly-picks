@@ -8,6 +8,7 @@ import { isValidTimeZone } from "./time";
 export * from "./awards";
 export * from "./insights";
 export * from "./operator";
+export * from "./reminders";
 export * from "./rules";
 export * from "./seasons";
 export * from "./stats";
@@ -29,6 +30,17 @@ export const updateProfileSchema = z.object({
 export const MAX_LEAGUE_MEMBERS = 100;
 /** Most leagues one player can be an active member of, whether they created or joined them. */
 export const MAX_LEAGUES_PER_USER = 25;
+
+/** Which notification emails a player wants. Omitted fields are left as they are. */
+export const updateNotificationsSchema = z
+  .object({ newThreads: z.boolean(), pickReminders: z.boolean() })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, "Nothing to update");
+export type NotificationSettings = { newThreads: boolean; pickReminders: boolean };
+
+/** One-click unsubscribe, from a link in a notification email. */
+export const unsubscribeSchema = z.object({ token: z.string().min(1).max(512) });
+export type UnsubscribeResult = { kind: "new_thread" | "pick_reminder" };
 
 export const createLeagueSchema = z.object({
   name: z.string().trim().min(1, "Enter a league name").max(80),
@@ -107,7 +119,13 @@ export type Role = "admin" | "member";
 export type WeekStatus = "draft" | "open" | "final";
 
 /** `isOperator` is true for the accounts that run the app; it unlocks the operator screen. */
-export type Me = { id: string; email?: string; displayName: string | null; isOperator: boolean };
+export type Me = {
+  id: string;
+  email?: string;
+  displayName: string | null;
+  isOperator: boolean;
+  notifications: NotificationSettings;
+};
 
 export type LeagueSummary = { id: string; name: string; role: Role };
 export type WeekSummary = {

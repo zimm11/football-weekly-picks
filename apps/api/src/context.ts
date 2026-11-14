@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { VerifyToken } from "./auth";
 import type { InsightsProvider } from "./insights";
 import type { NflProvider } from "./nfl";
+import type { EmailDeps } from "./outbox";
 
 export type PublicConfig = {
   supabaseUrl: string;
@@ -26,6 +27,8 @@ export type AppDeps = {
   insights?: InsightsProvider;
   /** Injected so tests can pin the clock that pick locks are measured against. */
   now?: () => Date;
+  /** Notification email. Absent means the API queues and sends none. */
+  email?: EmailDeps;
   /** Membership caps; injected so tests can use small numbers. Defaults to the shared limits. */
   limits?: { membersPerLeague: number; leaguesPerUser: number };
   /** Accounts that run the app (`OPERATOR_USER_IDS`): they can read feedback and app-wide counts. */
