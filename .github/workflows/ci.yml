@@ -11,11 +11,10 @@ concurrency:
 permissions:
   contents: read
 
-# TEMPORARY: Ubuntu mirror DNS outage blocks Playwright's system dependency install.
-# Set to "false" once https://github.com/actions/runner-images/issues/15296 resolves.
-# Keep all non-browser checks and builds required while browser coverage is suspended.
+# Browser coverage restored after the Ubuntu mirror DNS outage was resolved.
+# https://github.com/actions/runner-images/issues/15296
 env:
-  SKIP_BROWSER_TESTS: "true"
+  SKIP_BROWSER_TESTS: "false"
 
 jobs:
   # Fast feedback: static checks, unit tests, component tests (real Chromium), web build, API image build. No database.
