@@ -7,6 +7,7 @@ import {
   defaultPoints,
   effectiveTiebreakerId,
   type Game,
+  type GameInsights,
   scoreWeek,
   submitPicksSchema,
   updateGameSchema,
@@ -118,7 +119,7 @@ async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<
   };
 }
 
-export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: AppDeps) {
+export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Date() }: AppDeps) {
   const auth = requireAuth(verifyToken);
 
   /**
@@ -307,6 +308,33 @@ export function weekRoutes({ db, verifyToken, nfl, now = () => new Date() }: App
       .get("/weeks/:weekId", auth, weekParam, async (c) => {
         const ctx = await requireWeek(db, c.req.valid("param").weekId, c.var.user.id);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
+      })
+      // Public background on a game (team form, market prices). Nothing here is drawn from anyone's picks.
+      .get("/games/:gameId/insights", auth, gameParam, async (c) => {
+        const [game] = await db
+          .select()
+          .from(games)
+          .where(eq(games.id, c.req.valid("param").gameId));
+        if (!game) fail(404, "Game not found");
+        await requireWeek(db, game.weekId, c.var.user.id);
+        const requestId = c.get("requestId");
+        // Each source fails on its own: the sheet shows whatever arrived.
+        const [matchup, market] = await Promise.all([
+          game.externalId && insights
+            ? insights.getMatchup(game.externalId).catch((err) => {
+                logError("matchup_insights", err, requestId);
+                return null;
+              })
+            : null,
+          insights
+            ? insights.getMarket(game).catch((err) => {
+                logError("market_insights", err, requestId);
+                return null;
+              })
+            : null,
+        ]);
+        const result: GameInsights = { matchup, market };
+        return c.json(result);
       })
       .put("/weeks/:weekId/picks", auth, weekParam, body(submitPicksSchema), async (c) => {
         const userId = c.var.user.id;
