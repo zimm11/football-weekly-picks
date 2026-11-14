@@ -4,6 +4,7 @@ import { createApp } from "./app";
 import { supabaseTokenVerifier } from "./auth";
 import { shiftedClock } from "./clock";
 import { loadEnv } from "./env";
+import { liveInsights } from "./insights";
 import { logError } from "./logging";
 import { espnProvider } from "./nfl";
 
@@ -22,6 +23,7 @@ async function main() {
     db,
     verifyToken: supabaseTokenVerifier(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY),
     nfl: espnProvider(),
+    insights: liveInsights(),
     now: clock?.now,
     publicConfig: {
       supabaseUrl: env.SUPABASE_URL,

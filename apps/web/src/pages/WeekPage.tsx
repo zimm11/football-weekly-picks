@@ -1,4 +1,4 @@
-import type { SubmitPicks, WeekView } from "@picks/shared";
+import type { GameInsights, SubmitPicks, WeekView } from "@picks/shared";
 import { WEEK_PHASE_LABEL, weekLabel, weekPhase } from "@picks/shared";
 import { type ReactNode, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +104,9 @@ export function WeekBody({
             timeZone={view.timeZone}
             now={now}
             onSave={savePicks}
+            loadInsights={(gameId) =>
+              unwrap<GameInsights>(api.games[":gameId"].insights.$get({ param: { gameId } }))
+            }
           />
           <p className="m-0 text-sm text-muted-foreground">
             Everyone's picks are revealed when the week closes.

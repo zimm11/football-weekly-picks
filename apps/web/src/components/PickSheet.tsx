@@ -1,8 +1,15 @@
-import { CheckCircleIcon, LockIcon, PencilSimpleLineIcon } from "@phosphor-icons/react";
+import {
+  CaretRightIcon,
+  ChartBarIcon,
+  CheckCircleIcon,
+  LockIcon,
+  PencilSimpleLineIcon,
+} from "@phosphor-icons/react";
 import {
   coveringSide,
   formatLine,
   type Game,
+  type GameInsights,
   LOCK_HOUR,
   lineFor,
   type Pick,
@@ -21,6 +28,7 @@ import { Field, Input } from "@/components/ui/input";
 import { kickoffDay, kickoffTime, matchup } from "../format";
 import { useUnsavedGuard } from "./ConfirmDialog";
 import { TAB_BAR_OFFSET } from "./LeagueNav";
+import { MatchupSheet } from "./MatchupSheet";
 import { TeamLogo } from "./TeamLogo";
 
 // A pressed button stays fully lit after it locks, so a frozen pick still reads as the pick.
@@ -47,9 +55,20 @@ type Props = {
   now: Date;
   /** Resolves to an error message, or undefined on success. */
   onSave: (submission: SubmitPicks) => Promise<string | undefined>;
+  /** Fetches a game's stats, news and market prices. Each card offers them when this is given. */
+  loadInsights?: (gameId: string) => Promise<GameInsights>;
 };
 
-export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, timeZone, now, onSave }: Props) {
+export function PickSheet({
+  games,
+  picks,
+  tiebreakerGameId,
+  tiebreakerTotal,
+  timeZone,
+  now,
+  onSave,
+  loadInsights,
+}: Props) {
   const saved = new Map(picks.map((p) => [p.gameId, p.side]));
   const savedPow = picks.find((p) => p.isPow)?.gameId ?? null;
 
@@ -58,6 +77,8 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
   const [total, setTotal] = useState(tiebreakerTotal === null ? "" : String(tiebreakerTotal));
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<{ kind: "saved" | "error"; text: string }>();
+  /** The game whose matchup sheet is open. */
+  const [matchupGame, setMatchupGame] = useState<Game | null>(null);
 
   // A game with a result is closed, whatever the clock says.
   const windowOf = (game: Game) =>
@@ -120,167 +141,190 @@ export function PickSheet({ games, picks, tiebreakerGameId, tiebreakerTotal, tim
   const unsavedDialog = useUnsavedGuard(dirty, "picks");
 
   return (
-    <form onSubmit={submit} className="grid gap-3">
-      {unsavedDialog}
-      <PickStatus
-        dirty={dirty}
-        savedCount={savedCount}
-        gameCount={games.length}
-        left={left}
-        missed={missed}
-        needsTotal={needsTotal}
-        needsPow={needsPow}
-        pow={savedPowGame ? matchup(savedPowGame) : null}
-      />
-      <p className="m-0 text-sm text-muted-foreground">
-        Picks and your POW lock at {LOCK_HOUR}am on game day. A missed pick can still go in until kickoff, but
-        it can't be your POW. Your POW is worth {POW_BONUS} extra points if it wins. If you don't choose a
-        POW, you don't get one.
-      </p>
-
-      {days.map(({ day, games: dayGames }) => (
-        <section key={day} aria-label={day} className="grid gap-2">
-          <h4 className="mt-2 text-lg tracking-widest text-muted-foreground">{day}</h4>
-          {dayGames.map((game) => {
-            const window = windowOf(game);
-            const sideLocked = window === "closed" || (window === "late" && saved.has(game.id));
-            const powLocked = window !== "open" || powFrozen || !sides[game.id];
-            const isPow = pow === game.id;
-            const covered = coveringSide({ ...game, kickoff: new Date(game.kickoff) });
-            const mine = sides[game.id];
-            return (
-              <div className="grid gap-2.5 rounded-md border bg-card p-3" key={game.id}>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
-                  <span className="mr-auto tabular-nums">{kickoffTime(game.kickoff, timeZone)}</span>
-                  {game.id === tiebreakerGameId && <Badge variant="outline">Tiebreaker game</Badge>}
-                  {window === "late" && !saved.has(game.id) && (
-                    <Badge variant="warn">Late pick: final once saved, can't be POW</Badge>
-                  )}
-                  {sideLocked && covered === null && (
-                    <Badge variant="outline">
-                      <LockIcon aria-hidden weight="fill" className="size-3.5" />
-                      Locked
-                    </Badge>
-                  )}
-                  {covered !== null && (
-                    <Badge variant="outline">
-                      Final {game.awayScore}–{game.homeScore}
-                    </Badge>
-                  )}
-                  {covered !== null && mine && (
-                    <Badge variant={covered === mine ? "win" : covered === "push" ? "outline" : "loss"}>
-                      {covered === mine ? "Won" : covered === "push" ? "Push" : "Lost"}
-                    </Badge>
-                  )}
-                  <Badge className="-skew-x-12">
-                    {game.points} {game.points === 1 ? "pt" : "pts"}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                  {(["away", "home"] as const).map((side) => {
-                    const abbr = side === "home" ? game.homeTeam : game.awayTeam;
-                    const team = teamName(abbr);
-                    const line = formatLine(team, lineFor(side, game.spread ?? 0));
-                    return (
-                      <button
-                        key={side}
-                        type="button"
-                        // The team and its line are set on separate rows, so say them together.
-                        aria-label={line}
-                        aria-pressed={mine === side}
-                        disabled={sideLocked}
-                        onClick={() => choose(game, side)}
-                        className={sideClass}
-                      >
-                        <TeamLogo abbr={abbr} size={36} />
-                        <span className="grid min-w-0 max-w-full gap-0.5">
-                          <span className="truncate font-display text-lg leading-tight font-bold uppercase sm:text-xl sm:tracking-wide">
-                            {team}
-                          </span>
-                          <span className="text-sm tabular-nums opacity-80">
-                            {line.slice(team.length + 1)}
-                            {side === "home" && " · home"}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    aria-label={`POW: ${matchup(game)}`}
-                    aria-pressed={isPow}
-                    disabled={powLocked}
-                    onClick={() => togglePow(game)}
-                    className={powClass}
-                  >
-                    POW
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </section>
-      ))}
-
-      {tiebreakerGame && (
-        <div className="mt-2 rounded-md border bg-card p-3">
-          <Field label={`Tiebreaker: total points scored in ${matchup(tiebreakerGame)}`}>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={200}
-              step={1}
-              value={total}
-              disabled={tiebreakerLocked}
-              className="max-w-32 text-lg font-semibold tabular-nums"
-              onChange={(e) => {
-                setMessage(undefined);
-                setTotal(e.target.value);
-              }}
-            />
-          </Field>
-        </div>
-      )}
-
-      {!pow && (
+    <>
+      <form onSubmit={submit} className="grid gap-3">
+        {unsavedDialog}
+        <PickStatus
+          dirty={dirty}
+          savedCount={savedCount}
+          gameCount={games.length}
+          left={left}
+          missed={missed}
+          needsTotal={needsTotal}
+          needsPow={needsPow}
+          pow={savedPowGame ? matchup(savedPowGame) : null}
+        />
         <p className="m-0 text-sm text-muted-foreground">
-          {needsPow
-            ? "No POW chosen. Tap POW on a pick whose game hasn't locked yet; if you don't, you won't have one this week."
-            : "No POW this week: every game has locked."}
+          Picks and your POW lock at {LOCK_HOUR}am on game day. A missed pick can still go in until kickoff,
+          but it can't be your POW. Your POW is worth {POW_BONUS} extra points if it wins. If you don't choose
+          a POW, you don't get one.
         </p>
-      )}
 
-      {/* Always on screen, so saving never means scrolling past sixteen games. */}
-      <div className={cn("sticky z-30 -mx-4 mt-2 border-t bg-chrome", TAB_BAR_OFFSET)}>
-        <div
-          role="progressbar"
-          aria-label="Games picked"
-          aria-valuemin={0}
-          aria-valuemax={games.length}
-          aria-valuenow={picked}
-          className="h-1 bg-secondary"
-        >
+        {days.map(({ day, games: dayGames }) => (
+          <section key={day} aria-label={day} className="grid gap-2">
+            <h4 className="mt-2 text-lg tracking-widest text-muted-foreground">{day}</h4>
+            {dayGames.map((game) => {
+              const window = windowOf(game);
+              const sideLocked = window === "closed" || (window === "late" && saved.has(game.id));
+              const powLocked = window !== "open" || powFrozen || !sides[game.id];
+              const isPow = pow === game.id;
+              const covered = coveringSide({ ...game, kickoff: new Date(game.kickoff) });
+              const mine = sides[game.id];
+              return (
+                <div className="grid gap-2.5 rounded-md border bg-card p-3" key={game.id}>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
+                    <span className="mr-auto tabular-nums">{kickoffTime(game.kickoff, timeZone)}</span>
+                    {game.id === tiebreakerGameId && <Badge variant="outline">Tiebreaker game</Badge>}
+                    {window === "late" && !saved.has(game.id) && (
+                      <Badge variant="warn">Late pick: final once saved, can't be POW</Badge>
+                    )}
+                    {sideLocked && covered === null && (
+                      <Badge variant="outline">
+                        <LockIcon aria-hidden weight="fill" className="size-3.5" />
+                        Locked
+                      </Badge>
+                    )}
+                    {covered !== null && (
+                      <Badge variant="outline">
+                        Final {game.awayScore}–{game.homeScore}
+                      </Badge>
+                    )}
+                    {covered !== null && mine && (
+                      <Badge variant={covered === mine ? "win" : covered === "push" ? "outline" : "loss"}>
+                        {covered === mine ? "Won" : covered === "push" ? "Push" : "Lost"}
+                      </Badge>
+                    )}
+                    <Badge className="-skew-x-12">
+                      {game.points} {game.points === 1 ? "pt" : "pts"}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                    {(["away", "home"] as const).map((side) => {
+                      const abbr = side === "home" ? game.homeTeam : game.awayTeam;
+                      const team = teamName(abbr);
+                      const line = formatLine(team, lineFor(side, game.spread ?? 0));
+                      return (
+                        <button
+                          key={side}
+                          type="button"
+                          // The team and its line are set on separate rows, so say them together.
+                          aria-label={line}
+                          aria-pressed={mine === side}
+                          disabled={sideLocked}
+                          onClick={() => choose(game, side)}
+                          className={sideClass}
+                        >
+                          <TeamLogo abbr={abbr} size={36} />
+                          <span className="grid min-w-0 max-w-full gap-0.5">
+                            <span className="truncate font-display text-lg leading-tight font-bold uppercase sm:text-xl sm:tracking-wide">
+                              {team}
+                            </span>
+                            <span className="text-sm tabular-nums opacity-80">
+                              {line.slice(team.length + 1)}
+                              {side === "home" && " · home"}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      aria-label={`POW: ${matchup(game)}`}
+                      aria-pressed={isPow}
+                      disabled={powLocked}
+                      onClick={() => togglePow(game)}
+                      className={powClass}
+                    >
+                      POW
+                    </button>
+                  </div>
+                  {loadInsights && (
+                    <button
+                      type="button"
+                      aria-label={`Matchup: ${matchup(game)}`}
+                      onClick={() => setMatchupGame(game)}
+                      className="-mx-3 -mb-3 flex min-h-11 items-center gap-2 border-t px-3 font-display text-base font-bold tracking-wide text-muted-foreground uppercase transition-colors hover:bg-secondary hover:text-foreground"
+                    >
+                      <ChartBarIcon aria-hidden weight="fill" className="size-5" />
+                      Stats, news &amp; market
+                      <CaretRightIcon aria-hidden weight="bold" className="ml-auto size-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        ))}
+
+        {tiebreakerGame && (
+          <div className="mt-2 rounded-md border bg-card p-3">
+            <Field label={`Tiebreaker: total points scored in ${matchup(tiebreakerGame)}`}>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={200}
+                step={1}
+                value={total}
+                disabled={tiebreakerLocked}
+                className="max-w-32 text-lg font-semibold tabular-nums"
+                onChange={(e) => {
+                  setMessage(undefined);
+                  setTotal(e.target.value);
+                }}
+              />
+            </Field>
+          </div>
+        )}
+
+        {!pow && (
+          <p className="m-0 text-sm text-muted-foreground">
+            {needsPow
+              ? "No POW chosen. Tap POW on a pick whose game hasn't locked yet; if you don't, you won't have one this week."
+              : "No POW this week: every game has locked."}
+          </p>
+        )}
+
+        {/* Always on screen, so saving never means scrolling past sixteen games. */}
+        <div className={cn("sticky z-30 -mx-4 mt-2 border-t bg-chrome", TAB_BAR_OFFSET)}>
           <div
-            className="h-full bg-primary transition-[width]"
-            style={{ width: `${(picked / Math.max(games.length, 1)) * 100}%` }}
-          />
-        </div>
-        <div className="flex items-center gap-3 px-4 py-3">
-          <Button type="submit" disabled={pending} className="min-w-36">
-            {pending ? "Saving…" : "Save picks"}
-          </Button>
-          <div className="grid min-w-0 gap-1">
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {picked} of {games.length} picked
-            </span>
-            {dirty && !message && <Badge variant="warn">Unsaved changes</Badge>}
-            {message?.kind === "saved" && <Notice kind="status">{message.text}</Notice>}
-            {message?.kind === "error" && <Notice kind="alert">{message.text}</Notice>}
+            role="progressbar"
+            aria-label="Games picked"
+            aria-valuemin={0}
+            aria-valuemax={games.length}
+            aria-valuenow={picked}
+            className="h-1 bg-secondary"
+          >
+            <div
+              className="h-full bg-primary transition-[width]"
+              style={{ width: `${(picked / Math.max(games.length, 1)) * 100}%` }}
+            />
+          </div>
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Button type="submit" disabled={pending} className="min-w-36">
+              {pending ? "Saving…" : "Save picks"}
+            </Button>
+            <div className="grid min-w-0 gap-1">
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {picked} of {games.length} picked
+              </span>
+              {dirty && !message && <Badge variant="warn">Unsaved changes</Badge>}
+              {message?.kind === "saved" && <Notice kind="status">{message.text}</Notice>}
+              {message?.kind === "error" && <Notice kind="alert">{message.text}</Notice>}
+            </div>
           </div>
         </div>
-      </div>
-    </form>
+      </form>
+      {/* Outside the form, so nothing in it can submit the picks. */}
+      {loadInsights && (
+        <MatchupSheet
+          game={matchupGame}
+          timeZone={timeZone}
+          load={loadInsights}
+          onClose={() => setMatchupGame(null)}
+        />
+      )}
+    </>
   );
 }
 

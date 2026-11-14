@@ -62,15 +62,13 @@ const operationMessages = {
   request: "Unexpected API request failure.",
   schedule_import: "Schedule provider request failed.",
   results_sync: "Results provider request failed.",
+  matchup_insights: "Matchup stats provider request failed.",
+  market_insights: "Prediction market provider request failed.",
   startup: "API startup failed; check environment configuration.",
 };
 
 /** Only fixed operations and known error codes cross the logging boundary. Never serialize errors. */
-export function logError(
-  operation: "health" | "request" | "schedule_import" | "results_sync" | "startup",
-  error: unknown,
-  requestId?: string,
-) {
+export function logError(operation: keyof typeof operationMessages, error: unknown, requestId?: string) {
   let code = "UNKNOWN";
   for (let depth = 0, current = error; depth < 5 && current && typeof current === "object"; depth++) {
     const candidate = current as { code?: unknown; cause?: unknown };
@@ -91,7 +89,7 @@ export function logError(
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /(?:apps\/api\/src\/|\/app\/api\/)(app|auth|context|env|index|leagues|logging|messages|nfl|weeks)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /(?:apps\/api\/src\/|\/app\/api\/)(app|auth|context|env|index|insights|leagues|logging|messages|nfl|weeks)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;

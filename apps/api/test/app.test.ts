@@ -1,7 +1,14 @@
 import { createDb, leagueMembers, leagues, profiles } from "@picks/db";
-import type { LeagueDetail, MessageThread, Standings, ThreadDetail, WeekView } from "@picks/shared";
+import type {
+  GameInsights,
+  LeagueDetail,
+  MessageThread,
+  Standings,
+  ThreadDetail,
+  WeekView,
+} from "@picks/shared";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { loadEnv } from "../src/env";
 import { type NflProvider, type ProviderGame, parseEspnScoreboard } from "../src/nfl";
@@ -46,6 +53,9 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
   const SUNDAY_7AM = new Date("2026-11-15T12:00:00Z");
 
   let now = WEDNESDAY;
+  let insightsDown = false;
+  const emptyTeam = { record: null, venueRecord: null, lastFive: [], injuries: [], leaders: [], news: [] };
+  const emptyMatchup = { home: emptyTeam, away: emptyTeam, stats: [], overUnder: null, url: null };
   let provided: ProviderGame[] = [
     {
       externalId: "t1",
@@ -80,6 +90,16 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     verifyToken,
     publicConfig,
     nfl: { getWeek: async () => provided },
+    insights: {
+      getMatchup: async (externalId) => {
+        if (insightsDown) throw new Error("offline");
+        return { ...emptyMatchup, url: `https://example.test/${externalId}` };
+      },
+      getMarket: async ({ spread }) => {
+        if (insightsDown) throw new Error("offline");
+        return { source: "Kalshi", homeWin: 0.6, cover: null, spread };
+      },
+    },
     now: () => now,
   });
 
@@ -457,6 +477,25 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     picks: Object.entries(input.picks ?? {}).map(([key, side]) => ({ gameId: game[key as "thu"], side })),
     powGameId: input.pow ? game[input.pow] : null,
     tiebreakerTotal: input.total ?? null,
+  });
+
+  it("gives members a game's stats and market prices, and nothing when the sources are down", async () => {
+    const path = `/games/${game.thu}/insights`;
+    const res = await call<GameInsights>(PLAYER, "GET", path);
+    expect(res.status).toBe(200);
+    expect(res.body.matchup?.url).toBe("https://example.test/t1");
+    // The market is read against the league's own spread for the game.
+    expect(res.body.market).toEqual({ source: "Kalshi", homeWin: 0.6, cover: null, spread: -2.5 });
+    expect((await call(OUTSIDER, "GET", path)).status).toBe(404);
+
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    insightsDown = true;
+    const down = await call<GameInsights>(PLAYER, "GET", path);
+    insightsDown = false;
+    expect(down.status).toBe(200);
+    expect(down.body).toEqual({ matchup: null, market: null });
+    expect(log).toHaveBeenCalledTimes(2);
+    log.mockRestore();
   });
 
   it("saves picks, a POW and a tiebreaker guess", async () => {

@@ -5,6 +5,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { VerifyToken } from "./auth";
+import type { InsightsProvider } from "./insights";
 import type { NflProvider } from "./nfl";
 
 export type PublicConfig = {
@@ -21,6 +22,8 @@ export type AppDeps = {
   publicConfig: PublicConfig;
   /** Source of schedules, spreads and results. */
   nfl: NflProvider;
+  /** Source of team stats, news and prediction-market prices. Without one, games carry no insights. */
+  insights?: InsightsProvider;
   /** Injected so tests can pin the clock that pick locks are measured against. */
   now?: () => Date;
   /** Membership caps; injected so tests can use small numbers. Defaults to the shared limits. */

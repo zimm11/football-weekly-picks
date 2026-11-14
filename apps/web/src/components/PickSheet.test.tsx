@@ -38,6 +38,39 @@ async function renderSheet(props: { now?: Date; picks?: Pick[]; tiebreakerTotal?
 }
 
 describe("PickSheet", () => {
+  it("opens a game's stats without touching the picks", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const loadInsights = vi.fn().mockResolvedValue({ matchup: null, market: null });
+    const screen = await render(
+      <PickSheet
+        games={games}
+        picks={[]}
+        tiebreakerGameId="mon"
+        tiebreakerTotal={null}
+        timeZone="America/New_York"
+        now={WEDNESDAY}
+        onSave={onSave}
+        loadInsights={loadInsights}
+      />,
+    );
+    await screen.getByRole("button", { name: "Chiefs -3.5" }).click();
+    await screen.getByRole("button", { name: "Matchup: KC at ATL" }).click();
+    await expect.element(screen.getByRole("heading", { name: "Chiefs at Falcons" })).toBeVisible();
+    expect(loadInsights).toHaveBeenCalledWith("sun");
+
+    await screen.getByRole("button", { name: "Close" }).click();
+    await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    await expect
+      .element(screen.getByRole("button", { name: "Chiefs -3.5" }))
+      .toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("offers no stats button when there is nowhere to load them from", async () => {
+    const { screen } = await renderSheet();
+    await expect.element(screen.getByRole("button", { name: /^Matchup:/ })).not.toBeInTheDocument();
+  });
+
   it("shows each side with its line, grouped by day", async () => {
     const { screen } = await renderSheet();
     await expect.element(screen.getByRole("heading", { name: "Thursday, Nov 12" })).toBeVisible();

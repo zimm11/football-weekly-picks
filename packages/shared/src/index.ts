@@ -5,6 +5,7 @@ import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
 import { TEAM_ABBRS } from "./teams";
 import { isValidTimeZone } from "./time";
 
+export * from "./insights";
 export * from "./rules";
 export * from "./seasons";
 export * from "./stats";
