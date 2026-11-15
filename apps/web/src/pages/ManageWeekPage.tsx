@@ -1,11 +1,15 @@
 import { lowPointLosers, type WeekView } from "@picks/shared";
+import { cn } from "cn";
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { api, messageOf, unwrap } from "../api";
+import { Avatar } from "../components/Avatar";
 import { useConfirm } from "../components/ConfirmDialog";
 import { GameEditor, type GameUpdate } from "../components/GameEditor";
 import { LeagueLayout } from "../components/LeagueNav";
+import { LeagueSkeleton } from "../components/Skeletons";
 import { WeekResultsTable } from "../components/WeekResultsTable";
 import { rememberSeason } from "../lib/seasonSelection";
 import { notifyDone, notifyError } from "../notify";
@@ -77,7 +81,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
 
   if (week.error) return <Notice kind="alert">{week.error}</Notice>;
   const view = week.data;
-  if (!view) return <p className="text-muted-foreground">Loading…</p>;
+  if (!view) return <LeagueSkeleton />;
   if (view.role !== "admin") {
     return (
       <LeagueLayout leagueId={view.leagueId} leagueName={view.leagueName} active="picks">
@@ -310,11 +314,22 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
               <tbody>
                 {view.submissions.map((s) => (
                   <tr key={s.userId}>
-                    <td className="font-medium">{s.displayName}</td>
-                    <td className="num">
+                    <td className="font-medium">
+                      <span className="flex items-center gap-2">
+                        <Avatar name={s.displayName} size="sm" />
+                        {s.displayName}
+                      </span>
+                    </td>
+                    <td className={cn("num", s.pickCount === view.games.length ? "text-win" : "")}>
                       {s.pickCount} of {view.games.length}
                     </td>
-                    <td>{s.hasPow ? "Chosen" : "—"}</td>
+                    <td>
+                      {s.hasPow ? (
+                        <Badge variant="pow">POW set</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -340,6 +355,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
             status={view.status}
             tiebreakerGameId={view.tiebreakerGameId}
             timeZone={view.timeZone}
+            now={now}
             onSave={saveGames}
             busy={busy}
             onRemove={(gameId) => removeGame(view, gameId)}

@@ -14,13 +14,17 @@ const game: Game = {
   awayScore: null,
 };
 
-function editor(games: Game[], onSave = vi.fn()) {
+// After the test game's kickoff, so its score boxes show.
+const afterKickoff = new Date("2026-11-15T21:00:00Z");
+
+function editor(games: Game[], onSave = vi.fn(), now = afterKickoff) {
   return (
     <GameEditor
       games={games}
       status="open"
       tiebreakerGameId="g1"
       timeZone="America/New_York"
+      now={now}
       onSave={onSave}
       onRemove={vi.fn()}
       onAdd={vi.fn()}
@@ -68,5 +72,13 @@ describe("GameEditor", () => {
     await screen.getByLabelText("Points for KC at ATL").fill("2");
     await screen.getByRole("button", { name: "Save changes" }).click();
     expect(onSave).toHaveBeenCalledWith([{ gameId: "g1", changes: { points: 2 } }]);
+  });
+
+  it("keeps score boxes behind Enter score until kickoff", async () => {
+    const screen = await render(editor([game], vi.fn(), new Date("2026-11-14T12:00:00Z")));
+    await expect.element(screen.getByLabelText("KC score in KC at ATL")).not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Enter score for KC at ATL" }).click();
+    await expect.element(screen.getByLabelText("KC score in KC at ATL")).toBeVisible();
+    await expect.element(screen.getByLabelText("ATL score in KC at ATL")).toBeVisible();
   });
 });

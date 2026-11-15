@@ -14,6 +14,12 @@ async function dismissHomeScreenOffer(page: Page) {
   await expect(offer).toHaveCount(0);
 }
 
+/** Opens a member's "⋯" menu on the League tab and chooses one of its actions. */
+async function memberAction(page: Page, member: string, action: string) {
+  await page.getByRole("button", { name: `Options for ${member}` }).click();
+  await page.getByRole("menuitem", { name: action, exact: true }).click();
+}
+
 test("signed-out visitors can explore the landing page and public guide", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "POW Pick'em", exact: true })).toBeVisible();
@@ -133,19 +139,22 @@ test("admins have equal authority and can step down while keeping one admin", as
       await expect(player.getByRole("heading", { name: "Shared administration" })).toBeVisible();
       await player.goto(leagueUrl);
       await expect(player.getByRole("button", { name: "Create week" })).toHaveCount(0);
-      await expect(player.getByRole("button", { name: /Make .* an admin/ })).toHaveCount(0);
+      await expect(player.getByRole("button", { name: /^Options for / })).toHaveCount(0);
 
       await page.reload();
-      await page.getByRole("button", { name: `Make ${name} an admin` }).click();
+      await memberAction(page, name, `Make ${name} an admin`);
       await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
-      await expect(page.getByRole("button", { name: `Make ${name} an admin` })).toBeVisible();
-      await page.getByRole("button", { name: `Make ${name} an admin` }).click();
+      await memberAction(page, name, `Make ${name} an admin`);
       await page.getByRole("alertdialog").getByRole("button", { name: "Make admin", exact: true }).click();
-      await expect(page.getByRole("button", { name: `Revoke admin access for ${name}` })).toBeVisible();
+      await page.getByRole("button", { name: `Options for ${name}` }).click();
+      await expect(page.getByRole("menuitem", { name: `Revoke admin access for ${name}` })).toBeVisible();
+      await page.keyboard.press("Escape");
       await player.reload();
       await expect(player.getByRole("button", { name: "Create week" })).toBeVisible();
-      await expect(player.getByRole("button", { name: "Revoke admin access for Commish" })).toBeEnabled();
-      await expect(player.getByRole("button", { name: "Remove Commish", exact: true })).toBeEnabled();
+      await player.getByRole("button", { name: "Options for Commish" }).click();
+      await expect(player.getByRole("menuitem", { name: "Revoke admin access for Commish" })).toBeEnabled();
+      await expect(player.getByRole("menuitem", { name: "Remove Commish", exact: true })).toBeEnabled();
+      await player.keyboard.press("Escape");
     }
     const pat = contexts[0]?.pages()[0];
     if (!pat) throw new Error("Missing Pat's page");
@@ -154,22 +163,26 @@ test("admins have equal authority and can step down while keeping one admin", as
     await expect(pat.getByRole("heading", { name: /Week 1 · / })).toBeVisible();
 
     await pat.goto(leagueUrl);
-    await pat.getByRole("button", { name: "Revoke admin access for Commish" }).click();
+    await memberAction(pat, "Commish", "Revoke admin access for Commish");
     await pat.getByRole("alertdialog").getByRole("button", { name: "Revoke admin", exact: true }).click();
-    await expect(pat.getByRole("button", { name: "Make Commish an admin" })).toBeVisible();
+    await pat.getByRole("button", { name: "Options for Commish" }).click();
+    await expect(pat.getByRole("menuitem", { name: "Make Commish an admin" })).toBeVisible();
+    await pat.keyboard.press("Escape");
     await page.reload();
     await expect(page.getByRole("button", { name: "Create week" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Revoke admin access/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Options for / })).toHaveCount(0);
     await expect(page.getByLabel(/Invite link/)).toHaveCount(0);
 
-    await pat.getByRole("button", { name: "Revoke admin access for Pat" }).click();
+    await memberAction(pat, "Pat", "Revoke admin access for Pat");
     await pat.getByRole("alertdialog").getByRole("button", { name: "Revoke admin", exact: true }).click();
     await expect(pat.getByLabel(/Invite link/)).toHaveCount(0);
     const sam = contexts[1]?.pages()[0];
     if (!sam) throw new Error("Missing Sam's page");
     await sam.reload();
-    await expect(sam.getByRole("button", { name: "Revoke admin access for Sam" })).toBeDisabled();
-    await sam.getByRole("button", { name: "Remove Commish", exact: true }).click();
+    await sam.getByRole("button", { name: "Options for Sam" }).click();
+    await expect(sam.getByRole("menuitem", { name: "Revoke admin access for Sam" })).toBeDisabled();
+    await sam.keyboard.press("Escape");
+    await memberAction(sam, "Commish", "Remove Commish");
     await sam.getByRole("alertdialog").getByRole("button", { name: "Remove", exact: true }).click();
     await expect(sam.getByText("Commish", { exact: true })).toHaveCount(0);
     await page.reload();
@@ -317,6 +330,8 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   // The admin sees that both have picked and enters the final score.
   await page.getByRole("link", { name: "Manage week" }).click();
   await expect(page.getByRole("row", { name: /Pat/ })).toContainText("1 of 1");
+  // The game hasn't kicked off, so its score boxes wait behind "Enter score".
+  await page.getByRole("button", { name: "Enter score for KC at ATL" }).click();
   await page.getByLabel("KC score in KC at ATL").fill("30");
   await page.getByLabel("ATL score in KC at ATL").fill("10");
   await page.getByRole("button", { name: "Save changes" }).click();

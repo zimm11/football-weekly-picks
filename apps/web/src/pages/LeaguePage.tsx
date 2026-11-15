@@ -1,4 +1,13 @@
-import { CaretRightIcon } from "@phosphor-icons/react";
+import {
+  ArrowsClockwiseIcon,
+  CaretRightIcon,
+  CheckIcon,
+  CopyIcon,
+  DotsThreeIcon,
+  ShareNetworkIcon,
+  ShieldIcon,
+  UserMinusIcon,
+} from "@phosphor-icons/react";
 import {
   currentWeek,
   type LeagueDetail,
@@ -13,13 +22,21 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
 import { now } from "../clock";
+import { Avatar } from "../components/Avatar";
 import { useConfirm } from "../components/ConfirmDialog";
 import { LeagueLayout, type LeagueTab } from "../components/LeagueNav";
 import { PickSplitsTable, WeekByWeekTable, YourSeason } from "../components/SeasonDashboard";
 import { SeasonWeeks } from "../components/SeasonWeeks";
+import { LeagueSkeleton, StandingsSkeleton } from "../components/Skeletons";
 import { StandingsTable } from "../components/StandingsTable";
 import { WeekRecap } from "../components/WeekRecap";
 import { ordinal } from "../format";
@@ -82,7 +99,9 @@ export function LeaguePage({
   }, [league.reload]);
 
   if (league.error && !league.data) return <Notice kind="alert">{league.error}</Notice>;
-  if (!league.data) return <p className="text-muted-foreground">Loading…</p>;
+  if (!league.data) {
+    return <LeagueSkeleton shape={tab === "picks" ? "week" : tab === "standings" ? "standings" : "list"} />;
+  }
   const detail = league.data;
   const currentYear = seasonYear(now());
   const year = selectedYear ?? preferredSeasonYear(detail.weeks, now());
@@ -308,7 +327,7 @@ function SeasonTab({
   );
 
   if (standings.error) return <Notice kind="alert">{standings.error}</Notice>;
-  if (!standings.data) return <p className="text-muted-foreground">Loading…</p>;
+  if (!standings.data) return <StandingsSkeleton />;
   const shownYear = standings.data.year;
   const me = standings.data.entries.find((e) => e.userId === userId);
   const finals = league.weeks.filter(
@@ -320,7 +339,8 @@ function SeasonTab({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h3 className="text-4xl leading-none font-extrabold">
           {show === "results" ? "Results" : "Standings"}{" "}
-          {shownYear !== null && <span className="text-2xl text-muted-foreground">· {shownYear}</span>}
+          {/* The season pill in the league header already shows the year. */}
+          {shownYear !== null && <span className="sr-only">· {shownYear}</span>}
         </h3>
       </div>
 
@@ -416,6 +436,8 @@ function LeagueTabPanel({
   const [confirm, confirmDialog] = useConfirm();
   const param = { leagueId: league.id };
   const inviteUrl = `${window.location.origin}/join/${league.inviteCode}`;
+  // The phone's share sheet, where there is one; everywhere else the link is copied.
+  const canShare = typeof navigator.share === "function";
 
   /** Runs a change to the league, then reloads it. */
   async function change(request: () => Promise<{ ok: boolean; json(): Promise<unknown> }>, done: string) {
@@ -541,14 +563,34 @@ function LeagueTabPanel({
 
       {isAdmin && (
         <Card aria-label="Invite">
-          <Eyebrow>Invite players</Eyebrow>
-          <Field label="Invite link: send this to anyone who should join">
-            <Input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} />
-          </Field>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="grid gap-1">
+            <Eyebrow>Invite players</Eyebrow>
+            <p className="m-0 text-sm text-muted-foreground">Anyone with this link can join the league.</p>
+          </div>
+          <Input
+            readOnly
+            aria-label="Invite link"
+            value={inviteUrl}
+            onFocus={(e) => e.currentTarget.select()}
+            className="truncate rounded-full border-transparent bg-raised font-mono text-sm"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            {canShare && (
+              <Button
+                type="button"
+                onClick={() =>
+                  navigator
+                    .share({ title: league.name, text: `Join ${league.name} on POW Pick'em`, url: inviteUrl })
+                    .catch(() => {})
+                }
+              >
+                <ShareNetworkIcon aria-hidden />
+                Share
+              </Button>
+            )}
             <Button
               type="button"
-              variant="secondary"
+              variant={canShare ? "secondary" : "default"}
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(inviteUrl);
@@ -558,9 +600,11 @@ function LeagueTabPanel({
                 }
               }}
             >
+              {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
               {copied ? "Copied" : "Copy link"}
             </Button>
-            <Button type="button" variant="link" onClick={rotate}>
+            <Button type="button" variant="ghost" className="ml-auto text-muted-foreground" onClick={rotate}>
+              <ArrowsClockwiseIcon aria-hidden />
               Make a new link
             </Button>
           </div>
@@ -569,55 +613,66 @@ function LeagueTabPanel({
 
       <Card aria-label="Members">
         <Eyebrow>Members ({league.members.length})</Eyebrow>
-        {isAdmin && (
-          <p className="m-0 text-sm text-muted-foreground">
-            All admins can grant or revoke admin access and remove members. At least one admin must remain.
-          </p>
-        )}
-        <ul className="m-0 grid list-none p-0">
-          {league.members.map((member) => (
-            <li
-              key={member.userId}
-              className="flex min-h-12 flex-wrap items-center gap-2 border-t py-2 first:border-t-0"
-            >
-              <span className="min-w-0 break-words font-medium">{member.displayName}</span>
-              {member.role === "admin" && <Badge variant="outline">Admin</Badge>}
-              <div className="ml-auto flex flex-wrap gap-2">
+        <ul className="m-0 grid list-none divide-y divide-border p-0">
+          {league.members.map((member) => {
+            const lastAdmin = member.role === "admin" && adminCount === 1;
+            return (
+              <li key={member.userId} className="flex min-h-14 items-center gap-3 py-2">
+                <Avatar name={member.displayName} />
+                <span className="grid min-w-0 flex-1">
+                  <span className="break-words font-medium">
+                    {member.displayName}
+                    {member.userId === userId && <span className="text-muted-foreground"> (you)</span>}
+                  </span>
+                  {changingRole === member.userId && (
+                    <span className="text-xs text-muted-foreground">Saving…</span>
+                  )}
+                </span>
+                {member.role === "admin" && <Badge variant="outline">Admin</Badge>}
                 {isAdmin && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={busy || (member.role === "admin" && adminCount === 1)}
-                    aria-label={
-                      member.role === "admin"
-                        ? `Revoke admin access for ${member.displayName}`
-                        : `Make ${member.displayName} an admin`
-                    }
-                    onClick={() => changeRole(member)}
-                  >
-                    {changingRole === member.userId
-                      ? "Saving…"
-                      : member.role === "admin"
-                        ? "Revoke admin"
-                        : "Make admin"}
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Options for ${member.displayName}`}
+                        className="rounded-full text-muted-foreground hover:text-foreground"
+                        disabled={busy}
+                      >
+                        <DotsThreeIcon aria-hidden weight="bold" className="size-6" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        disabled={lastAdmin}
+                        aria-label={
+                          member.role === "admin"
+                            ? `Revoke admin access for ${member.displayName}`
+                            : `Make ${member.displayName} an admin`
+                        }
+                        onSelect={() => changeRole(member)}
+                      >
+                        <ShieldIcon aria-hidden />
+                        {member.role === "admin" ? "Revoke admin" : "Make admin"}
+                      </DropdownMenuItem>
+                      {member.userId !== userId && (
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={lastAdmin}
+                          aria-label={`Remove ${member.displayName}`}
+                          onSelect={() => remove(member)}
+                        >
+                          <UserMinusIcon aria-hidden />
+                          Remove from league
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
-                {isAdmin && member.userId !== userId && (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    disabled={busy || (member.role === "admin" && adminCount === 1)}
-                    aria-label={`Remove ${member.displayName}`}
-                    onClick={() => remove(member)}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
         {!isAdmin && (
           <p className="m-0 text-sm text-muted-foreground">

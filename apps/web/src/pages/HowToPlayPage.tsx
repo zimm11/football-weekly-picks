@@ -291,7 +291,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Share the admin work",
                 detail:
-                  "In the League tab, press Make admin beside a member to give them the same access you have; Revoke admin takes it back and keeps them in the league as a player. Remove takes a member out of the league while keeping their results from weeks already played. Make a new link replaces the invite link, so the old one stops working. A league always keeps at least one admin: if you're the only one, make someone else an admin before leaving or stepping down.",
+                  "In the League tab, tap ⋯ beside a member and choose Make admin to give them the same access you have; Revoke admin takes it back and keeps them in the league as a player. Remove from league takes a member out while keeping their results from weeks already played. Make a new link replaces the invite link, so the old one stops working. A league always keeps at least one admin: if you're the only one, make someone else an admin before leaving or stepping down.",
               },
               {
                 title: "Set up a draft week",
@@ -311,7 +311,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Record scores and finalize the week",
                 detail:
-                  "In Manage week, press Pull results from ESPN once games are final, or enter scores and press Save changes. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Pulling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
+                  "In Manage week, press Pull results from ESPN once games are final, or enter scores and press Save changes. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Pulling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
               },
               {
                 title: "Correct results when needed",

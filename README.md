@@ -182,7 +182,8 @@ new API, using the normal migration and deployment workflow.
    admin's management screen shows submission counts and whether a POW was chosen; other players'
    choices remain private.
 5. In **Manage week**, press **Pull results from ESPN** once games are final, or enter both scores for
-   each game and press **Save changes**. Results imports update games originally imported from ESPN;
+   each game and press **Save changes**. Score boxes appear once a game kicks off; before that, press
+   **Enter score** on the game to record a result early. Results imports update games originally imported from ESPN;
    manually added games need manually entered scores. Recording a result closes that game to picks
    immediately.
 6. When every game has a score, press **Finalize week** and confirm. This reveals everyone's picks,
@@ -193,11 +194,11 @@ new API, using the normal migration and deployment workflow.
    again and the week is
    excluded from standings until finalized again; the corrected week is then recapped again.
 7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
-   with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. Admins can **Pin announcement** inside a thread to keep it at the top of the board.
+   with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. The reply box stays at the bottom of the thread, and new replies appear on their own. Admins can open a thread's **⋯** menu and choose **Pin announcement** to keep it at the top of the board.
 
 ### Sharing league administration
 
-Any admin can open **League → Members** and choose **Make admin** beside a current player.
+Any admin can open **League → Members**, tap **⋯** beside a current player, and choose **Make admin**.
 All admins have equal access to weeks, games, scores, settings, invites, and membership management.
 Admins can revoke each other's admin access or remove each other, including the league creator.
 **Revoke admin** keeps that person in the league as a player with their picks and results. Admins can
@@ -205,10 +206,11 @@ also step down themselves, provided at least one active admin remains.
 
 ### Leaving, removal, and limits
 
-Any member can use **League → Leave league**; an admin can **Remove** another member. Either way the
+Any member can use **League → Leave league**; an admin can remove another member from the **⋯** menu
+beside their name. Either way the
 person loses access, weeks they already played keep their results, and they can rejoin through an invite
-link. A league's only admin must make someone else an admin before leaving. **Make a new link** replaces
-the invite link, so links already shared stop working. A league holds at most 100 players, and one
+link. A league's only admin must make someone else an admin before leaving. **Make a new link** (beside **Copy link**, and
+**Share** on phones) replaces the invite link, so links already shared stop working. A league holds at most 100 players, and one
 account can be in at most 25 leagues; removed and departed members don't count toward either limit.
 
 ### Accounts and passwords

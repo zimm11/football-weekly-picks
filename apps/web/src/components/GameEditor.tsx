@@ -1,4 +1,6 @@
 // biome-ignore-all lint/a11y/noRedundantRoles: on a phone these rows are laid out as cards, and a browser drops a table's built-in roles once its display changes. The explicit roles keep it a table for screen readers.
+
+import { DotsThreeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import {
   type CreateGame,
   type Game,
@@ -12,6 +14,12 @@ import { type FormEvent, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { kickoffDay, kickoffTime, matchup } from "../format";
 import { useUnsavedGuard } from "./ConfirmDialog";
@@ -25,6 +33,8 @@ type Props = {
   status: WeekStatus;
   tiebreakerGameId: string | null;
   timeZone: string;
+  /** Passed in (not read from the clock) so which games offer score boxes is testable. */
+  now: Date;
   /** Saves every edited row at once. */
   onSave: (updates: GameUpdate[]) => void;
   /** True while a change is being sent, so nothing is submitted twice. */
@@ -48,6 +58,7 @@ export function GameEditor({
   status,
   tiebreakerGameId,
   timeZone,
+  now,
   onSave,
   busy = false,
   onRemove,
@@ -57,6 +68,17 @@ export function GameEditor({
   const showScores = status === "open";
   // What the admin has typed but not saved. A field with no entry shows the saved value.
   const [edits, setEdits] = useState<Edits>({});
+  // Games whose score boxes the admin opened before kickoff.
+  const [scoring, setScoring] = useState<ReadonlySet<string>>(new Set());
+  // Score boxes show once a game has kicked off or has a score. Before that they wait behind "Enter score",
+  // since a result closes the game to picks whatever the clock says.
+  const scoresOpen = (game: Game) =>
+    showScores &&
+    (new Date(game.kickoff) <= now ||
+      game.homeScore !== null ||
+      scoring.has(game.id) ||
+      !!edits[game.id]?.awayScore ||
+      !!edits[game.id]?.homeScore);
 
   // An edit only counts while the saved value under it is unchanged. Once that value moves (the edit was
   // saved, or fresher data arrived, e.g. corrected scores pulled from ESPN) the edit is dropped, so a stale
@@ -116,8 +138,8 @@ export function GameEditor({
     <div className="grid gap-4">
       {unsavedDialog}
       <p className="m-0 text-sm text-muted-foreground">
-        The spread is the home team's line: −3.5 means the home team is favored by 3.5.
-        {showScores && " Enter both scores to mark a game final; a final game is closed to picks."}
+        Spreads are the home team's line: −3.5 means the home team is favored by 3.5.
+        {showScores && " A game with both scores entered is final and closed to picks."}
       </p>
       <div className="table-scroll md:rounded-xl md:bg-card">
         <table role="table" aria-label="Games" className="data-table card-rows">
@@ -161,16 +183,34 @@ export function GameEditor({
                   <td role="cell" data-label="Points" className="max-md:order-3">
                     {input(game, "points", `Points for ${name}`, { min: 1 })}
                   </td>
-                  {showScores && (
-                    <td role="cell" data-label={`${game.awayTeam} score`} className="max-md:order-3">
-                      {input(game, "awayScore", `${game.awayTeam} score in ${name}`, { min: 0 })}
-                    </td>
-                  )}
-                  {showScores && (
-                    <td role="cell" data-label={`${game.homeTeam} score`} className="max-md:order-3">
-                      {input(game, "homeScore", `${game.homeTeam} score in ${name}`, { min: 0 })}
-                    </td>
-                  )}
+                  {showScores &&
+                    (scoresOpen(game) ? (
+                      <>
+                        <td role="cell" data-label={`${game.awayTeam} score`} className="max-md:order-3">
+                          {input(game, "awayScore", `${game.awayTeam} score in ${name}`, { min: 0 })}
+                        </td>
+                        <td role="cell" data-label={`${game.homeTeam} score`} className="max-md:order-3">
+                          {input(game, "homeScore", `${game.homeTeam} score in ${name}`, { min: 0 })}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td role="cell" className="max-md:order-3 max-md:col-span-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Enter score for ${name}`}
+                            className="text-muted-foreground max-md:w-full max-md:bg-raised/60"
+                            onClick={() => setScoring((prev) => new Set(prev).add(game.id))}
+                          >
+                            <PlusIcon aria-hidden className="size-4" />
+                            Enter score
+                          </Button>
+                        </td>
+                        <td role="cell" className="max-md:hidden" />
+                      </>
+                    ))}
                   <td role="cell" className="max-md:order-4">
                     <label className="flex min-h-11 items-center gap-2 text-sm">
                       <input
@@ -185,15 +225,29 @@ export function GameEditor({
                     </label>
                   </td>
                   <td role="cell" className="max-md:order-4 max-md:justify-self-end">
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      aria-label={`Remove ${name}`}
-                      onClick={() => onRemove(game.id)}
-                    >
-                      Remove
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Options for ${name}`}
+                          className="rounded-full text-muted-foreground hover:text-foreground"
+                        >
+                          <DotsThreeIcon aria-hidden weight="bold" className="size-6" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          variant="destructive"
+                          aria-label={`Remove ${name}`}
+                          onSelect={() => onRemove(game.id)}
+                        >
+                          <TrashIcon aria-hidden />
+                          Remove game
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               );
@@ -207,7 +261,7 @@ export function GameEditor({
       {games.length > 0 && (
         <div
           className={cn(
-            "sticky z-30 -mx-4 flex flex-wrap items-center gap-3 border-t bg-chrome px-4 py-3",
+            "sticky z-30 -mx-4 flex flex-wrap items-center gap-3 border-t bg-chrome/90 px-4 py-3 backdrop-blur-md",
             TAB_BAR_OFFSET,
           )}
         >

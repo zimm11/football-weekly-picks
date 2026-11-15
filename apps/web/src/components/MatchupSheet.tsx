@@ -1,4 +1,4 @@
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, ChartBarIcon } from "@phosphor-icons/react";
 import {
   formatLine,
   type Game,
@@ -12,6 +12,7 @@ import { cn } from "cn";
 import { type ReactNode, useEffect, useState } from "react";
 import { Eyebrow, Notice } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatPercent, kickoffDay, kickoffTime } from "../format";
 import { TeamLogo } from "./TeamLogo";
 
@@ -78,9 +79,24 @@ export function MatchupSheet({ game, timeZone, load, onClose }: Props) {
             </SheetHeader>
             <div className="grid gap-6 px-4 pb-6">
               {shown?.error && <Notice kind="alert">{shown.error}</Notice>}
-              {!insights && !shown?.error && <p className="m-0 text-muted-foreground">Loading matchup…</p>}
+              {!insights && !shown?.error && (
+                <div role="status" aria-label="Loading matchup" aria-busy className="grid gap-3">
+                  <span className="sr-only">Loading matchup…</span>
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-16 rounded-xl" />
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-28 rounded-xl" />
+                </div>
+              )}
               {insights && !insights.market && !insights.matchup && (
-                <p className="m-0 text-muted-foreground">No stats are available for this game right now.</p>
+                <div className="grid justify-items-center gap-2 rounded-xl bg-card px-4 py-8 text-center">
+                  <ChartBarIcon aria-hidden weight="duotone" className="size-10 text-muted-foreground" />
+                  <p className="m-0 font-semibold">No stats are available for this game right now.</p>
+                  <p className="m-0 max-w-xs text-sm text-muted-foreground">
+                    Form, injuries and market prices usually show up closer to kickoff. Check back later in
+                    the week.
+                  </p>
+                </div>
               )}
               {insights?.market && <Market game={game} market={insights.market} />}
               {insights?.matchup && <Matchup game={game} matchup={insights.matchup} timeZone={timeZone} />}

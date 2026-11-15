@@ -92,8 +92,9 @@ test("admins pin announcements and members quote replies", async ({ page, browse
   await page.getByLabel("Thread title").fill("Weekly reminder");
   await page.getByLabel("Message", { exact: true }).fill("Remember your Monday POW.");
   await page.getByRole("button", { name: "Create thread", exact: true }).click();
-  await page.getByRole("button", { name: "Pin announcement", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Unpin announcement", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Thread options" }).click();
+  await page.getByRole("menuitem", { name: "Pin announcement" }).click();
+  await expect(page.getByText("Pinned announcement")).toBeVisible();
   await page.getByRole("link", { name: "Message board" }).click();
   await page.getByRole("link", { name: "New thread" }).click();
   await page.getByLabel("Thread title").fill("Newer conversation");
@@ -115,7 +116,7 @@ test("admins pin announcements and members quote replies", async ({ page, browse
     await player.getByRole("link", { name: /Messages/ }).click();
     await player.getByRole("link", { name: /Weekly reminder/ }).click();
     await expect(player.getByText("Pinned announcement", { exact: true })).toBeVisible();
-    await expect(player.getByRole("button", { name: /Pin announcement|Unpin announcement/i })).toHaveCount(0);
+    await expect(player.getByRole("button", { name: "Thread options" })).toHaveCount(0);
     await player.getByRole("button", { name: "Quote message 1 by Commish", exact: true }).click();
     const preview = player.getByRole("region", { name: "Reply quote preview" });
     await expect(preview).toContainText("Remember your Monday POW.");
@@ -140,8 +141,9 @@ test("admins pin announcements and members quote replies", async ({ page, browse
     await context.close();
   }
   await page.getByRole("link", { name: /Weekly reminder/ }).click();
-  await page.getByRole("button", { name: "Unpin announcement", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Pin announcement", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Thread options" }).click();
+  await page.getByRole("menuitem", { name: "Unpin announcement" }).click();
+  await expect(page.getByText("Pinned announcement")).toHaveCount(0);
   await page.reload();
   await expect(page.getByText("Pinned announcement", { exact: true })).toHaveCount(0);
 });
