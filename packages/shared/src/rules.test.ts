@@ -7,8 +7,10 @@ import {
   defaultTiebreakerGame,
   effectiveTiebreakerId,
   isLocked,
+  pickPoints,
   type ScoredGame,
   type ScoredPick,
+  scoreSoFar,
   scoreWeek,
   seasonStandings,
 } from "./rules";
@@ -358,6 +360,84 @@ describe("scoreWeek", () => {
       ]);
       expect(entries.map((e) => e.isWinner)).toEqual([true, true]);
     });
+  });
+});
+
+describe("scoreSoFar", () => {
+  // Thursday is final (home covers), Sunday 1pm pushed, Sunday night and Monday are still to be played.
+  const games: ScoredGame[] = [
+    { id: "thu", kickoff: THU, spread: -3.5, points: 3, homeScore: 27, awayScore: 10 },
+    { id: "sun", kickoff: SUN_1PM, spread: -3, points: 1, homeScore: 20, awayScore: 17 },
+    { id: "snf", kickoff: SUN_NIGHT, spread: -3.5, points: 2, homeScore: null, awayScore: null },
+    { id: "mon", kickoff: MON, spread: -3.5, points: 3, homeScore: null, awayScore: null },
+  ];
+
+  it("counts only the games with a result, and how many picks are still to be decided", () => {
+    expect(
+      scoreSoFar(games, [
+        { gameId: "thu", side: "home", isPow: true },
+        { gameId: "sun", side: "away", isPow: false },
+        { gameId: "snf", side: "home", isPow: false },
+      ]),
+    ).toEqual({ points: 8, wins: 1, losses: 0, pushes: 1, pending: 1, pow: "won" });
+  });
+
+  it("reports the POW as pending, lost or pushed, and null when there is none", () => {
+    const pow = (gameId: string, side: "home" | "away") =>
+      scoreSoFar(games, [{ gameId, side, isPow: true }]).pow;
+    expect(pow("mon", "home")).toBe("pending");
+    expect(pow("thu", "away")).toBe("lost");
+    expect(pow("sun", "home")).toBe("push");
+    expect(scoreSoFar(games, [{ gameId: "thu", side: "away", isPow: false }])).toEqual({
+      points: 0,
+      wins: 0,
+      losses: 1,
+      pushes: 0,
+      pending: 0,
+      pow: null,
+    });
+  });
+
+  it("ignores picks on games no longer on the slate", () => {
+    expect(scoreSoFar(games, [{ gameId: "gone", side: "home", isPow: true }])).toMatchObject({
+      pending: 0,
+      pow: null,
+    });
+  });
+
+  it("matches the final score once every game is in", () => {
+    const finished = games.map((g) => ({ ...g, homeScore: g.homeScore ?? 24, awayScore: g.awayScore ?? 10 }));
+    const picks = [
+      { gameId: "thu", side: "home" as const, isPow: false },
+      { gameId: "snf", side: "home" as const, isPow: true },
+      { gameId: "mon", side: "away" as const, isPow: false },
+    ];
+    const [final] = scoreWeek({
+      games: finished,
+      picks: picks.map((p) => ({ ...p, userId: "a" })),
+      guesses: [],
+      userIds: ["a"],
+      tiebreakerGameId: null,
+    });
+    expect(scoreSoFar(finished, picks)).toMatchObject({
+      points: final?.points,
+      wins: final?.wins,
+      pending: 0,
+    });
+  });
+});
+
+describe("pickPoints", () => {
+  const game: ScoredGame = { id: "g", kickoff: THU, spread: -3.5, points: 3, homeScore: 27, awayScore: 10 };
+
+  it("gives the game's points for a win, plus the POW bonus, and nothing otherwise", () => {
+    expect(pickPoints(game, { side: "home", isPow: false })).toBe(3);
+    expect(pickPoints(game, { side: "home", isPow: true })).toBe(8);
+    expect(pickPoints(game, { side: "away", isPow: true })).toBe(0);
+    expect(pickPoints({ ...game, spread: -17 }, { side: "home", isPow: true })).toBe(0);
+    expect(
+      pickPoints({ ...game, homeScore: null, awayScore: null }, { side: "home", isPow: false }),
+    ).toBeNull();
   });
 });
 

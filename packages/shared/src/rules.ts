@@ -254,6 +254,63 @@ export function scoreWeek(input: {
   return rank(entries, compare).map((e) => ({ ...e, isWinner: e.rank === 1 }));
 }
 
+export type ScoreSoFar = {
+  points: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  /** Picks whose game has no result yet. */
+  pending: number;
+  /** How the player's POW has gone. Null when they didn't choose one. */
+  pow: "won" | "lost" | "push" | "pending" | null;
+};
+
+/**
+ * One player's own running score in a week that isn't closed yet, from the games that have a result.
+ * Scored by the same rules as `scoreWeek`, so it matches the final tally once every game is in.
+ */
+export function scoreSoFar(games: ScoredGame[], picks: Omit<ScoredPick, "userId">[]): ScoreSoFar {
+  const gameById = new Map(games.map((g) => [g.id, g]));
+  const mine = picks.filter((p) => gameById.has(p.gameId));
+  const [entry] = scoreWeek({
+    games,
+    picks: mine.map((p) => ({ ...p, userId: "me" })),
+    guesses: [],
+    userIds: ["me"],
+    tiebreakerGameId: null,
+  });
+  if (!entry) throw new Error("scoreWeek returned no entry");
+  const powPick = mine.find((p) => p.isPow);
+  const powGame = powPick && gameById.get(powPick.gameId);
+  const powCovered = powGame ? coveringSide(powGame) : null;
+  return {
+    points: entry.points,
+    wins: entry.wins,
+    losses: entry.losses,
+    pushes: entry.pushes,
+    pending: mine.filter((p) => {
+      const game = gameById.get(p.gameId);
+      return game && coveringSide(game) === null;
+    }).length,
+    pow: !powPick
+      ? null
+      : powCovered === null
+        ? "pending"
+        : powCovered === "push"
+          ? "push"
+          : powCovered === powPick.side
+            ? "won"
+            : "lost",
+  };
+}
+
+/** What one pick earned once its game has a result: the game's points, plus the bonus for a winning POW. */
+export function pickPoints(game: ScoredGame, pick: { side: Side; isPow: boolean }): number | null {
+  const covered = coveringSide(game);
+  if (covered === null) return null;
+  return covered === pick.side ? game.points + (pick.isPow ? POW_BONUS : 0) : 0;
+}
+
 export type SeasonEntry = {
   userId: string;
   points: number;

@@ -224,9 +224,57 @@ describe("PickSheet", () => {
     await expect.element(screen.getByRole("button", { name: "POW: LAC at BAL" })).toBeDisabled();
     await expect.element(screen.getByLabelText(/Tiebreaker/)).toBeDisabled();
     await expect.element(screen.getByText("Final 20–27")).toBeVisible();
-    await expect.element(screen.getByText("Won", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Won +3", { exact: true })).toBeVisible();
     // Thursday is untouched.
     await expect.element(screen.getByRole("button", { name: "Giants -2.5" })).toBeEnabled();
+  });
+
+  it("keeps a running score of the player's own picks as results come in", async () => {
+    const picks: Pick[] = [
+      { gameId: "thu", side: "home", isPow: true },
+      { gameId: "sun", side: "away", isPow: false },
+    ];
+    const sheet = (withScores: Game[]) => (
+      <PickSheet
+        games={withScores}
+        picks={picks}
+        tiebreakerGameId="mon"
+        tiebreakerTotal={null}
+        timeZone="America/New_York"
+        now={SUNDAY_2PM}
+        onSave={vi.fn()}
+      />
+    );
+    const scored = (scores: Record<string, [number, number]>) =>
+      games.map((g) => {
+        const score = scores[g.id];
+        return score ? { ...g, homeScore: score[0], awayScore: score[1] } : g;
+      });
+
+    const screen = await render(sheet(games));
+    // Nothing is in yet, so there is nothing to tally.
+    await expect.element(screen.getByRole("region", { name: "Your week so far" })).not.toBeInTheDocument();
+
+    // Thursday ends: NYG -2.5 wins by 7, and it was the POW.
+    await screen.rerender(sheet(scored({ thu: [24, 17] })));
+    const soFar = screen.getByRole("region", { name: "Your week so far" });
+    await expect.element(screen.getByText("Won +8", { exact: true })).toBeVisible();
+    await expect.element(soFar.getByText("8", { exact: true })).toBeVisible();
+    await expect.element(soFar.getByText("1–0", { exact: true })).toBeVisible();
+    await expect.element(soFar.getByText("Won", { exact: true })).toBeVisible();
+    await expect.element(soFar.getByText("1 pick still to play")).toBeVisible();
+
+    // A pick the player is making on Monday survives the refresh that brings Sunday's result.
+    await screen.getByRole("button", { name: "Chargers +4.5" }).click();
+    await screen.rerender(sheet(scored({ thu: [24, 17], sun: [10, 20] })));
+    await expect.element(screen.getByText("Won +1", { exact: true })).toBeVisible();
+    await expect.element(soFar.getByText("9", { exact: true })).toBeVisible();
+    await expect.element(soFar.getByText("2–0", { exact: true })).toBeVisible();
+    await expect.element(soFar.getByText("All your games are in")).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Chargers +4.5" }))
+      .toHaveAttribute("aria-pressed", "true");
+    await expect.element(screen.getByText("Unsaved changes")).toBeVisible();
   });
 
   it("flags unsaved changes", async () => {
