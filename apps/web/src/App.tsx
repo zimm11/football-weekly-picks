@@ -12,6 +12,7 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { api, getSupabase, messageOf, unwrap } from "./api";
 import { clockOffset, onClockChange } from "./clock";
+import { Avatar } from "./components/Avatar";
 import { useHomeScreenHelp } from "./components/HomeScreenInstall";
 import { NameForm } from "./components/NameForm";
 import { NewPasswordForm } from "./components/NewPasswordForm";
@@ -61,7 +62,7 @@ function SimulatedClockTicker({ offsetMs }: { offsetMs: number }) {
 /** The bar across the top of every screen, and the column the screen sits in. */
 function Shell({ account, children }: { account?: ReactNode; children: ReactNode }) {
   const path = usePath();
-  const signInClass = buttonVariants();
+  const signInClass = buttonVariants({ size: "sm" });
   const brand = (
     <span className="flex items-center gap-2 text-foreground">
       <FootballIcon aria-hidden weight="fill" className="size-6 text-pow" />
@@ -70,9 +71,9 @@ function Shell({ account, children }: { account?: ReactNode; children: ReactNode
   );
   return (
     <div className="min-h-dvh">
-      <header className="border-b-[3px] border-pow bg-chrome">
-        <div className="mx-auto flex min-h-14 max-w-4xl flex-wrap items-center justify-between gap-x-3 px-4 py-1">
-          <h1 className="shrink-0 text-2xl font-extrabold">
+      <header className="sticky top-0 z-40 border-b bg-chrome/85 backdrop-blur-md">
+        <div className="mx-auto flex min-h-14 max-w-4xl items-center justify-between gap-x-3 px-4 py-1">
+          <h1 className="shrink-0 text-xl font-extrabold">
             <Link to="/" className="no-underline">
               {brand}
             </Link>
@@ -81,7 +82,7 @@ function Shell({ account, children }: { account?: ReactNode; children: ReactNode
             <Link
               to="/how-to-play"
               aria-current={path === "/how-to-play" ? "page" : undefined}
-              className="flex min-h-11 shrink-0 items-center px-2 font-display font-bold text-foreground uppercase hover:bg-secondary"
+              className="flex min-h-11 shrink-0 items-center rounded-md px-3 text-sm font-medium text-muted-foreground no-underline hover:bg-raised hover:text-foreground aria-[current=page]:text-foreground"
             >
               How to play
             </Link>
@@ -184,7 +185,7 @@ export function App() {
               </p>
             )}
           </div>
-          <Card id="sign-in" className="scroll-mt-6">
+          <Card id="sign-in" className="scroll-mt-20">
             <SignInForm
               onSubmit={signIn}
               onResetRequest={requestReset}
@@ -234,8 +235,12 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
 
   const account = (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex h-11 min-w-0 max-w-36 items-center gap-1.5 rounded-md px-2 font-medium text-foreground hover:bg-secondary">
-        <span className="truncate">{me?.displayName ?? "Account"}</span>
+      <DropdownMenuTrigger className="flex h-11 min-w-0 max-w-44 items-center gap-2 rounded-full py-1 pr-2 pl-1 text-sm font-medium text-foreground hover:bg-raised">
+        {me?.displayName && <Avatar name={me.displayName} />}
+        {/* On a phone the avatar stands in for the name, which stays as the button's accessible name. */}
+        <span className={me?.displayName ? "truncate max-sm:sr-only" : "truncate"}>
+          {me?.displayName ?? "Account"}
+        </span>
         <CaretDownIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

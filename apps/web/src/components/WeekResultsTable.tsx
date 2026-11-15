@@ -11,6 +11,7 @@ import {
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { matchup } from "../format";
+import { Avatar } from "./Avatar";
 import { TeamLogo } from "./TeamLogo";
 
 type Props = {
@@ -46,7 +47,7 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
           </strong>
         </p>
       )}
-      <div className="table-scroll">
+      <div className="table-scroll md:rounded-xl md:bg-card">
         <table role="table" aria-label="Week results" className="data-table card-rows">
           <thead role="rowgroup">
             <tr role="row">
@@ -83,19 +84,19 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
               <tr
                 role="row"
                 key={entry.userId}
-                className={cn(
-                  "max-md:grid-cols-6",
-                  entry.isWinner && "shadow-[inset_3px_0_0_var(--primary)]",
-                  entry.userId === currentUserId && "md:bg-primary/10",
-                )}
+                className={cn("max-md:grid-cols-6", entry.userId === currentUserId && "md:bg-raised")}
               >
                 <td
                   role="cell"
                   className="num font-display text-lg font-bold text-muted-foreground max-md:text-left"
                 >
-                  {entry.rank}
+                  <span className="inline-flex items-center gap-1">
+                    {entry.isWinner && <TrophyIcon aria-hidden weight="fill" className="size-4 text-win" />}
+                    {entry.rank}
+                  </span>
                 </td>
                 <td role="cell" className="font-medium max-md:col-span-3 max-md:text-lg">
+                  <Avatar name={entry.displayName} size="sm" className="mr-2 align-middle" />
                   {entry.userId === currentUserId ? <strong>{entry.displayName}</strong> : entry.displayName}
                   {lpls.has(entry.userId) && (
                     <>

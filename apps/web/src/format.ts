@@ -46,3 +46,25 @@ export function formatPercent(rate: number | null): string {
 export function formatAverage(n: number | null): string {
   return n === null ? "—" : String(Math.round(n * 10) / 10);
 }
+
+/**
+ * When something was posted, the way a chat app says it: "Just now", "12 min ago", "3:42 PM",
+ * "Yesterday, 9:15 PM", "Tue, 9:15 PM", then "Nov 2" (with the year once it isn't this one).
+ */
+export function relativeTime(iso: string, now: Date): string {
+  const then = new Date(iso);
+  const minutes = Math.floor((now.getTime() - then.getTime()) / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const time = then.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((dayStart(now) - dayStart(then)) / 86_400_000);
+  if (days === 0) return time;
+  if (days === 1) return `Yesterday, ${time}`;
+  if (days < 7) return `${then.toLocaleDateString("en-US", { weekday: "short" })}, ${time}`;
+  return then.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: then.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}

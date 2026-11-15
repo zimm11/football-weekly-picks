@@ -119,7 +119,7 @@ export function GameEditor({
         The spread is the home team's line: −3.5 means the home team is favored by 3.5.
         {showScores && " Enter both scores to mark a game final; a final game is closed to picks."}
       </p>
-      <div className="table-scroll">
+      <div className="table-scroll md:rounded-xl md:bg-card">
         <table role="table" aria-label="Games" className="data-table card-rows">
           <thead role="rowgroup">
             <tr role="row">

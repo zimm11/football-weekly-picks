@@ -1,17 +1,21 @@
-import { ArrowBendUpLeftIcon } from "@phosphor-icons/react";
+import { ArrowBendUpLeftIcon, PlusIcon } from "@phosphor-icons/react";
 import type { MessageReaction, MessageThread, MessageQuote as Quote, ThreadDetail } from "@picks/shared";
+import { cn } from "cn";
 import { useEffect, useRef, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
+import { Avatar } from "../components/Avatar";
 import { useUnsavedGuard } from "../components/ConfirmDialog";
 import { MessageQuote } from "../components/MessageQuote";
 import { MessageReactions } from "../components/MessageReactions";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
 import { Card, Notice } from "../components/ui/card";
 import { Field, fieldClass, Input } from "../components/ui/input";
+import { relativeTime } from "../format";
 import { notifyDone, notifyError } from "../notify";
 import { Link, navigate } from "../router";
 import { useLoad } from "./useLoad";
+import { useNow } from "./useNow";
 
 export function MessageComposer({
   initialTitle = "",
@@ -97,6 +101,7 @@ export function MessageComposer({
 
 export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadId?: string }) {
   const base = `/leagues/${leagueId}/messages`;
+  const now = useNow();
   const [createdId, setCreatedId] = useState<string>();
   // Navigate after the composer has cleared its unsaved guard.
   useEffect(() => {
@@ -133,32 +138,48 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
     <section className="grid gap-3">
       <div className="flex items-center justify-between">
         <h3 className="text-2xl">Message board</h3>
-        <Link className="flex min-h-11 items-center" to={`${base}/new`}>
+        <Link className={buttonVariants({ size: "sm" })} to={`${base}/new`}>
+          <PlusIcon aria-hidden weight="bold" className="size-4" />
           New thread
         </Link>
       </div>
-      <p className="m-0 text-muted-foreground">
-        Conversations for everyone in your league, across all seasons.
-      </p>
       {list.error && <Notice kind="alert">{list.error}</Notice>}
       {!list.data && !list.error && <p>Loading messages…</p>}
       {list.data?.length === 0 && <Card>No threads yet. Start the conversation.</Card>}
-      {list.data?.map((t) => (
-        <Link
-          key={t.id}
-          to={`${base}/${t.id}`}
-          className="grid gap-1 rounded-md border bg-card p-4 no-underline hover:bg-secondary"
-        >
-          <span className="font-display text-xl font-bold break-words">
-            {t.pinned && <Badge className="mr-2">Pinned announcement</Badge>}
-            {t.title} {t.unread && <span className="text-sm text-primary">Unread</span>}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {t.authorName} · {t.version - 1} {t.version === 2 ? "reply" : "replies"} ·{" "}
-            {new Date(t.updatedAt).toLocaleString()}
-          </span>
-        </Link>
-      ))}
+      {!!list.data?.length && (
+        <ul className="m-0 grid list-none divide-y divide-border overflow-hidden rounded-xl bg-card p-0">
+          {list.data.map((t) => (
+            <li key={t.id}>
+              <Link
+                to={`${base}/${t.id}`}
+                className="flex items-start gap-3 p-4 text-foreground no-underline transition-colors hover:bg-raised"
+              >
+                <Avatar name={t.authorName} />
+                <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="flex items-center gap-2">
+                    <span className={cn("min-w-0 break-words", t.unread ? "font-semibold" : "font-medium")}>
+                      {t.title}
+                    </span>
+                    {t.unread && (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-primary">
+                        <span aria-hidden className="size-2 rounded-full bg-primary" />
+                        Unread
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {t.authorName} · {t.version - 1} {t.version === 2 ? "reply" : "replies"}
+                  </span>
+                  {t.pinned && <Badge className="mt-1">Pinned announcement</Badge>}
+                </span>
+                <time dateTime={t.updatedAt} className="shrink-0 text-xs text-muted-foreground">
+                  {relativeTime(t.updatedAt, now)}
+                </time>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -166,6 +187,7 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
 function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string }) {
   const param = { leagueId, threadId };
   const endpoint = api.leagues[":leagueId"].messages[":threadId"];
+  const now = useNow();
   const thread = useLoad(() => unwrap<ThreadDetail>(endpoint.$get({ param })), threadId);
   const [refreshing, setRefreshing] = useState(false);
   const [pinning, setPinning] = useState(false);
@@ -241,8 +263,12 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               tabIndex={-1}
               aria-label={`Message ${p.position} by ${p.authorName}`}
             >
-              <p className="m-0 text-sm text-muted-foreground">
-                {p.authorName} · {new Date(p.createdAt).toLocaleString()}
+              <p className="m-0 flex items-center gap-2.5 text-sm">
+                <Avatar name={p.authorName} />
+                <span className="font-semibold">{p.authorName}</span>
+                <time dateTime={p.createdAt} className="text-muted-foreground">
+                  {relativeTime(p.createdAt, now)}
+                </time>
               </p>
               {p.quote && <MessageQuote quote={p.quote} />}
               <p className="m-0 whitespace-pre-wrap break-words">{p.body}</p>

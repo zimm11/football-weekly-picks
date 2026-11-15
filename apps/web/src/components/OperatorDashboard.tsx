@@ -45,7 +45,7 @@ function FeedbackCard({
   const name = item.author ? (item.author.displayName ?? "No name yet") : "Deleted account";
   const open = item.status === "open";
   return (
-    <li className="grid gap-2 rounded-md border bg-card p-4">
+    <li className="grid gap-2 rounded-xl bg-card p-4">
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <Badge variant={KIND_BADGE[item.kind]}>{FEEDBACK_KIND_LABELS[item.kind]}</Badge>
         <span>{day(item.createdAt)}</span>

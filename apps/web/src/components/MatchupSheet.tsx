@@ -129,7 +129,7 @@ function Market({ game, market }: { game: Game; market: MarketInsights }) {
             <span>
               {away} <span className="tabular-nums">{awayPct}%</span>
             </span>
-            <span className="text-sm font-medium tracking-widest text-muted-foreground">To win</span>
+            <span className="text-sm font-medium text-muted-foreground">To win</span>
             <span>
               <span className="tabular-nums">{homePct}%</span> {home}
             </span>
@@ -340,7 +340,7 @@ function Matchup({ game, matchup, timeZone }: { game: Game; matchup: MatchupInsi
           href={matchup.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-input font-display text-lg font-bold tracking-wide text-foreground uppercase no-underline hover:bg-secondary"
+          className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-input text-base font-semibold text-foreground no-underline hover:bg-raised"
         >
           Full game page on ESPN
           <ArrowSquareOutIcon aria-hidden className="size-5" />

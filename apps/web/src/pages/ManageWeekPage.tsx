@@ -138,8 +138,8 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
         <Card aria-label="League announcement">
           <h3 className="text-2xl">Post a league message</h3>
           {view.status === "final" && view.results && (
-            <section aria-label="Final results" className="grid gap-2 rounded-md border bg-background p-3">
-              <h4 className="font-display text-xl font-bold uppercase">Final results</h4>
+            <section aria-label="Final results" className="grid gap-2 rounded-lg bg-background/60 p-3">
+              <h4 className="text-lg text-foreground">Final results</h4>
               <p className="m-0 text-sm text-muted-foreground">
                 Reference these results while writing your message.
               </p>
