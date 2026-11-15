@@ -135,9 +135,8 @@ In a browser, the account menu has **Add to home screen**. It opens instructions
 screen, keeping unsaved picks in place, and shows only the steps for the player's phone (iPhone/iPad
 or Android; both on a computer). On a phone, the first time a player saves picks in that browser, the
 same instructions open once on their own with a **Not now** button; they never reappear after that.
-None of this shows when running from the home-screen app. The public **How to play** guide also has a
-dedicated **Add to home screen** section with Safari and Chrome steps. To see the one-time prompt again
-locally, remove `pow:home-screen-offered` from the site's local storage. Open the new icon after adding it;
+None of this shows when running from the home-screen app. To see the one-time prompt again locally,
+remove `pow:home-screen-offered` from the site's local storage. Open the new icon after adding it;
 you may need to sign in again. The app requires an internet connection.
 
 ### Feedback and app operator
@@ -238,7 +237,7 @@ emails sent by the local Auth service.
 
 ## League rules
 
-The app's `/how-to-play` page explains the player and admin flows and includes a separate home-screen installation guide.
+The app's `/how-to-play` page explains the player and admin flows.
 [`packages/shared/src/rules.ts`](packages/shared/src/rules.ts) is the implementation of scoring and locks,
 and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the weekly awards.
 

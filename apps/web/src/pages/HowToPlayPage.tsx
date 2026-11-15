@@ -1,19 +1,11 @@
-import {
-  ArrowRightIcon,
-  DeviceMobileIcon,
-  ListChecksIcon,
-  TrophyIcon,
-  UsersThreeIcon,
-} from "@phosphor-icons/react";
+import { ArrowRightIcon, ListChecksIcon, TrophyIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import { MAX_LEAGUE_MEMBERS, MAX_LEAGUES_PER_USER, POW_BONUS } from "@picks/shared";
 import type { ReactNode } from "react";
-import { HomeScreenInstructions } from "../components/HomeScreenInstall";
 import { buttonVariants } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Link } from "../router";
 
 const sections = [
-  ["home-screen", "Add to home screen"],
   ["rules", "The pick rules"],
   ["players", "For players"],
   ["admins", "For admins"],
@@ -55,7 +47,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </Link>
       </header>
 
-      <nav aria-label="Guide sections" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <nav aria-label="Guide sections" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {sections.map(([id, title]) => (
           <a
             key={id}
@@ -66,21 +58,6 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
           </a>
         ))}
       </nav>
-
-      <section id="home-screen" aria-labelledby="home-screen-title" className="grid scroll-mt-20 gap-5">
-        <div className="flex items-center gap-3">
-          <DeviceMobileIcon aria-hidden className="size-7 text-primary" />
-          <h3 id="home-screen-title" className="text-3xl">
-            Add it to your home screen
-          </h3>
-        </div>
-        <p className="m-0 text-lg text-muted-foreground">
-          Your league, one tap away. Keep POW Pick'em beside your other apps for quick access. No app store
-          download needed. Once you're signed in, these steps are also in your account menu under Add to home
-          screen.
-        </p>
-        <HomeScreenInstructions />
-      </section>
 
       <section id="rules" aria-labelledby="rules-title" className="grid scroll-mt-20 gap-5">
         <div className="flex items-center gap-3">
