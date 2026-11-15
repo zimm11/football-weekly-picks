@@ -192,7 +192,7 @@ For quick access, use **Add to home screen** above your league content before st
    again and the week is
    excluded from standings until finalized again; the corrected week is then recapped again.
 7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
-   with posts you haven't opened. React to messages and replies with 👍, 😂, 🔥, 🎉, 🏈 or 😮; tap again to remove your reaction. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. Admins can **Pin announcement** inside a thread to keep it at the top of the board.
+   with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. Admins can **Pin announcement** inside a thread to keep it at the top of the board.
 
 ### Sharing league administration
 

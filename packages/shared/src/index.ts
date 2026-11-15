@@ -236,11 +236,12 @@ export const MESSAGE_REACTIONS = [
   { emoji: "😂", label: "Laugh" },
   { emoji: "🔥", label: "Fire" },
   { emoji: "🎉", label: "Celebrate" },
-  { emoji: "🏈", label: "Football" },
   { emoji: "😮", label: "Wow" },
+  { emoji: "🙏", label: "Thanks" },
+  { emoji: "🏈", label: "Football" },
 ] as const;
 export const messageReactionSchema = z.object({
-  emoji: z.enum(["👍", "😂", "🔥", "🎉", "🏈", "😮"]),
+  emoji: z.enum(["👍", "😂", "🔥", "🎉", "😮", "🙏", "🏈"]),
   active: z.boolean(),
 });
 export type MessageEmoji = z.infer<typeof messageReactionSchema>["emoji"];

@@ -1,3 +1,4 @@
+import { ArrowBendUpLeftIcon } from "@phosphor-icons/react";
 import type { MessageReaction, MessageThread, MessageQuote as Quote, ThreadDetail } from "@picks/shared";
 import { useEffect, useRef, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
@@ -245,35 +246,38 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               </p>
               {p.quote && <MessageQuote quote={p.quote} />}
               <p className="m-0 whitespace-pre-wrap break-words">{p.body}</p>
-              <MessageReactions
-                reactions={p.reactions}
-                onChange={async (emoji, active) => {
-                  const reactions = await unwrap<MessageReaction[]>(
-                    endpoint.posts[":postId"].reactions.$put({
-                      param: { ...param, postId: p.id },
-                      json: { emoji, active },
-                    }),
-                  );
-                  thread.setData(
-                    (current) =>
-                      current && {
-                        ...current,
-                        posts: current.posts.map((post) =>
-                          post.id === p.id ? { ...post, reactions } : post,
-                        ),
-                      },
-                  );
-                }}
-              />
-              <Button
-                variant="ghost"
-                className="justify-self-start"
-                aria-label={`Quote message ${p.position} by ${p.authorName}`}
-                disabled={replyBusy}
-                onClick={() => setQuote({ id: p.id, authorName: p.authorName, body: p.body })}
-              >
-                Quote reply
-              </Button>
+              <div className="-my-1.5 flex flex-wrap items-center gap-x-2">
+                <MessageReactions
+                  reactions={p.reactions}
+                  onChange={async (emoji, active) => {
+                    const reactions = await unwrap<MessageReaction[]>(
+                      endpoint.posts[":postId"].reactions.$put({
+                        param: { ...param, postId: p.id },
+                        json: { emoji, active },
+                      }),
+                    );
+                    thread.setData(
+                      (current) =>
+                        current && {
+                          ...current,
+                          posts: current.posts.map((post) =>
+                            post.id === p.id ? { ...post, reactions } : post,
+                          ),
+                        },
+                    );
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  className="ml-auto gap-1.5 px-2 font-sans text-sm font-medium tracking-normal text-muted-foreground normal-case hover:text-foreground"
+                  aria-label={`Quote message ${p.position} by ${p.authorName}`}
+                  disabled={replyBusy}
+                  onClick={() => setQuote({ id: p.id, authorName: p.authorName, body: p.body })}
+                >
+                  <ArrowBendUpLeftIcon aria-hidden className="size-4" />
+                  Quote reply
+                </Button>
+              </div>
             </Card>
           ))}
           <Button
