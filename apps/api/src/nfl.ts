@@ -26,7 +26,18 @@ const competitorSchema = z.object({
   team: z.object({ abbreviation: z.string() }),
 });
 
-const scoreboardSchema = z.object({
+/** ESPN's public NFL feeds (scoreboard, game summary, news). */
+export const ESPN_SITE_API = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
+
+/** One regular-season week of ESPN's scoreboard. */
+export function espnScoreboardUrl(year: number, week: number): string {
+  // seasontype 2 = regular season.
+  const params = new URLSearchParams({ dates: String(year), seasontype: "2", week: String(week) });
+  return `${ESPN_SITE_API}/scoreboard?${params}`;
+}
+
+/** The parts of the scoreboard the app reads. Exported for the live contract checks (`pnpm test:contract`). */
+export const espnScoreboardSchema = z.object({
   events: z
     .array(
       z.object({
@@ -49,7 +60,7 @@ const scoreboardSchema = z.object({
 
 export function parseEspnScoreboard(json: unknown): ProviderGame[] {
   const games: ProviderGame[] = [];
-  for (const event of scoreboardSchema.parse(json).events) {
+  for (const event of espnScoreboardSchema.parse(json).events) {
     const competition = event.competitions[0];
     const home = competition?.competitors.find((c) => c.homeAway === "home");
     const away = competition?.competitors.find((c) => c.homeAway === "away");
@@ -76,12 +87,7 @@ export function parseEspnScoreboard(json: unknown): ProviderGame[] {
 export function espnProvider(fetchImpl: typeof fetch = fetch): NflProvider {
   return {
     async getWeek(year, week) {
-      // seasontype 2 = regular season.
-      const params = new URLSearchParams({ dates: String(year), seasontype: "2", week: String(week) });
-      const res = await fetchImpl(
-        `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?${params}`,
-        { signal: AbortSignal.timeout(10_000) },
-      );
+      const res = await fetchImpl(espnScoreboardUrl(year, week), { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) throw new Error(`ESPN scoreboard responded ${res.status}`);
       return parseEspnScoreboard(await res.json());
     },
