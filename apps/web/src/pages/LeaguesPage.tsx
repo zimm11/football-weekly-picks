@@ -57,9 +57,6 @@ export function LeaguesPage() {
           {leagues.data.map((league) => (
             <li key={league.id}>
               <Link to={`/leagues/${league.id}`} className={rowLink}>
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-display text-lg font-bold text-primary">
-                  {league.name.trim().charAt(0).toUpperCase()}
-                </span>
                 <span className="mr-auto font-display text-2xl font-bold tracking-wide uppercase">
                   {league.name}
                 </span>
