@@ -12,6 +12,7 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { api, getSupabase, messageOf, unwrap } from "./api";
 import { clockOffset, onClockChange } from "./clock";
+import { useHomeScreenHelp } from "./components/HomeScreenInstall";
 import { NameForm } from "./components/NameForm";
 import { NewPasswordForm } from "./components/NewPasswordForm";
 import { type Credentials, SignInForm, type SignInMode } from "./components/SignInForm";
@@ -203,6 +204,7 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
   const [me, setMe] = useState<Me>();
   const [error, setError] = useState<string>();
   const [editingName, setEditingName] = useState(false);
+  const homeScreen = useHomeScreenHelp();
 
   useEffect(() => {
     unwrap<Me>(api.me.$get()).then(setMe, (err) => setError(messageOf(err)));
@@ -249,6 +251,9 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
             Send feedback
           </DropdownMenuItem>
         )}
+        {homeScreen.available && (
+          <DropdownMenuItem onSelect={homeScreen.open}>Add to home screen</DropdownMenuItem>
+        )}
         {me?.isOperator && (
           <DropdownMenuItem onSelect={() => navigate("/operator")}>Operator</DropdownMenuItem>
         )}
@@ -259,6 +264,7 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
 
   return (
     <Shell account={account}>
+      {homeScreen.sheet}
       {route.page === "how-to-play" && !editingName ? (
         <HowToPlayPage signedIn />
       ) : route.page === "reset-password" ? (

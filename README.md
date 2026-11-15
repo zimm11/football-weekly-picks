@@ -131,10 +131,13 @@ Sessions are stored per browser profile, so both accounts can stay signed in sid
 
 ### Adding POW Pick'em to your home screen
 
-In a browser, **Your leagues** and each league screen show **Add to home screen**. It opens
-instructions over the current screen, keeping unsaved picks in place. The prompt is hidden when
-running from the home-screen app. The public **How to play** guide also has a dedicated
-**Add to home screen** section with Safari and Chrome steps. Open the new icon after adding it;
+In a browser, the account menu has **Add to home screen**. It opens instructions over the current
+screen, keeping unsaved picks in place, and shows only the steps for the player's phone (iPhone/iPad
+or Android; both on a computer). On a phone, the first time a player saves picks in that browser, the
+same instructions open once on their own with a **Not now** button; they never reappear after that.
+None of this shows when running from the home-screen app. The public **How to play** guide also has a
+dedicated **Add to home screen** section with Safari and Chrome steps. To see the one-time prompt again
+locally, remove `pow:home-screen-offered` from the site's local storage. Open the new icon after adding it;
 you may need to sign in again. The app requires an internet connection.
 
 ### Feedback and app operator
@@ -161,8 +164,6 @@ This local setting is not applied to production. The feedback migration must be 
 new API, using the normal migration and deployment workflow.
 
 ### Walking through a week
-
-For quick access, use **Add to home screen** above your league content before starting the week.
 
 1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has five tabs: **Picks**,
    **Results**, **Standings**, **Messages**, and **League**. The **Season** selector applies to every tab

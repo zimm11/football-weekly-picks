@@ -10,6 +10,7 @@ import { PickSheet } from "../components/PickSheet";
 import { WeekAwards } from "../components/WeekAwards";
 import { WeekResultsTable } from "../components/WeekResultsTable";
 import { GameBreakdown, WeekSummary } from "../components/WeekSummary";
+import { offerHomeScreen } from "../lib/homeScreen";
 import { rememberSeason } from "../lib/seasonSelection";
 import { Link } from "../router";
 import { useLoad } from "./useLoad";
@@ -49,6 +50,8 @@ export function WeekBody({
   async function savePicks(json: SubmitPicks) {
     try {
       onChange(await unwrap<WeekView>(api.weeks[":weekId"].picks.$put({ param: { weekId: view.id }, json })));
+      // Right after saving is when coming back next week is on the player's mind.
+      offerHomeScreen();
       return undefined;
     } catch (err) {
       return messageOf(err);
