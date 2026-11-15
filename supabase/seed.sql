@@ -15,8 +15,8 @@
 --         Alex missed Week 7 entirely; Sam chose no POW in Week 8.
 -- Messages support emoji reactions, admin-only pinned announcements and quoted replies within a thread.
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
--- Browser users can open Add to home screen on Your leagues or inside a league without leaving their picks.
--- The public How to play guide has separate install instructions; the prompt is hidden in the home-screen app.
+-- Browser users find Add to home screen in the account menu; on a phone the first save of picks offers it once.
+-- The public How to play guide has separate install instructions; none of it shows in the home-screen app.
 -- Later weeks are deliberately absent: create them in the app so the import from ESPN gets exercised.
 
 -- ---------- Accounts ----------

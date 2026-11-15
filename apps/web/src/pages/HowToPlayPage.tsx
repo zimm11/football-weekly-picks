@@ -78,7 +78,8 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </div>
         <p className="m-0 text-lg text-muted-foreground">
           Your league, one tap away. Keep POW Pick'em beside your other apps for quick access. No app store
-          download needed.
+          download needed. Once you're signed in, these steps are also in your account menu under Add to home
+          screen.
         </p>
         <HomeScreenInstructions />
       </section>

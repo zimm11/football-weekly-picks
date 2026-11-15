@@ -6,7 +6,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
-import { HomeScreenInstall } from "../components/HomeScreenInstall";
 import { notifyDone } from "../notify";
 import { Link, navigate } from "../router";
 import { useLoad } from "./useLoad";
@@ -41,7 +40,6 @@ export function LeaguesPage() {
   return (
     <div className="grid gap-6">
       <h2 className="text-4xl leading-none font-extrabold">Your leagues</h2>
-      <HomeScreenInstall />
       {leagues.data.length === 0 ? (
         <Card>
           <h3 className="text-2xl">Get ready for your first week</h3>

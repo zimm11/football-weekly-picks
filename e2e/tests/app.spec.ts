@@ -1,4 +1,18 @@
+import type { Page } from "@playwright/test";
 import { expect, signUp, test } from "./fixtures";
+
+/** On a phone, a browser's first save of picks suggests the home screen, once; on a computer it never does. */
+async function dismissHomeScreenOffer(page: Page) {
+  const offer = page.getByRole("dialog", { name: "Add it to your home screen" });
+  if (test.info().project.name !== "mobile-safari") {
+    await expect(offer).toHaveCount(0);
+    return;
+  }
+  await expect(offer).toHaveAccessibleDescription(/^Picks saved\./);
+  await expect(offer.getByRole("heading", { name: "Android · Chrome" })).toHaveCount(0);
+  await offer.getByRole("button", { name: "Not now" }).click();
+  await expect(offer).toHaveCount(0);
+}
 
 test("signed-out visitors can explore the landing page and public guide", async ({ page }) => {
   await page.goto("/");
@@ -32,7 +46,8 @@ test("signed-out visitors can explore the landing page and public guide", async 
 });
 
 test("signed-in users can read the guide and return to their leagues", async ({ page, signedIn }) => {
-  await page.getByRole("button", { name: "Add to home screen", exact: true }).click();
+  await page.getByRole("button", { name: signedIn.displayName }).click();
+  await page.getByRole("menuitem", { name: "Add to home screen" }).click();
   await expect(page.getByRole("dialog", { name: "Add it to your home screen" })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await page.getByRole("button", { name: "Close", exact: true }).click();
@@ -267,6 +282,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await page.getByRole("button", { name: "POW: KC at ATL" }).click();
   await page.getByLabel(/Tiebreaker/).fill("44");
   await page.getByRole("button", { name: "Save picks" }).click();
+  await dismissHomeScreenOffer(page);
   await expect(page.getByText("Picks saved.")).toBeVisible();
   await expect(page.getByText("1 of 1 picked")).toBeVisible();
 
@@ -286,6 +302,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(player.getByText("0 of 1 picked")).toBeVisible();
   await player.getByRole("button", { name: "Falcons +3.5" }).click();
   await player.getByRole("button", { name: "Save picks" }).click();
+  await dismissHomeScreenOffer(player);
   await expect(player.getByText("Picks saved.")).toBeVisible();
 
   // While the week is open the player sees only their own pick: the Chiefs button is not selected.

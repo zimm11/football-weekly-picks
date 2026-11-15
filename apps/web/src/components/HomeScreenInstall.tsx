@@ -1,93 +1,154 @@
-import { DeviceMobileIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
+import {
+  claimHomeScreenOffer,
+  detectPlatform,
+  type HomeScreenPlatform,
+  isStandalone,
+  onHomeScreenOffer,
+} from "../lib/homeScreen";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "./ui/sheet";
 
-/** Shared by the public guide and the in-place install help on league screens. */
-export function HomeScreenInstructions() {
+/**
+ * The install steps. The public guide shows every platform; the in-app sheet passes the player's own
+ * platform so a phone sees only its steps.
+ */
+export function HomeScreenInstructions({ platform = "other" }: { platform?: HomeScreenPlatform }) {
+  const ios = (
+    <Card>
+      <h4 className="text-2xl">iPhone or iPad · Safari</h4>
+      <ol className="m-0 grid list-decimal gap-3 pl-5 text-muted-foreground">
+        <li>Open www.pow-pickem.com in Safari.</li>
+        <li>
+          Tap Share (the square with an arrow pointing up), then Add to Home Screen. You may need to scroll
+          down to find it.
+        </li>
+        <li>Keep Open as Web App on if shown, then tap Add.</li>
+      </ol>
+    </Card>
+  );
+  const android = (
+    <Card>
+      <h4 className="text-2xl">Android · Chrome</h4>
+      <ol className="m-0 grid list-decimal gap-3 pl-5 text-muted-foreground">
+        <li>Open www.pow-pickem.com in Chrome.</li>
+        <li>Tap the three-dot menu (⋮), then Add to Home screen or Install app.</li>
+        <li>Follow the prompts to install the app or add the shortcut.</li>
+      </ol>
+    </Card>
+  );
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <h4 className="text-2xl">iPhone or iPad · Safari</h4>
-          <ol className="m-0 grid list-decimal gap-3 pl-5 text-muted-foreground">
-            <li>Open www.pow-pickem.com in Safari.</li>
-            <li>
-              Tap Share (the square with an arrow pointing up), then Add to Home Screen. You may need to
-              scroll down to find it.
-            </li>
-            <li>Keep Open as Web App on if shown, then tap Add.</li>
-          </ol>
-        </Card>
-        <Card>
-          <h4 className="text-2xl">Android · Chrome</h4>
-          <ol className="m-0 grid list-decimal gap-3 pl-5 text-muted-foreground">
-            <li>Open www.pow-pickem.com in Chrome.</li>
-            <li>Tap the three-dot menu (⋮), then Add to Home screen or Install app.</li>
-            <li>Follow the prompts to install the app or add the shortcut.</li>
-          </ol>
-        </Card>
-      </div>
+      {platform === "ios" ? (
+        ios
+      ) : platform === "android" ? (
+        android
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {ios}
+          {android}
+        </div>
+      )}
       <p className="m-0 text-sm text-muted-foreground">
         Open the new POW Pick'em icon to get back to your leagues. You may need to sign in again the first
         time. An internet connection is required.
       </p>
       <p className="m-0 text-sm text-muted-foreground">
         Can't find the option? If you opened a link inside another app, open this site in Safari or Chrome
-        first. On a computer, bookmark the site or use your browser's install option if available.
+        first.
+        {platform === "other" && " On a computer, bookmark the site or use your browser's install option."}
       </p>
     </div>
   );
 }
 
-/** iOS uses navigator.standalone; other browsers expose the app's display mode. */
-function useStandalone() {
-  const [standalone, setStandalone] = useState(
-    () =>
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true,
+/** The install help as a bottom sheet over the current screen, so unsaved picks underneath stay put. */
+export function HomeScreenSheet({
+  open,
+  onOpenChange,
+  platform,
+  offer = false,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  platform: HomeScreenPlatform;
+  /** Opened by the app (after saving picks) rather than asked for: says why and offers "Not now". */
+  offer?: boolean;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom">
+        <SheetHeader>
+          <SheetTitle>Add it to your home screen</SheetTitle>
+          <SheetDescription>
+            {offer
+              ? "Picks saved. Put POW Pick'em on your home screen so next week is one tap away."
+              : "Keep POW Pick'em a tap away, with its own icon on your phone."}
+          </SheetDescription>
+        </SheetHeader>
+        <div className={offer ? "px-4" : "px-4 pb-6"}>
+          <HomeScreenInstructions platform={platform} />
+        </div>
+        {offer && (
+          <SheetFooter className="pb-6">
+            <SheetClose asChild>
+              <Button variant="outline">Not now</Button>
+            </SheetClose>
+          </SheetFooter>
+        )}
+      </SheetContent>
+    </Sheet>
   );
+}
+
+function useStandalone() {
+  const [standalone, setStandalone] = useState(isStandalone);
   useEffect(() => {
     const mode = window.matchMedia("(display-mode: standalone)");
-    const update = () =>
-      setStandalone(
-        mode.matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true,
-      );
+    const update = () => setStandalone(isStandalone());
     mode.addEventListener("change", update);
     return () => mode.removeEventListener("change", update);
   }, []);
   return standalone;
 }
 
-/** Help opens over the current screen, preserving any unsaved picks underneath. */
-export function HomeScreenInstall() {
+/**
+ * The signed-in app's home-screen help: `open` backs the account menu item (hidden once installed),
+ * and on a phone the first save of picks in this browser opens the sheet once on its own.
+ */
+export function useHomeScreenHelp() {
   const standalone = useStandalone();
-  if (standalone) return null;
-  return (
-    <aside
-      aria-label="Home screen app"
-      className="flex flex-wrap items-center gap-3 rounded-md border border-primary/40 bg-primary/10 p-4"
-    >
-      <DeviceMobileIcon aria-hidden className="size-7 shrink-0 text-primary" />
-      <div className="min-w-0 flex-1 basis-40">
-        <p className="m-0 font-display text-xl font-bold uppercase">POW Pick'em, one tap away</p>
-        <p className="m-0 text-sm text-muted-foreground">Put your leagues on your home screen.</p>
-      </div>
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="outline">Add to home screen</Button>
-        </SheetTrigger>
-        <SheetContent side="bottom">
-          <SheetHeader>
-            <SheetTitle>Add it to your home screen</SheetTitle>
-            <SheetDescription>Keep POW Pick'em a tap away, with its own icon on your phone.</SheetDescription>
-          </SheetHeader>
-          <div className="px-4 pb-6">
-            <HomeScreenInstructions />
-          </div>
-        </SheetContent>
-      </Sheet>
-    </aside>
+  const [platform] = useState(() => detectPlatform());
+  const [shown, setShown] = useState<"closed" | "help" | "offer">("closed");
+
+  useEffect(
+    () =>
+      onHomeScreenOffer(() => {
+        if (standalone || platform === "other" || !claimHomeScreenOffer()) return;
+        setShown("offer");
+      }),
+    [standalone, platform],
   );
+
+  return {
+    available: !standalone,
+    open: () => setShown("help"),
+    sheet: (
+      <HomeScreenSheet
+        open={shown !== "closed"}
+        offer={shown === "offer"}
+        platform={platform}
+        onOpenChange={(open) => !open && setShown("closed")}
+      />
+    ),
+  };
 }
