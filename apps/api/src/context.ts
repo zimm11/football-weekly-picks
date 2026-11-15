@@ -98,6 +98,8 @@ export type MemberRecord = Member & { joinedAt: Date; removedAt: Date | null };
 
 /** Everyone who has ever been in the league, including removed players (needed to score past weeks). */
 export async function listMemberRecords(db: Db, leagueId: string): Promise<MemberRecord[]> {
+  // Joining order, then name and id for members who joined at the same instant, so the list never
+  // reshuffles between reads.
   return db
     .select({
       userId: leagueMembers.userId,
@@ -109,7 +111,11 @@ export async function listMemberRecords(db: Db, leagueId: string): Promise<Membe
     .from(leagueMembers)
     .leftJoin(profiles, eq(profiles.userId, leagueMembers.userId))
     .where(eq(leagueMembers.leagueId, leagueId))
-    .orderBy(asc(leagueMembers.joinedAt));
+    .orderBy(
+      asc(leagueMembers.joinedAt),
+      asc(sql`coalesce(${profiles.displayName}, 'Player')`),
+      asc(leagueMembers.userId),
+    );
 }
 
 export const isActive = (member: MemberRecord) => member.removedAt === null;
