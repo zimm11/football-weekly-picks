@@ -62,6 +62,7 @@ const operationMessages = {
   request: "Unexpected API request failure.",
   schedule_import: "Schedule provider request failed.",
   results_sync: "Results provider request failed.",
+  results_autosync: "Automatic results provider request failed.",
   matchup_insights: "Matchup stats provider request failed.",
   market_insights: "Prediction market provider request failed.",
   startup: "API startup failed; check environment configuration.",

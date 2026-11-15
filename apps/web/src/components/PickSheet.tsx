@@ -16,6 +16,7 @@ import {
   lineFor,
   type Pick,
   POW_BONUS,
+  pickPoints,
   type Side,
   type SubmitPicks,
   teamName,
@@ -31,6 +32,7 @@ import { useUnsavedGuard } from "./ConfirmDialog";
 import { TAB_BAR_OFFSET } from "./LeagueNav";
 import { MatchupSheet } from "./MatchupSheet";
 import { TeamLogo } from "./TeamLogo";
+import { WeekSoFar } from "./WeekSoFar";
 
 // A pressed button stays fully lit after it locks, so a locked pick still reads as the pick.
 const pickButton =
@@ -153,6 +155,7 @@ export function PickSheet({
           needsPow={needsPow}
           pow={savedPowGame ? matchup(savedPowGame) : null}
         />
+        <WeekSoFar games={games} picks={picks} />
         <details className="group text-sm text-muted-foreground">
           <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-1.5 font-medium hover:text-foreground [&::-webkit-details-marker]:hidden">
             <InfoIcon aria-hidden className="size-4" />
@@ -173,8 +176,14 @@ export function PickSheet({
               const sideLocked = locked(game);
               const powLocked = sideLocked || powFrozen || !sides[game.id];
               const isPow = pow === game.id;
-              const covered = coveringSide({ ...game, kickoff: new Date(game.kickoff) });
+              const scored = { ...game, kickoff: new Date(game.kickoff) };
+              const covered = coveringSide(scored);
               const mine = sides[game.id];
+              // Results go by what was saved: that is the pick that counts.
+              const savedSide = saved.get(game.id);
+              const earned = savedSide
+                ? pickPoints(scored, { side: savedSide, isPow: savedPow === game.id })
+                : null;
               return (
                 <div className="grid gap-3 rounded-xl bg-card p-3" key={game.id}>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
@@ -191,9 +200,11 @@ export function PickSheet({
                         Final {game.awayScore}–{game.homeScore}
                       </Badge>
                     )}
-                    {covered !== null && mine && (
-                      <Badge variant={covered === mine ? "win" : covered === "push" ? "outline" : "loss"}>
-                        {covered === mine ? "Won" : covered === "push" ? "Push" : "Lost"}
+                    {covered !== null && savedSide && (
+                      <Badge
+                        variant={covered === savedSide ? "win" : covered === "push" ? "outline" : "loss"}
+                      >
+                        {covered === savedSide ? `Won +${earned}` : covered === "push" ? "Push" : "Lost"}
                       </Badge>
                     )}
                     <Badge>

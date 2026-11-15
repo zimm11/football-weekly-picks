@@ -107,7 +107,7 @@ export function WeekBody({
       {phase === "underway" &&
         !view.games.some((game) => game.homeScore === null && new Date(game.kickoff) > now) && (
           <p className="m-0 text-sm text-muted-foreground">
-            All games have locked for picks. Waiting for final scores and admin finalization.
+            All games have locked. Results fill in as games end; the week counts once an admin finalizes it.
           </p>
         )}
 
@@ -159,18 +159,48 @@ export function WeekBody({
   );
 }
 
+/** How often an open week is fetched again while its games are being played. The API asks ESPN at most this often. */
+const RESULTS_REFRESH_MS = 60_000;
+
+/**
+ * While any game in an open week has kicked off without a result, fetches the week again every minute (and
+ * when the player comes back to the tab), so their picks are marked won or lost as games end. Stops once
+ * every game that has started has its result.
+ */
+function useResultsRefresh(view: WeekView | undefined, reload: () => void) {
+  const now = useNow();
+  const live =
+    view?.status === "open" && view.games.some((g) => g.homeScore === null && new Date(g.kickoff) <= now);
+  useEffect(() => {
+    if (!live) return;
+    const visible = () => document.visibilityState === "visible";
+    const timer = setInterval(() => visible() && reload(), RESULTS_REFRESH_MS);
+    const onVisible = () => visible() && reload();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [live, reload]);
+}
+
+const loadWeek = (weekId: string) => unwrap<WeekView>(api.weeks[":weekId"].$get({ param: { weekId } }));
+
 /** Loads a week and shows it. The Picks tab uses this for the current week. */
 export function WeekLoader({ weekId, userId }: { weekId: string; userId: string }) {
-  const week = useLoad(() => unwrap<WeekView>(api.weeks[":weekId"].$get({ param: { weekId } })), weekId);
-  if (week.error) return <Notice kind="alert">{week.error}</Notice>;
+  const week = useLoad(() => loadWeek(weekId), weekId);
+  useResultsRefresh(week.data, week.reload);
+  // A refresh that fails leaves the sheet as it was; only a first load that fails has nothing to show.
+  if (week.error && !week.data) return <Notice kind="alert">{week.error}</Notice>;
   if (!week.data) return <WeekSkeleton />;
   return <WeekBody view={week.data} userId={userId} onChange={week.setData} yearShown />;
 }
 
 /** `/weeks/:id`: one week, reached from the results list or a link someone shared. */
 export function WeekPage({ weekId, userId }: { weekId: string; userId: string }) {
-  const week = useLoad(() => unwrap<WeekView>(api.weeks[":weekId"].$get({ param: { weekId } })), weekId);
-  if (week.error) return <Notice kind="alert">{week.error}</Notice>;
+  const week = useLoad(() => loadWeek(weekId), weekId);
+  useResultsRefresh(week.data, week.reload);
+  if (week.error && !week.data) return <Notice kind="alert">{week.error}</Notice>;
   const view = week.data;
   if (!view) return <LeagueSkeleton />;
   return (

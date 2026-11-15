@@ -11,7 +11,7 @@ const badgeVariants = cva(
         outline: "bg-raised text-muted-foreground",
         pow: "bg-pow text-pow-foreground",
         win: "bg-win/15 text-win",
-        loss: "bg-raised text-muted-foreground line-through",
+        loss: "bg-destructive/15 text-destructive",
         warn: "bg-destructive/15 text-destructive",
       },
     },

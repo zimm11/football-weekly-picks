@@ -180,8 +180,12 @@ new API, using the normal migration and deployment workflow.
    later. **Stats, news & market** on a game opens its matchup sheet. Then try the player account. The
    admin's management screen shows submission counts and whether a POW was chosen; other players'
    choices remain private.
-5. In **Manage week**, press **Pull results from ESPN** once games are final, or enter both scores for
-   each game and press **Save changes**. Score boxes appear once a game kicks off; before that, press
+5. As each game ends, its result fills in on its own from ESPN the next time anyone opens the week
+   (checked at most once a minute), and each player's sheet marks their pick **Won** (with the points
+   earned), **Lost**, or **Push** and keeps a **Your week so far** tally. An open pick sheet refreshes
+   itself every minute while games are in progress. To fetch results right away, press **Pull results
+   from ESPN** in **Manage week**; it replaces any hand-entered score. Or enter both scores for
+   each game and press **Save changes**; automatic results never overwrite a score typed in by hand. Score boxes appear once a game kicks off; before that, press
    **Enter score** on the game to record a result early. Results imports update games originally imported from ESPN;
    manually added games need manually entered scores. Recording a result closes that game to picks
    immediately.
@@ -316,7 +320,7 @@ This is a TypeScript pnpm workspace with a React SPA, a Hono API, and Supabase A
 Browser ── /api/* ──> Hono API ── Drizzle ──> PostgreSQL
    │                     │
    ├── Supabase Auth     ├── verifies Supabase access tokens
-   └── ESPN image CDN    ├── ESPN scoreboard (admin imports)
+   └── ESPN image CDN    ├── ESPN scoreboard (imports and results)
        (team logos)      └── ESPN game summary + Kalshi markets (matchup sheet)
 ```
 

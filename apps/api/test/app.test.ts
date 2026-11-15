@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { loadEnv } from "../src/env";
 import { type NflProvider, type ProviderGame, parseEspnScoreboard } from "../src/nfl";
+import { RESULTS_REFRESH_MS } from "../src/weeks";
 
 const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: "test" };
 const ADMIN = "00000000-0000-4000-8000-000000000001";
@@ -55,6 +56,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
 
   let now = WEDNESDAY;
   let insightsDown = false;
+  let providerDown = false;
+  let providerCalls = 0;
   const emptyTeam = { record: null, venueRecord: null, lastFive: [], injuries: [], leaders: [], news: [] };
   const emptyMatchup = { home: emptyTeam, away: emptyTeam, stats: [], overUnder: null, url: null };
   let provided: ProviderGame[] = [
@@ -90,7 +93,13 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     db,
     verifyToken,
     publicConfig,
-    nfl: { getWeek: async () => provided },
+    nfl: {
+      getWeek: async () => {
+        providerCalls += 1;
+        if (providerDown) throw new Error("offline");
+        return provided;
+      },
+    },
     insights: {
       getMatchup: async (externalId) => {
         if (insightsDown) throw new Error("offline");
@@ -725,6 +734,69 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     const standings = (await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings`)).body;
     expect(standings.weeks).toEqual([]);
     expect(standings.entries.every((e) => e.points === 0)).toBe(true);
+  });
+
+  it("fills in results as games end, without overwriting a score the admin typed", async () => {
+    const scores = async (user = PLAYER) =>
+      (await call<WeekView>(user, "GET", `/weeks/${weekId}`)).body.games.map((g) => [
+        g.homeScore,
+        g.awayScore,
+        g.spread,
+      ]);
+    const later = (ms: number) => {
+      now = new Date(now.getTime() + ms);
+    };
+    // Sunday morning: Thursday's game is over but has no result yet.
+    later(RESULTS_REFRESH_MS);
+    await scores();
+    const calls = providerCalls;
+
+    // ESPN reports it final (NYG -2.5 wins by 7), with a line that has moved. Reads within the same minute
+    // reuse the last fetch, however many players are looking.
+    provided = provided.map((g) =>
+      g.externalId === "t1" ? { ...g, spread: -7, homeScore: 24, awayScore: 17 } : g,
+    );
+    expect((await scores())[0]).toEqual([null, null, -2.5]);
+    expect((await scores(ADMIN))[0]).toEqual([null, null, -2.5]);
+    expect(providerCalls).toBe(calls);
+
+    // An outage is logged once, remembered for the minute, and changes nothing.
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    providerDown = true;
+    later(RESULTS_REFRESH_MS);
+    const down = await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`);
+    providerDown = false;
+    expect(down.status).toBe(200);
+    expect(down.body.games[0]?.homeScore).toBeNull();
+    expect((await scores())[0]).toEqual([null, null, -2.5]);
+    expect(providerCalls).toBe(calls + 1);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0]?.[0]).toContain("results_autosync");
+    log.mockRestore();
+
+    // A minute on, the result is there for every player. The spread stays as the league set it, and other
+    // players' picks stay private.
+    later(RESULTS_REFRESH_MS);
+    const view = (await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body;
+    expect(view.games.map((g) => [g.homeScore, g.awayScore, g.spread])).toEqual([
+      [24, 17, -2.5],
+      [null, null, 3.5],
+      [null, null, -4.5],
+    ]);
+    expect(view.results).toBeNull();
+    expect(JSON.stringify(view)).not.toContain(ADMIN);
+
+    // With nothing else over yet (Sunday's game hasn't kicked off), the provider isn't asked again.
+    const settled = providerCalls;
+    later(RESULTS_REFRESH_MS);
+    await scores();
+    expect(providerCalls).toBe(settled);
+
+    // A score the admin types in stands, even when the provider disagrees.
+    await call(ADMIN, "PATCH", `/games/${game.thu}`, { homeScore: 21, awayScore: 17 });
+    later(RESULTS_REFRESH_MS);
+    expect((await scores())[0]).toEqual([21, 17, -2.5]);
+    now = SUNDAY_7AM;
   });
 
   it("pulls results from the provider and closes the week", async () => {

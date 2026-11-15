@@ -225,7 +225,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Check results and the season race",
                 detail:
-                  "Once the admin closes the week, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
+                  "As each game ends, its result shows on your pick sheet: Won with the points you earned, Lost, or Push. Your week so far adds up your points, record, and POW; it's unofficial until the admin finalizes the week. Once the admin closes the week, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
               },
               {
                 title: "Talk it over in Messages",
@@ -285,7 +285,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Record scores and finalize the week",
                 detail:
-                  "In Manage week, press Pull results from ESPN once games are final, or enter scores and press Save changes. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Pulling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
+                  "Results for games imported from ESPN fill in on their own as each game ends, whenever someone has the week open. To fetch them right away, press Pull results from ESPN in Manage week; it replaces any score typed in by hand. Or enter scores and press Save changes; a score you type is never overwritten automatically. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Pulling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
               },
               {
                 title: "Correct results when needed",
