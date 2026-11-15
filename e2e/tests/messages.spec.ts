@@ -22,19 +22,21 @@ test("members create threads, reply, and guard unsaved messages", async ({ page,
   await page.reload();
   await expect(page.getByText("I'm picking the Eagles.", { exact: true })).toBeVisible();
   const reactions = page.getByRole("group", { name: "Message reactions" });
-  await reactions.first().getByRole("button", { name: "Like, 0 reactions", exact: true }).click();
+  // Nobody has reacted yet, so the emoji are behind the React button rather than on the message.
+  await expect(reactions.first().getByRole("button", { name: /Like/ })).toHaveCount(0);
+  await reactions.first().getByRole("button", { name: "Add reaction" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Like" }).click();
   await expect(
     reactions.first().getByRole("button", { name: "Like, 1 reactions", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await reactions.last().getByRole("button", { name: "Laugh, 0 reactions", exact: true }).click();
+  await reactions.last().getByRole("button", { name: "Add reaction" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Laugh" }).click();
   await expect(
     reactions.last().getByRole("button", { name: "Laugh, 1 reactions", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await reactions.first().getByRole("button", { name: "Like, 1 reactions", exact: true }).click();
-  await expect(
-    reactions.first().getByRole("button", { name: "Like, 0 reactions", exact: true }),
-  ).toHaveAttribute("aria-pressed", "false");
+  await expect(reactions.first().getByRole("button", { name: /Like/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Message board" }).click();
   await expect(page.getByRole("link", { name: /Week discussion/ })).toContainText("1 reply");
   await expect(page.getByText("Unread", { exact: true })).not.toBeVisible();
