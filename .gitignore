@@ -15,3 +15,7 @@ e2e/blob-report
 
 # Vitest browser-mode failure screenshots
 .vitest/
+
+# Wrangler's local state and dev secrets
+.wrangler
+.dev.vars*

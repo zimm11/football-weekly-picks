@@ -15,32 +15,9 @@ function run(t, script, preload, env = {}) {
   return spawnSync(process.execPath, ["--import", hook, new URL(script, import.meta.url).pathname], {
     encoding: "utf8",
     timeout: 10_000,
-    env: { ...process.env, RENDER_API_KEY: "not-a-real-key", RENDER_SERVICE_ID: "srv-test", ...env },
+    env: { ...process.env, ...env },
   });
 }
-
-test("Render API failures and malformed responses never echo response bodies or raw errors", (t) => {
-  for (const response of [
-    "new Response(process.env.RENDER_API_KEY, {status:403})",
-    "new Response(process.env.RENDER_API_KEY, {status:200})",
-  ]) {
-    const result = run(t, "./render-deploy.mjs", `globalThis.fetch = async () => ${response};`);
-    assert.equal(result.status, 1);
-    assert.ok(!`${result.stdout}${result.stderr}`.includes("not-a-real-key"));
-    assert.match(result.stderr, /Render/);
-  }
-});
-
-test("a successful Render deployment retains status diagnostics without printing response fields", (t) => {
-  const preload = `let count=0; globalThis.fetch=async (_,init)=>{
-    if(init.redirect!=='error') throw new Error(process.env.RENDER_API_KEY);
-    return Response.json(count++ ? {status:'live', token:process.env.RENDER_API_KEY} : {id:'dep-test'});
-  };`;
-  const result = run(t, "./render-deploy.mjs", preload);
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Deploy is live/);
-  assert.ok(!result.stdout.includes("not-a-real-key"));
-});
 
 test("database diagnostic drops credential-bearing driver errors", (t) => {
   const mock = `export default function(){return Object.assign(async()=>{throw new Error(process.env.AUDIT_PASSWORD)},{end:async()=>{}})}`;

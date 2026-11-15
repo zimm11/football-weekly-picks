@@ -1,0 +1,36 @@
+// The whole app is one Cloudflare Worker: Static Assets serve the React SPA (apps/web/dist) from the edge,
+// and /api/* runs the Hono API in src/worker.ts. One origin, so no proxy and no CORS.
+// Deploys go through .github/workflows/deploy.yml; see README "Deploying".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pow-pickem",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-15",
+  // postgres.js, node:crypto, node:async_hooks and Buffer.
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    // Unknown paths get index.html, so client-side routes load the app.
+    "not_found_handling": "single-page-application",
+    // Only the API invokes the Worker; every other request is a free static asset.
+    "run_worker_first": ["/api/*"]
+  },
+  // Each API request makes several queries in a row, so run it beside the Supabase project (AWS us-east-1).
+  "placement": { "region": "aws:us-east-1" },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // `wrangler hyperdrive create` (README, "Deploying"). Not a secret: it only works inside this account.
+      "id": "1420fcc7f52241b7a4839d1a2d6e28c0"
+    }
+  ],
+  // Secrets (`wrangler secret put`): SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, and optionally OPERATOR_USER_IDS.
+  "vars": { "NODE_ENV": "production" },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  },
+  "upload_source_maps": true
+}

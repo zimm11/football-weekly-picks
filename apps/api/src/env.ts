@@ -13,6 +13,27 @@ function isPublishableKey(value: string): boolean {
   }
 }
 
+/** Settings both entrypoints read: the Node server and the Cloudflare Worker. */
+const sharedFields = {
+  SUPABASE_URL: z.url(),
+  SUPABASE_PUBLISHABLE_KEY: z.string().refine(isPublishableKey, "Use a publishable key or legacy anon key"),
+  NODE_ENV: z.string().optional(),
+  /**
+   * Comma-separated Supabase user ids of the accounts that run the app. They get the operator screen
+   * (feedback and app-wide counts). Empty or unset means nobody does.
+   */
+  OPERATOR_USER_IDS: z
+    .string()
+    .default("")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((id) => id.trim().toLowerCase())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.uuid("OPERATOR_USER_IDS must be a comma-separated list of user ids"))),
+};
+
 const envSchema = z
   .object({
     PORT: z.coerce.number().default(8787),
@@ -31,23 +52,7 @@ const envSchema = z
           });
         }
       }),
-    SUPABASE_URL: z.url(),
-    SUPABASE_PUBLISHABLE_KEY: z.string().refine(isPublishableKey, "Use a publishable key or legacy anon key"),
-    NODE_ENV: z.string().optional(),
-    /**
-     * Comma-separated Supabase user ids of the accounts that run the app. They get the operator screen
-     * (feedback and app-wide counts). Empty or unset means nobody does.
-     */
-    OPERATOR_USER_IDS: z
-      .string()
-      .default("")
-      .transform((value) =>
-        value
-          .split(",")
-          .map((id) => id.trim().toLowerCase())
-          .filter(Boolean),
-      )
-      .pipe(z.array(z.uuid("OPERATOR_USER_IDS must be a comma-separated list of user ids"))),
+    ...sharedFields,
     /**
      * Local testing only: pretend the API started at this moment (ISO 8601 with an offset, e.g.
      * `2026-09-13T12:30:00-04:00`). The clock keeps running from there. Refused when NODE_ENV=production.
@@ -59,10 +64,15 @@ const envSchema = z
     message: "CLOCK_OVERRIDE is for local testing and is not allowed when NODE_ENV=production",
   });
 
+/** The Worker gets its database from the Hyperdrive binding, so it has no DATABASE_URL, PORT or clock override. */
+const workerEnvSchema = z.object(sharedFields);
+
 export type Env = z.infer<typeof envSchema>;
 
-export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = envSchema.safeParse(source);
+export type WorkerEnv = z.infer<typeof workerEnvSchema>;
+
+function parseEnv<T>(schema: z.ZodType<T>, source: unknown): T {
+  const parsed = schema.safeParse(source);
   if (!parsed.success) {
     throw Object.assign(new Error(`Invalid environment:\n${z.prettifyError(parsed.error)}`), {
       code: "INVALID_ENVIRONMENT",
@@ -70,4 +80,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     });
   }
   return parsed.data;
+}
+
+export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  return parseEnv(envSchema, source);
+}
+
+/** Reads the Worker's vars and secrets. Bindings such as HYPERDRIVE and ASSETS are ignored. */
+export function loadWorkerEnv(source: object): WorkerEnv {
+  return parseEnv(workerEnvSchema, source);
 }

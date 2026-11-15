@@ -24,7 +24,7 @@ dark, and the app can be added to a phone's home screen.
 
 ### Prerequisites
 
-- **Node.js 24 or newer.** CI and the Docker image use Node 26.
+- **Node.js 24 or newer.** CI uses Node 26.
 - **pnpm 12.18.0**, pinned in [`package.json`](package.json).
 - **A running Docker runtime**, such as Docker Desktop or OrbStack, for local Supabase.
 
@@ -39,7 +39,7 @@ pnpm dev        # run the web app and API together
 ```
 
 Open the web URL printed by `pnpm ports`. The main checkout uses `http://localhost:5173`; linked git
-worktrees get their own ports and database. No hosted Supabase project, Render account, or ESPN API key
+worktrees get their own ports and database. No hosted Supabase project, Cloudflare account, or ESPN API key
 is needed for local development. The first Supabase start downloads its container images.
 
 To run all tests, use another terminal after setup:
@@ -324,20 +324,20 @@ Browser ── /api/* ──> Hono API ── Drizzle ──> PostgreSQL
        (team logos)      └── ESPN game summary + Kalshi markets (matchup sheet)
 ```
 
-Vite proxies `/api` to the API during development. In production, the Render static site proxies those
-requests to the API service, keeping browser API requests on the same origin. The browser signs in through
+Vite proxies `/api` to the API during development. In production, one Cloudflare Worker serves both: its
+static assets are the web build, and `/api/*` runs the API, so browser API requests stay on the same origin. The browser signs in through
 Supabase Auth and sends its access token to the API as `Authorization: Bearer <access_token>`.
 Application data goes through the API; app tables have row-level security enabled without client policies.
 
 | Path                                     | Responsibility                                                                                                          |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | [`apps/web`](apps/web)                   | React 19, Vite, Tailwind CSS v4, shadcn/ui, and a small History API router; pages fetch data and components render it   |
-| [`apps/api`](apps/api)                   | Hono routes for profiles, leagues, invites, weeks, picks, results, and messages; Node server, ESPN and Kalshi providers |
+| [`apps/api`](apps/api)                   | Hono routes for profiles, leagues, invites, weeks, picks, results, and messages; Worker and Node entrypoints, providers |
 | [`packages/shared`](packages/shared)     | Shared Zod schemas, types, scoring, locks, awards, season selection, and statistics                                     |
 | [`packages/db`](packages/db)             | Drizzle schema, PostgreSQL client, TLS policy, migration generation, and schema documentation generator                 |
 | [`supabase`](supabase)                   | Local service configuration, SQL migrations, migration metadata, and development seed                                   |
 | [`e2e`](e2e)                             | Playwright full-stack tests for desktop Chromium and mobile WebKit                                                      |
-| [`scripts`](scripts)                     | Worktree ports, Supabase wrappers, environment generation, connection diagnostics, app icons, and Render deployment     |
+| [`scripts`](scripts)                     | Worktree ports, Supabase wrappers, environment generation, connection diagnostics, app icons, and deploy checks         |
 | [`.github/workflows`](.github/workflows) | CI checks and production deployment                                                                                     |
 | [`docs/schema.md`](docs/schema.md)       | Generated ER diagram and table/column reference                                                                         |
 
@@ -392,7 +392,9 @@ starting Supabase, generating `.env`, and installing the browsers.
 | Components and router               | Vitest browser mode + Playwright Chromium in `apps/web/src/**/*.test.tsx` | Installed Chromium; no running app or database                                      |
 | End-to-end                          | Playwright in `e2e/tests/`                                                | Local Supabase, generated `.env`, Chromium, and WebKit                              |
 
-E2E starts the API and web servers automatically, or reuses `pnpm dev` outside CI. It refuses remote
+E2E starts the API and web servers automatically, or reuses `pnpm dev` outside CI. With
+`E2E_TARGET=worker` (as CI runs it) it tests the production build in the Workers runtime instead, through
+`pnpm worker:dev`. It refuses remote
 database and Auth services. Tests create their own data rather than depending on the seed. Traces and
 screenshots are disabled to keep credentials and invite links out of artifacts.
 
@@ -402,8 +404,8 @@ and schema changes also need E2E verification. Time-dependent rules accept a `no
 can use fixed dates.
 
 Pull request CI runs a Git history secret scan, lint, type checking, migration and schema documentation
-drift checks, unit/component/script tests, a web build, and an API Docker build. A separate job starts
-local Supabase, runs database-backed API tests, and runs E2E. Playwright reports are retained for three days.
+drift checks, unit/component/script tests, a web build, and a Worker bundle. A separate job starts
+local Supabase, runs database-backed API tests, and runs E2E against the Worker. Playwright reports are retained for three days.
 
 ## Database workflow
 
@@ -432,61 +434,76 @@ running version. Use separate expand and contract changes when removing or repla
 
 ## Deployment
 
-[`render.yaml`](render.yaml) defines two services:
+The app is one [Cloudflare Worker](https://developers.cloudflare.com/workers/), `pow-pickem`, configured in
+[`apps/api/wrangler.jsonc`](apps/api/wrangler.jsonc):
 
-| Service                    | Runtime            | Role                                                                                                          |
-| -------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `football-weekly-picks-ui` | Render static site | Serves `apps/web/dist`, caches hashed assets, proxies `/api/*`, and falls back to `index.html` for SPA routes |
-| `football-weekly-picks`    | Docker web service | Runs the bundled API and checks readiness at `/api/health`                                                    |
+| Piece                      | Role                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Static Assets              | Serves `apps/web/dist` from Cloudflare's edge, falls back to `index.html` for SPA routes; never sleeps |
+| `src/worker.ts`            | Runs the Hono API for `/api/*` only, placed in AWS us-east-1 beside the Supabase project               |
+| Hyperdrive                 | Pools database connections and verifies Supabase's certificate (`verify-full` with the Supabase CA)    |
+| `apps/web/public/_headers` | Caches hashed files under `/assets/` forever                                                           |
 
-The API image uses a non-root user and ships the esbuild bundle and source map without `node_modules`.
-Dependencies that need native modules or runtime files require corresponding Dockerfile changes.
-The Blueprint selects the free API plan; a sleeping instance can delay API requests while the static
-site continues to load.
+Workers start in milliseconds, so there is no cold-start wait. The free plan covers this app: static asset
+requests are free, and API requests and Hyperdrive queries each allow 100,000 a day. A request may use
+10 ms of CPU on the free plan (time waiting on the database or ESPN doesn't count); Workers Logs show each
+request's CPU time.
+
+`pnpm worker:dev` runs the same Worker locally against local Supabase. Day-to-day development stays on
+`pnpm dev` (Node), which `src/index.ts` serves.
 
 ### Initial configuration
 
-1. Create the two services from the repository's Render Blueprint. Automatic Render deploys are disabled
-   so GitHub Actions controls deployment order.
-2. Set the API service's `DATABASE_URL` to the Supabase **session pooler** connection string, plus
-   `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. The Blueprint sets `PORT=10000`.
-3. Configure Supabase Auth's Site URL and redirect URLs for the public web URL, including the custom
-   domain if used. The redirect URLs must cover `/reset-password` (password reset emails) and the pages
-   people sign up from, such as `/join/<code>` (the confirmation email returns them there). Check that the
-   static site's `/api/*` rewrite points at your API service; its `onrender.com` destination is explicit
-   in `render.yaml`.
-4. Add these GitHub Actions secrets to the **`production` environment**:
+Run these once from `apps/api` (`pnpm exec wrangler login` first):
+
+1. Save the [Supabase root CA](https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt)
+   (also in `packages/db/src/connection.ts`) and upload it:
+   `pnpm exec wrangler cert upload certificate-authority --ca-cert prod-ca-2021.crt --name supabase-root-2021`.
+2. Create the Hyperdrive config with the Supabase **direct** connection string (Hyperdrive does its own
+   pooling), and put the printed id in `wrangler.jsonc`:
+   `pnpm exec wrangler hyperdrive create pow-pickem-db --connection-string="$(pbpaste)" --ca-certificate-id <id> --sslmode verify-full`.
+   If the direct host isn't reachable over IPv4, use the **session pooler** string instead.
+3. Set the Worker's secrets: `pnpm exec wrangler secret put SUPABASE_URL`, then `SUPABASE_PUBLISHABLE_KEY` and,
+   optionally, `OPERATOR_USER_IDS`.
+4. Add the domain to Cloudflare and point the registrar's nameservers at it, then attach `www.pow-pickem.com`
+   to the Worker as a custom domain (Workers → `pow-pickem` → Settings → Domains & Routes).
+5. Configure Supabase Auth's Site URL and redirect URLs for the public web URL. The redirect URLs must cover
+   `/reset-password` (password reset emails) and the pages people sign up from, such as `/join/<code>` (the
+   confirmation email returns them there).
+6. In the GitHub **`production` environment**, add these secrets, and the variable `APP_URL` (the public URL,
+   which the deploy checks afterwards):
 
    | Secret                  | Purpose                                                                                    |
    | ----------------------- | ------------------------------------------------------------------------------------------ |
    | `SUPABASE_DB_URL`       | Supabase session pooler URL for migrations; used for IPv4 connectivity from GitHub runners |
-   | `RENDER_API_KEY`        | Authorizes the Render deployment script                                                    |
-   | `RENDER_SERVICE_ID`     | API service ID                                                                             |
-   | `RENDER_STATIC_SITE_ID` | Static site ID                                                                             |
+   | `CLOUDFLARE_API_TOKEN`  | A token from the **Edit Cloudflare Workers** template, scoped to this account              |
+   | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the Worker                                                |
 
-5. Verify the database TLS configuration described below before deploying.
+7. Verify the database TLS configuration described below before deploying.
 
 ### Release sequence
 
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs on pushes to `main` and manual dispatch:
 
 ```text
-CI → verified database connection → migrations → API deploy → static site deploy
+CI → verified database connection → migrations → build → wrangler deploy → live health check
 ```
 
-Each Render deployment builds the selected commit and must become live before the next step runs.
-The API health endpoint checks database connectivity and returns HTTP 503 if that check fails. Keep API
-changes compatible with the web build still serving during deployment, and migrations compatible with
-the old API. Local seed data is not applied in production.
+The web build and the API go live together. A tab that was already open keeps its old web build, so keep
+API changes compatible with it, and migrations compatible with the old API. The health endpoint checks
+database connectivity and returns HTTP 503 if that check fails. A failed live check doesn't undo the deploy:
+`pnpm --filter @picks/api exec wrangler rollback` returns to the previous version. Local seed data is not
+applied in production.
 
-The API listens on `PORT` and can run on another container host. The web build can run on another static
-host with an `/api/*` proxy and SPA fallback; Render-specific setup lives in the Blueprint and deploy script.
+The Node entrypoint (`src/index.ts`) still listens on `PORT` with a `DATABASE_URL`, so the API can move to
+a container host again; only `wrangler.jsonc`, `src/worker.ts` and the deploy job are Cloudflare-specific.
 
 ## Credentials and diagnostics
 
 Remote database connections require TLS with certificate and hostname verification. The API and the
 connection-check script share this policy in [`packages/db/src/connection.ts`](packages/db/src/connection.ts).
-Supabase database hosts use the bundled public Supabase CA certificate. Loopback connections support the
+Supabase database hosts use the bundled public Supabase CA certificate. In production the Worker connects
+through Hyperdrive, which does the verification itself (`--sslmode verify-full` with the same CA). Loopback connections support the
 local stack without TLS; URL parameters cannot disable TLS for a remote connection. Startup and health
 checks also verify that the database connection behind a pooler is encrypted.
 
@@ -515,22 +532,23 @@ pbpaste | node scripts/check-db-url.mjs
 
 ## Troubleshooting
 
-| Symptom                                                 | What to check                                                                                                       |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Supabase will not start                                 | Start Docker Desktop or OrbStack, then retry `pnpm db:start`. Inspect the stack with `pnpm db:status`.              |
-| API reports invalid configuration, or `.env` is missing | Run `pnpm db:start`, then `pnpm env:local`, and restart `pnpm dev`. Use `.env.example` to check variable names.     |
-| The app or tests use the wrong checkout                 | Compare `.env` with `pnpm ports`, regenerate it with `pnpm env:local`, and use `pnpm sb` for CLI commands.          |
-| Vite reports a port already in use                      | Stop the process using this checkout's web port. Vite deliberately fails instead of choosing another port.          |
-| Playwright cannot find a browser                        | Run `pnpm playwright:install`. Component tests need Chromium; E2E also needs WebKit.                                |
-| API database tests skip                                 | Start the local stack and generate `.env` so `DATABASE_URL` is available.                                           |
-| E2E rejects the environment                             | It requires loopback database and Auth URLs. Regenerate `.env` from local Supabase.                                 |
-| Seeded accounts or weeks are missing                    | For a disposable local database, `pnpm db:reset` reapplies migrations and seed, deleting existing local data.       |
-| A new week has no import or a missing spread            | ESPN may have no schedule or odds for that week. Retry the import while still in draft, or add/edit games manually. |
-| Picks are locked in an imported week                    | Locks follow actual kickoffs. Use manually added future games to test picking.                                      |
-| Finalize week is unavailable                            | Every game needs both final scores. Enter scores for manually added games; ESPN results only update imported games. |
-| The matchup sheet is empty or missing a section         | ESPN or Kalshi had nothing for the game or didn't answer. Manually added games have no ESPN stats.                  |
-| A password reset email never arrives locally            | Local Auth doesn't send real email. Open the test inbox URL from `pnpm ports`.                                      |
-| Production health or migration connection check fails   | Check the session pooler URL, verified TLS, and Supabase SSL enforcement. Use the connection diagnostic above.      |
+| Symptom                                                 | What to check                                                                                                         |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| The deployed API returns 500 or 503                     | Check Workers Logs for the request's `X-Request-ID`. A startup error names the missing secret; a 503 is the database. |
+| Supabase will not start                                 | Start Docker Desktop or OrbStack, then retry `pnpm db:start`. Inspect the stack with `pnpm db:status`.                |
+| API reports invalid configuration, or `.env` is missing | Run `pnpm db:start`, then `pnpm env:local`, and restart `pnpm dev`. Use `.env.example` to check variable names.       |
+| The app or tests use the wrong checkout                 | Compare `.env` with `pnpm ports`, regenerate it with `pnpm env:local`, and use `pnpm sb` for CLI commands.            |
+| Vite reports a port already in use                      | Stop the process using this checkout's web port. Vite deliberately fails instead of choosing another port.            |
+| Playwright cannot find a browser                        | Run `pnpm playwright:install`. Component tests need Chromium; E2E also needs WebKit.                                  |
+| API database tests skip                                 | Start the local stack and generate `.env` so `DATABASE_URL` is available.                                             |
+| E2E rejects the environment                             | It requires loopback database and Auth URLs. Regenerate `.env` from local Supabase.                                   |
+| Seeded accounts or weeks are missing                    | For a disposable local database, `pnpm db:reset` reapplies migrations and seed, deleting existing local data.         |
+| A new week has no import or a missing spread            | ESPN may have no schedule or odds for that week. Retry the import while still in draft, or add/edit games manually.   |
+| Picks are locked in an imported week                    | Locks follow actual kickoffs. Use manually added future games to test picking.                                        |
+| Finalize week is unavailable                            | Every game needs both final scores. Enter scores for manually added games; ESPN results only update imported games.   |
+| The matchup sheet is empty or missing a section         | ESPN or Kalshi had nothing for the game or didn't answer. Manually added games have no ESPN stats.                    |
+| A password reset email never arrives locally            | Local Auth doesn't send real email. Open the test inbox URL from `pnpm ports`.                                        |
+| Production health or migration connection check fails   | Check the session pooler URL, verified TLS, and Supabase SSL enforcement. Use the connection diagnostic above.        |
 
 See [`AGENTS.md`](AGENTS.md) for additional contributor guidance on UI conventions, API structure, and
 repository tooling.
