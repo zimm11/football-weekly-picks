@@ -221,17 +221,16 @@ use **Change password** or **Change your name** from the account menu in the hea
 
 ### Testing locks and inspecting data
 
-Locks use the league's time zone and the real clock unless `CLOCK_OVERRIDE` is set locally (see
+Locks use the real clock unless `CLOCK_OVERRIDE` is set locally (see
 [Simulating a different date and time](#simulating-a-different-date-and-time-local-only)). An imported
 historical week may already be locked. To exercise different states, add games manually in a draft and
 open the week:
 
-| Game timing                                 | What to expect                                                                                     |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Kickoff a few days away                     | Picks and POW can be saved and changed                                                             |
-| Today, before the 6am lock and kickoff      | Picks and POW can still be changed                                                                 |
-| Today, after 6am but before kickoff         | A missing pick can be added once; saved picks freeze and the POW cannot move onto or off that game |
-| Kickoff in the past, or both scores entered | No new picks or changes                                                                            |
+| Game timing                                 | What to expect                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| Kickoff a few days away                     | Picks and POW can be saved and changed                                 |
+| Today, before kickoff                       | Picks and POW can still be changed                                     |
+| Kickoff in the past, or both scores entered | No new picks or changes; a POW on that game cannot be moved or removed |
 
 Use the **Supabase Studio** URL from `pnpm ports` to inspect accounts under Authentication and tables
 under Table Editor. The main checkout's Studio URL is `http://127.0.0.1:54323`. The test inbox URL shows
@@ -272,18 +271,18 @@ Default point values use **Eastern time**, with holidays taking priority. Admins
 
 A winning **Pick of the Week** earns **5 bonus points** in addition to the game's value. A losing or
 pushed POW earns no bonus. There is no automatic POW: a player who doesn't choose one has none that
-week. A game can take the POW only until 6am on its game day, so a player who hasn't chosen by Sunday
-morning can still pick any Monday game (either one on a doubleheader) before 6am Monday. A late pick,
-added after 6am on game day, can't be the POW.
+week. The POW can go on any game that hasn't kicked off, and can be moved or removed until the game
+holding it kicks off. After that it stays on that game for the week.
 
 ### Deadlines and rankings
 
-- **At 6am on game day in the league's time zone**, saved picks freeze and the POW cannot move onto or
-  off that day's games. A missing pick can still be added before kickoff, but freezes once saved.
-- **At kickoff**, no new picks or changes are accepted. If kickoff is before 6am, kickoff is the deadline.
-  A recorded result closes the game regardless of the clock.
-- **The tiebreaker guess** follows its game's lock: an existing guess freezes at 6am; a missing guess can
-  be added until kickoff. A saved guess cannot be removed.
+- **Before kickoff**, a game's pick can be added or changed, and the POW can be put on it, moved off it,
+  or removed.
+- **At kickoff**, the game locks: no new picks or changes are accepted, and it can no longer become the
+  POW. A POW already on it cannot be moved or removed. A recorded result locks the game regardless of
+  the clock.
+- **The tiebreaker guess** follows its game's lock: it can be entered or changed until kickoff. A saved
+  guess cannot be removed.
 - **The tiebreaker game** is the admin's explicit choice, otherwise the last Monday game, otherwise the
   last game on the slate.
 - **Weekly ranking:** most points, then most games won, then the closest guess to the tiebreaker game's
@@ -524,7 +523,7 @@ pbpaste | node scripts/check-db-url.mjs
 | E2E rejects the environment                             | It requires loopback database and Auth URLs. Regenerate `.env` from local Supabase.                                 |
 | Seeded accounts or weeks are missing                    | For a disposable local database, `pnpm db:reset` reapplies migrations and seed, deleting existing local data.       |
 | A new week has no import or a missing spread            | ESPN may have no schedule or odds for that week. Retry the import while still in draft, or add/edit games manually. |
-| Picks are locked in an imported week                    | Locks follow actual kickoffs and the league time zone. Use manually added future games to test picking.             |
+| Picks are locked in an imported week                    | Locks follow actual kickoffs. Use manually added future games to test picking.                                      |
 | Finalize week is unavailable                            | Every game needs both final scores. Enter scores for manually added games; ESPN results only update imported games. |
 | The matchup sheet is empty or missing a section         | ESPN or Kalshi had nothing for the game or didn't answer. Manually added games have no ESPN stats.                  |
 | A password reset email never arrives locally            | Local Auth doesn't send real email. Open the test inbox URL from `pnpm ports`.                                      |

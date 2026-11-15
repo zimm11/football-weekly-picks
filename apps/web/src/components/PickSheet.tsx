@@ -12,11 +12,10 @@ import {
   formatLine,
   type Game,
   type GameInsights,
-  LOCK_HOUR,
+  isLocked,
   lineFor,
   type Pick,
   POW_BONUS,
-  pickWindow,
   type Side,
   type SubmitPicks,
   teamName,
@@ -33,7 +32,7 @@ import { TAB_BAR_OFFSET } from "./LeagueNav";
 import { MatchupSheet } from "./MatchupSheet";
 import { TeamLogo } from "./TeamLogo";
 
-// A pressed button stays fully lit after it locks, so a frozen pick still reads as the pick.
+// A pressed button stays fully lit after it locks, so a locked pick still reads as the pick.
 const pickButton =
   "relative min-h-14 rounded-lg bg-raised ring-inset transition-[background-color,box-shadow,transform] enabled:hover:ring-2 enabled:hover:ring-primary/40 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:aria-[pressed=false]:opacity-40";
 const sideClass = cn(
@@ -82,16 +81,14 @@ export function PickSheet({
   /** The game whose matchup sheet is open. */
   const [matchupGame, setMatchupGame] = useState<Game | null>(null);
 
-  // A game with a result is closed, whatever the clock says.
-  const windowOf = (game: Game) =>
-    pickWindow({ kickoff: new Date(game.kickoff), final: game.homeScore !== null }, timeZone, now);
+  // A game locks at kickoff; one with a result is locked whatever the clock says.
+  const locked = (game: Game) =>
+    isLocked({ kickoff: new Date(game.kickoff), final: game.homeScore !== null }, now);
   const savedPowGame = games.find((g) => g.id === savedPow);
-  // Once it is 6am on the day of the game holding the POW, the POW can't move.
-  const powFrozen = !!savedPowGame && windowOf(savedPowGame) !== "open";
+  // Once the game holding the POW has kicked off, the POW can't move.
+  const powFrozen = !!savedPowGame && locked(savedPowGame);
   const tiebreakerGame = games.find((g) => g.id === tiebreakerGameId);
-  const tiebreakerWindow = tiebreakerGame ? windowOf(tiebreakerGame) : "closed";
-  const tiebreakerLocked =
-    tiebreakerWindow === "closed" || (tiebreakerWindow === "late" && tiebreakerTotal !== null);
+  const tiebreakerLocked = !tiebreakerGame || locked(tiebreakerGame);
 
   function choose(game: Game, side: Side) {
     setMessage(undefined);
@@ -132,12 +129,12 @@ export function PickSheet({
   // Where the player stands, going by what is saved rather than what is tapped but not yet saved.
   const savedCount = games.filter((g) => saved.has(g.id)).length;
   const unsavedGames = games.filter((g) => !saved.has(g.id));
-  const left = unsavedGames.filter((g) => windowOf(g) !== "closed").length;
+  const left = unsavedGames.filter((g) => !locked(g)).length;
   const missed = unsavedGames.length - left;
   const needsTotal = !!tiebreakerGame && tiebreakerTotal === null && !tiebreakerLocked;
   // There is no automatic POW: a player who doesn't choose one has none. It stops counting as something to
-  // do once no game can take it (every game is past 6am on its day).
-  const needsPow = savedPow === null && games.some((g) => windowOf(g) === "open");
+  // do once no game can take it (every game has kicked off).
+  const needsPow = savedPow === null && games.some((g) => !locked(g));
 
   // Warn before a tab tap, a link or a reload throws away picks that haven't been saved.
   const unsavedDialog = useUnsavedGuard(dirty, "picks");
@@ -163,9 +160,9 @@ export function PickSheet({
             <CaretDownIcon aria-hidden className="size-3.5 transition-transform group-open:rotate-180" />
           </summary>
           <p className="m-0 pb-1">
-            Picks and your POW lock at {LOCK_HOUR}am on game day. A missed pick can still go in until kickoff,
-            but it can't be your POW. Your POW is worth {POW_BONUS} extra points if it wins. If you don't
-            choose a POW, you don't get one.
+            Each game locks at kickoff. Until then you can change your pick and put your POW on it or take it
+            off. Once your POW's game kicks off, your POW stays there. It is worth {POW_BONUS} extra points if
+            it wins. If you don't choose a POW, you don't get one.
           </p>
         </details>
 
@@ -173,9 +170,8 @@ export function PickSheet({
           <section key={day} aria-label={day} className="grid gap-2">
             <h4 className="mt-3 px-1">{day}</h4>
             {dayGames.map((game) => {
-              const window = windowOf(game);
-              const sideLocked = window === "closed" || (window === "late" && saved.has(game.id));
-              const powLocked = window !== "open" || powFrozen || !sides[game.id];
+              const sideLocked = locked(game);
+              const powLocked = sideLocked || powFrozen || !sides[game.id];
               const isPow = pow === game.id;
               const covered = coveringSide({ ...game, kickoff: new Date(game.kickoff) });
               const mine = sides[game.id];
@@ -184,9 +180,6 @@ export function PickSheet({
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
                     <span className="mr-auto tabular-nums">{kickoffTime(game.kickoff, timeZone)}</span>
                     {game.id === tiebreakerGameId && <Badge variant="outline">Tiebreaker game</Badge>}
-                    {window === "late" && !saved.has(game.id) && (
-                      <Badge variant="warn">Late pick: final once saved, can't be POW</Badge>
-                    )}
                     {sideLocked && covered === null && (
                       <Badge variant="outline">
                         <LockIcon aria-hidden weight="fill" className="size-3.5" />
@@ -404,7 +397,7 @@ function PickStatus({
               ? `All ${plural(gameCount, "game", "games")} picked and saved.`
               : `${savedLine}; ${plural(missed, "game", "games")} locked without a pick.`}
             {pow ? ` POW: ${pow}.` : " No POW this week."} Nothing more to do. You can still change a pick
-            until it locks.
+            until kickoff.
           </p>
         </div>
       </section>

@@ -1,5 +1,5 @@
 import type { WeekStatus, WeekSummary } from "./index";
-import { pickWindow } from "./rules";
+import { isLocked } from "./rules";
 import { NFL_TIME_ZONE, zonedParts } from "./time";
 
 export const WEEK_PHASE_LABEL = {
@@ -54,20 +54,17 @@ export function nextWeekNumber(weeks: { number: number }[], maxWeek: number): nu
 export function weekPickAvailability(
   games: (PhaseGame & { id: string })[],
   pickedGameIds: Set<string>,
-  timeZone: string,
   now: Date,
 ) {
   let availablePickCount = 0;
-  let myAvailablePickCount = 0;
   let myMissingPickCount = 0;
   for (const game of games) {
-    const window = pickWindow({ kickoff: new Date(game.kickoff), final: hasResult(game) }, timeZone, now);
-    if (window === "closed") continue;
+    if (isLocked({ kickoff: new Date(game.kickoff), final: hasResult(game) }, now)) continue;
     availablePickCount++;
     if (!pickedGameIds.has(game.id)) myMissingPickCount++;
-    if (window === "open" || !pickedGameIds.has(game.id)) myAvailablePickCount++;
   }
-  return { availablePickCount, myAvailablePickCount, myMissingPickCount };
+  // Every game that hasn't locked can still be picked or changed.
+  return { availablePickCount, myAvailablePickCount: availablePickCount, myMissingPickCount };
 }
 
 /** Prefer actionable picks over an older week whose games have all locked. */
