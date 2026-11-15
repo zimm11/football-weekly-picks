@@ -2,7 +2,7 @@ import type { Game } from "@picks/shared";
 
 export { seasonYear } from "@picks/shared";
 
-/** "Thursday, Nov 12", in the league's time zone (the one the 6am lock is measured in). */
+/** "Thursday, Nov 12", in the league's time zone. */
 export function kickoffDay(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone,

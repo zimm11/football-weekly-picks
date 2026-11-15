@@ -6,7 +6,7 @@ import {
   LockIcon,
   TrophyIcon,
 } from "@phosphor-icons/react";
-import { LOCK_HOUR, POW_BONUS } from "@picks/shared";
+import { POW_BONUS } from "@picks/shared";
 import { type Credentials, SignInForm, type SignInMode } from "../components/SignInForm";
 import { TeamLogo } from "../components/TeamLogo";
 import { Badge } from "../components/ui/badge";
@@ -125,9 +125,7 @@ export function LandingPage({
           </div>
           <p className="m-0 flex items-start gap-3 text-sm text-muted-foreground">
             <LockIcon aria-hidden className="mt-0.5 size-5 shrink-0 text-primary" />
-            <span>
-              Saved picks freeze at {LOCK_HOUR}am on game day in your league's time zone. Pick early.
-            </span>
+            <span>Each game locks at kickoff. Change your picks and your POW any time before then.</span>
           </p>
           <p className="m-0 flex items-start gap-3 text-sm text-muted-foreground">
             <TrophyIcon aria-hidden className="mt-0.5 size-5 shrink-0 text-primary" />

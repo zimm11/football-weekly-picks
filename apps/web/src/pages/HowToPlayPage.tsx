@@ -5,7 +5,7 @@ import {
   TrophyIcon,
   UsersThreeIcon,
 } from "@phosphor-icons/react";
-import { LOCK_HOUR, MAX_LEAGUE_MEMBERS, MAX_LEAGUES_PER_USER, POW_BONUS } from "@picks/shared";
+import { MAX_LEAGUE_MEMBERS, MAX_LEAGUES_PER_USER, POW_BONUS } from "@picks/shared";
 import type { ReactNode } from "react";
 import { HomeScreenInstructions } from "../components/HomeScreenInstall";
 import { buttonVariants } from "../components/ui/button";
@@ -139,10 +139,9 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               bonus.
             </p>
             <p className="m-0 text-sm text-muted-foreground">
-              There is no automatic POW: if you don't choose one, you don't get one that week. A game can be
-              your POW only until {LOCK_HOUR}am on its game day, so if Sunday locks before you choose, you can
-              still make a Monday game your POW (either one, on a Monday doubleheader) before {LOCK_HOUR}am
-              Monday. A late pick, added after {LOCK_HOUR}am on game day, can't be your POW.
+              There is no automatic POW: if you don't choose one, you don't get one that week. You can put
+              your POW on any game that hasn't kicked off, and move it as often as you like. Once the game
+              holding your POW kicks off, it stays there for the week.
             </p>
           </Card>
         </div>
@@ -150,22 +149,21 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         <Card>
           <h4 className="text-lg text-foreground">Know the deadlines</h4>
           <p className="m-0 text-muted-foreground">
-            Pick deadlines use <strong className="text-foreground">your league's time zone</strong>, shown in
-            the League tab.
+            Every game locks at <strong className="text-foreground">its own kickoff</strong>.
           </p>
           <dl className="m-0 grid gap-4 sm:grid-cols-3">
             {[
               [
-                `Before ${LOCK_HOUR}am on game day`,
-                "Save or change your pick and assign your POW while the game is still open.",
-              ],
-              [
-                `From ${LOCK_HOUR}am until kickoff`,
-                "Saved picks freeze. A missing pick can still be added, but it is final once saved. The POW cannot move onto or off that game.",
+                "Before kickoff",
+                "Save or change your pick, and put your POW on the game or take it off, as often as you like.",
               ],
               [
                 "At kickoff",
-                "No new picks or changes. A game also closes as soon as the admin records a result, regardless of the time.",
+                "No new picks or changes on that game. A game also locks as soon as the admin records a result, regardless of the time.",
+              ],
+              [
+                "Once your POW's game kicks off",
+                "Your POW is set for the week. It cannot be moved to a later game or removed.",
               ],
             ].map(([title, detail]) => (
               <div key={title} className="rounded-lg bg-raised p-3">
@@ -175,9 +173,8 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
             ))}
           </dl>
           <p className="m-0 text-sm text-muted-foreground">
-            If kickoff is before {LOCK_HOUR}am, kickoff is the deadline. Your tiebreaker guess follows the
-            same timing as its game: a saved guess freezes at {LOCK_HOUR}am, and a missing guess can be added
-            until kickoff. A saved guess cannot be removed.
+            Your tiebreaker guess follows the same timing as its game: enter or change it until kickoff. A
+            saved guess cannot be removed.
           </p>
         </Card>
 
@@ -246,7 +243,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               },
               {
                 title: "Press Save picks",
-                detail: `Tapping a team does not save it. Press Save picks and look for “Picks saved.” You can save a partial sheet and return for the rest. Change and save open picks before their ${LOCK_HOUR}am game-day lock.`,
+                detail: `Tapping a team does not save it. Press Save picks and look for “Picks saved.” You can save a partial sheet and return for the rest. Change and save a pick any time before its game kicks off.`,
               },
               {
                 title: "Check results and the season race",
@@ -286,7 +283,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
             steps={[
               {
                 title: "Create your league and invite the crew",
-                detail: `From Your leagues, enter a League name and press Create league. In the League tab, check the league time zone in settings and copy the invite link to share with players. The league and its members carry over between seasons. A league can hold up to ${MAX_LEAGUE_MEMBERS} players.`,
+                detail: `From Your leagues, enter a League name and press Create league. In the League tab, check the league time zone (used to show game days and times) in settings and copy the invite link to share with players. The league and its members carry over between seasons. A league can hold up to ${MAX_LEAGUE_MEMBERS} players.`,
               },
               {
                 title: "Share the admin work",

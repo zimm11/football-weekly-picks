@@ -48,7 +48,7 @@ import { MessagesPage } from "./MessagesPage";
 import { useLoad } from "./useLoad";
 import { WeekLoader } from "./WeekPage";
 
-/** The zones offered for the 6am lock. A league already on another zone keeps it as an extra option. */
+/** The zones offered for showing game days and times. A league already on another zone keeps it as an extra option. */
 const TIME_ZONES: Record<string, string> = {
   "America/New_York": "Eastern",
   "America/Chicago": "Central",
@@ -676,7 +676,7 @@ function LeagueTabPanel({
         </ul>
         {!isAdmin && (
           <p className="m-0 text-sm text-muted-foreground">
-            The 6am game-day lock uses {zoneName(league.timeZone)} time.
+            Game times are shown in {zoneName(league.timeZone)} time.
           </p>
         )}
       </Card>
@@ -688,7 +688,7 @@ function LeagueTabPanel({
             <Field label="League name">
               <Input name="name" required maxLength={80} defaultValue={league.name} />
             </Field>
-            <Field label="Time zone for the 6am lock">
+            <Field label="Time zone for game times">
               <NativeSelect name="timeZone" defaultValue={league.timeZone}>
                 {!(league.timeZone in TIME_ZONES) && (
                   <option value={league.timeZone}>{league.timeZone}</option>

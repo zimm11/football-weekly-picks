@@ -41,7 +41,7 @@ export const profiles = pgTable("profiles", {
 export const leagues = pgTable("leagues", {
   id: uuid().primaryKey().defaultRandom(),
   name: text().notNull(),
-  /** IANA zone the 6am game-day lock is measured in. */
+  /** IANA zone game days and kickoff times are shown in. */
   timeZone: text().notNull().default("America/New_York"),
   /** Anyone holding this code can join. Admins can rotate it. */
   inviteCode: text().notNull().unique(),

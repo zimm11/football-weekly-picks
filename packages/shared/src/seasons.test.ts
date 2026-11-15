@@ -79,22 +79,18 @@ describe("week phases", () => {
 });
 
 describe("pick availability", () => {
-  it("distinguishes late missing picks, frozen saved picks, and early recorded results", () => {
+  it("counts games that haven't kicked off or been scored, picked or not", () => {
     const games = [
       game("saved"),
       game("missing"),
       game("finished", undefined, true),
       game("past", "2026-11-12T18:00:00Z"),
     ];
-    expect(weekPickAvailability(games, new Set(["saved"]), "America/New_York", now)).toEqual({
+    expect(weekPickAvailability(games, new Set(["saved"]), now)).toEqual({
       availablePickCount: 2,
-      myAvailablePickCount: 1,
+      myAvailablePickCount: 2,
       myMissingPickCount: 1,
     });
-    // At the same instant it is only 4am Pacific, so the saved pick is still editable.
-    expect(
-      weekPickAvailability(games, new Set(["saved"]), "America/Los_Angeles", now).myAvailablePickCount,
-    ).toBe(2);
   });
 
   it("prioritizes missing actionable picks over stale weeks and already completed sheets", () => {

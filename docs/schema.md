@@ -209,7 +209,7 @@ A group of players who pick against each other, run by league admins.
 | --- | --- | --- | --- | --- |
 | `id` | uuid | no | PK | Has a default. |
 | `name` | text | no |  |  |
-| `time_zone` | text | no |  | IANA zone the 6am game-day lock is measured in. Has a default. |
+| `time_zone` | text | no |  | IANA zone game days and kickoff times are shown in. Has a default. |
 | `invite_code` | text | no | unique | Anyone holding this code can join. Admins can rotate it. |
 | `created_at` | timestamptz | no |  | Has a default. |
 

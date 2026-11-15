@@ -19,7 +19,8 @@ const games: Game[] = [
 ];
 const WEDNESDAY = new Date("2026-11-11T17:00:00Z");
 const SUNDAY_7AM = new Date("2026-11-15T12:00:00Z");
-const MONDAY_7AM = new Date("2026-11-16T12:00:00Z");
+const SUNDAY_2PM = new Date("2026-11-15T19:00:00Z");
+const MONDAY_NIGHT = new Date("2026-11-17T02:00:00Z");
 
 async function renderSheet(props: { now?: Date; picks?: Pick[]; tiebreakerTotal?: number | null } = {}) {
   const onSave = vi.fn().mockResolvedValue(undefined);
@@ -118,9 +119,9 @@ describe("PickSheet", () => {
   });
 
   it("stops asking for a POW once it can no longer be chosen", async () => {
-    // After 6am on Monday every game has locked, so a player with no POW has none this week.
+    // Every game has kicked off, so a player with no POW has none this week.
     const { screen } = await renderSheet({
-      now: MONDAY_7AM,
+      now: MONDAY_NIGHT,
       picks: ["thu", "sun", "mon"].map((gameId) => ({ gameId, side: "home" as const, isPow: false })),
       tiebreakerTotal: 44,
     });
@@ -160,48 +161,36 @@ describe("PickSheet", () => {
     await expect.element(screen.getByText(/No POW chosen\..*you won't have one this week/)).toBeVisible();
   });
 
-  it("on game day, takes a late pick but not as the POW, and locks games that kicked off", async () => {
+  it("on game day, takes a pick and the POW until kickoff, and locks games that kicked off", async () => {
     const { screen } = await renderSheet({ now: SUNDAY_7AM });
     // Thursday has been played.
     await expect.element(screen.getByRole("button", { name: "Giants -2.5" })).toBeDisabled();
-    // Sunday can still be picked, but not as the POW.
+    await expect.element(screen.getByRole("button", { name: "POW: WSH at NYG" })).toBeDisabled();
+    // Sunday hasn't kicked off: it can be picked, and be the POW.
     await screen.getByRole("button", { name: "Chiefs -3.5" }).click();
-    await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeDisabled();
-    await expect.element(screen.getByText("Late pick: final once saved, can't be POW")).toBeVisible();
-    // Monday is still fully open.
+    await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeEnabled();
     await screen.getByRole("button", { name: "Ravens -4.5" }).click();
     await expect.element(screen.getByRole("button", { name: "POW: LAC at BAL" })).toBeEnabled();
   });
 
-  it("after 6am on Sunday, still lets a player with no POW choose either Monday game", async () => {
-    // A Monday doubleheader: both games are still open on Sunday morning.
-    const doubleheader = [...games, game("mon2", "DEN", "LV", "2026-11-17T00:15:00Z", 1.5, 3)];
-    const screen = await render(
-      <PickSheet
-        games={doubleheader}
-        picks={[]}
-        tiebreakerGameId="mon"
-        tiebreakerTotal={null}
-        timeZone="America/New_York"
-        now={SUNDAY_7AM}
-        onSave={vi.fn()}
-      />,
-    );
-    await screen.getByRole("button", { name: "Chiefs -3.5" }).click();
-    await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeDisabled();
-    await screen.getByRole("button", { name: "Raiders +1.5" }).click();
-    await screen.getByRole("button", { name: "Ravens -4.5" }).click();
-    await expect.element(screen.getByRole("button", { name: "POW: DEN at LV" })).toBeEnabled();
-    await expect.element(screen.getByRole("button", { name: "POW: LAC at BAL" })).toBeEnabled();
-    // Nothing is chosen for the player: the Monday night pick isn't shown as a POW.
-    await expect
-      .element(screen.getByRole("button", { name: "POW: LAC at BAL" }))
-      .toHaveAttribute("aria-pressed", "false");
-  });
-
-  it("freezes saved picks and a saved POW after 6am on game day", async () => {
+  it("lets saved picks, a saved POW and the tiebreaker guess change until kickoff", async () => {
     const { screen } = await renderSheet({
       now: SUNDAY_7AM,
+      picks: [
+        { gameId: "sun", side: "home", isPow: true },
+        { gameId: "mon", side: "home", isPow: false },
+      ],
+      tiebreakerTotal: 44,
+    });
+    await expect.element(screen.getByRole("button", { name: "Chiefs -3.5" })).toBeEnabled();
+    await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeEnabled();
+    await expect.element(screen.getByRole("button", { name: "POW: LAC at BAL" })).toBeEnabled();
+    await expect.element(screen.getByLabelText(/Tiebreaker/)).toBeEnabled();
+  });
+
+  it("keeps the POW on its game once that game has kicked off", async () => {
+    const { screen } = await renderSheet({
+      now: SUNDAY_2PM,
       picks: [
         { gameId: "sun", side: "home", isPow: true },
         { gameId: "mon", side: "home", isPow: false },
@@ -211,6 +200,7 @@ describe("PickSheet", () => {
     await expect
       .element(screen.getByRole("button", { name: "Falcons +3.5" }))
       .toHaveAttribute("aria-pressed", "true");
+    await expect.element(screen.getByRole("button", { name: "POW: KC at ATL" })).toBeDisabled();
     // The POW sits on a locked game, so it can't move to Monday either.
     await expect.element(screen.getByRole("button", { name: "POW: LAC at BAL" })).toBeDisabled();
     // Monday's pick itself can still change.

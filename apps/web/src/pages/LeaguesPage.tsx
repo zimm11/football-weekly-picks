@@ -23,7 +23,7 @@ export function LeaguesPage() {
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const name = String(new FormData(e.currentTarget).get("name"));
-    // The 6am game-day lock is measured in the league's time zone; start with the creator's.
+    // Game days and times are shown in the league's time zone; start with the creator's.
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setBusy(true);
     try {

@@ -396,7 +396,6 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
               existing,
               picks: input.picks,
               powGameId: input.powGameId,
-              timeZone: ctx.league.timeZone,
               now: at,
             }) ??
             checkTiebreakerGuess({
@@ -405,7 +404,6 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
                 : null,
               existing: guess?.total ?? null,
               total: input.tiebreakerTotal,
-              timeZone: ctx.league.timeZone,
               now: at,
             });
           // Throwing rolls the transaction back, so a rejected submission saves nothing.

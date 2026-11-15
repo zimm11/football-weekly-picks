@@ -121,7 +121,7 @@ export type WeekSummary = {
   phase: WeekPhase;
   /** Unscored games that have not kicked off. */
   availablePickCount: number;
-  /** Games where this player can still add or change a pick. */
+  /** Same as `availablePickCount` now that picks stay changeable until kickoff; kept for clients that read it. */
   myAvailablePickCount: number;
   /** Unpicked games that have not closed yet. */
   myMissingPickCount: number;

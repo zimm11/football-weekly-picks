@@ -221,7 +221,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
                 gameCount: slate.length,
                 myPickCount: picked.size,
                 phase: weekPhase(w.status, slate, clock),
-                ...weekPickAvailability(slate, picked, league.timeZone, clock),
+                ...weekPickAvailability(slate, picked, clock),
               };
             }),
           recapWeekId: latestFinal && !recapSeen ? latestFinal.id : null,

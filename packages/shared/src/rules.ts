@@ -1,4 +1,4 @@
-import { NFL_TIME_ZONE, zonedParts, zonedTimeToUtc } from "./time";
+import { NFL_TIME_ZONE, zonedParts } from "./time";
 
 /*
  * The league's rules as pure functions. Everything time-dependent takes `now`.
@@ -10,8 +10,6 @@ export type Side = "home" | "away";
 
 /** Extra points for winning your Pick of the Week. */
 export const POW_BONUS = 5;
-/** Picks and POWs for a day's games lock at this hour (league time zone) on game day. */
-export const LOCK_HOUR = 6;
 
 // ---------- Point values ----------
 
@@ -42,35 +40,16 @@ export function defaultPoints(kickoff: Date): number {
 
 // ---------- Locks ----------
 
-/** 6am on game day in the league's time zone (never later than kickoff). */
-export function dayLock(kickoff: Date, timeZone: string): Date {
-  const p = zonedParts(kickoff, timeZone);
-  const lock = zonedTimeToUtc(p.year, p.month, p.day, LOCK_HOUR, timeZone);
-  return lock < kickoff ? lock : kickoff;
-}
-
-/**
- * - `open`: before 6am on game day. Picks and the POW can be made and changed freely.
- * - `late`: game day, before kickoff. A missing pick can still be added, but existing picks are frozen
- *   and the POW can't be put on, moved off, or removed from this game.
- * - `closed`: kicked off. Nothing can change.
- */
-export type GameWindow = "open" | "late" | "closed";
-
-export function gameWindow(kickoff: Date, timeZone: string, now: Date): GameWindow {
-  if (now >= kickoff) return "closed";
-  return now >= dayLock(kickoff, timeZone) ? "late" : "open";
-}
-
 /** What the lock rules need to know about a game. `final` means a result has been entered. */
 export type LockableGame = { kickoff: Date; final: boolean };
 
 /**
- * The window a player's picks on a game are in. A game with a result is closed whatever the clock says,
- * so nobody can pick a game whose outcome is already recorded (e.g. after the admin enters a score early).
+ * A game locks at kickoff: until then its pick can be made or changed, and the POW can be put on it, moved
+ * off it, or removed. A game with a result is locked whatever the clock says, so nobody can pick a game
+ * whose outcome is already recorded (e.g. after the admin enters a score early).
  */
-export function pickWindow(game: LockableGame, timeZone: string, now: Date): GameWindow {
-  return game.final ? "closed" : gameWindow(game.kickoff, timeZone, now);
+export function isLocked(game: LockableGame, now: Date): boolean {
+  return game.final || now >= game.kickoff;
 }
 
 export type PickInput = { gameId: string; side: Side };
@@ -86,44 +65,31 @@ export function checkPickSubmission(input: {
   existing: ExistingPick[];
   picks: PickInput[];
   powGameId: string | null;
-  timeZone: string;
   now: Date;
 }): string | null {
-  const { games, existing, picks, powGameId, timeZone, now } = input;
+  const { games, existing, picks, powGameId, now } = input;
   const gameById = new Map(games.map((g) => [g.id, g]));
   const existingByGame = new Map(existing.map((p) => [p.gameId, p]));
-  const windowOf = (gameId: string) => {
-    const game = gameById.get(gameId);
-    return game ? pickWindow(game, timeZone, now) : undefined;
-  };
+  const closed = (game: LockableGame) => (game.final ? "is final" : "has already kicked off");
 
   for (const pick of picks) {
     const game = gameById.get(pick.gameId);
     if (!game) return "That game is not part of this week.";
-    const window = pickWindow(game, timeZone, now);
-    const saved = existingByGame.get(pick.gameId);
-    if (saved?.side === pick.side) continue;
-    if (window === "closed") return `${game.label} ${game.final ? "is final" : "has already kicked off"}.`;
-    if (saved && window === "late") {
-      return `Your pick for ${game.label} can't be changed after ${LOCK_HOUR}am on game day.`;
-    }
+    if (existingByGame.get(pick.gameId)?.side === pick.side) continue;
+    if (isLocked(game, now)) return `${game.label} ${closed(game)}.`;
   }
 
   const currentPow = existing.find((p) => p.isPow)?.gameId ?? null;
   if (powGameId !== currentPow) {
-    if (currentPow && windowOf(currentPow) !== "open") {
-      return gameById.get(currentPow)?.final
-        ? "Your POW can't be moved or removed: its game is final."
-        : `Your POW can't be moved or removed after ${LOCK_HOUR}am on game day.`;
+    // A POW whose game has been removed from the slate is free to move.
+    const currentGame = currentPow ? gameById.get(currentPow) : undefined;
+    if (currentGame && isLocked(currentGame, now)) {
+      return `Your POW can't be moved or removed: its game ${closed(currentGame)}.`;
     }
     if (powGameId) {
       const game = gameById.get(powGameId);
       if (!game) return "That game is not part of this week.";
-      if (windowOf(powGameId) !== "open") {
-        return game.final
-          ? `${game.label} can't be your POW: it is final.`
-          : `${game.label} can't be your POW: it is after ${LOCK_HOUR}am on game day.`;
-      }
+      if (isLocked(game, now)) return `${game.label} can't be your POW: it ${closed(game)}.`;
       if (!existingByGame.has(powGameId) && !picks.some((p) => p.gameId === powGameId)) {
         return `Pick a side in ${game.label} before making it your POW.`;
       }
@@ -132,23 +98,18 @@ export function checkPickSubmission(input: {
   return null;
 }
 
-/** The tiebreaker guess follows the same lock as a pick on the tiebreaker game. */
+/** The tiebreaker guess can be entered or changed until the tiebreaker game locks. */
 export function checkTiebreakerGuess(input: {
   tiebreakerGame: LockableGame | null;
   existing: number | null;
   total: number | null;
-  timeZone: string;
   now: Date;
 }): string | null {
-  const { tiebreakerGame, existing, total, timeZone, now } = input;
+  const { tiebreakerGame, existing, total, now } = input;
   if (total === existing) return null;
   if (!tiebreakerGame) return "This week has no tiebreaker game yet.";
-  const window = pickWindow(tiebreakerGame, timeZone, now);
-  if (window === "closed") {
+  if (isLocked(tiebreakerGame, now)) {
     return `The tiebreaker game ${tiebreakerGame.final ? "is final" : "has already kicked off"}.`;
-  }
-  if (existing !== null && window === "late") {
-    return `Your tiebreaker guess can't be changed after ${LOCK_HOUR}am on game day.`;
   }
   if (total === null) return "A tiebreaker guess can't be removed once it is entered.";
   return null;

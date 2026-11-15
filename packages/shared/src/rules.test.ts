@@ -3,11 +3,10 @@ import {
   checkPickSubmission,
   checkTiebreakerGuess,
   coveringSide,
-  dayLock,
   defaultPoints,
   defaultTiebreakerGame,
   effectiveTiebreakerId,
-  gameWindow,
+  isLocked,
   type ScoredGame,
   type ScoredPick,
   scoreWeek,
@@ -57,17 +56,14 @@ describe("zonedTimeToUtc", () => {
   });
 });
 
-describe("gameWindow", () => {
-  it("locks at 6am on game day in the league's time zone", () => {
-    expect(dayLock(SUN_1PM, ET)).toEqual(et(2026, 11, 15, 6));
-    expect(dayLock(SUN_1PM, "America/Los_Angeles")).toEqual(et(2026, 11, 15, 9));
+describe("isLocked", () => {
+  it("locks a game at kickoff, not before", () => {
+    expect(isLocked({ kickoff: SUN_1PM, final: false }, et(2026, 11, 15, 12, 59))).toBe(false);
+    expect(isLocked({ kickoff: SUN_1PM, final: false }, SUN_1PM)).toBe(true);
   });
 
-  it("is open before 6am, late until kickoff, then closed", () => {
-    expect(gameWindow(SUN_1PM, ET, et(2026, 11, 15, 5, 59))).toBe("open");
-    expect(gameWindow(SUN_1PM, ET, et(2026, 11, 15, 6))).toBe("late");
-    expect(gameWindow(SUN_1PM, ET, et(2026, 11, 15, 12, 59))).toBe("late");
-    expect(gameWindow(SUN_1PM, ET, SUN_1PM)).toBe("closed");
+  it("locks a game with a result, whatever the clock says", () => {
+    expect(isLocked({ kickoff: SUN_1PM, final: true }, et(2026, 11, 11, 12))).toBe(true);
   });
 });
 
@@ -78,22 +74,13 @@ describe("checkPickSubmission", () => {
     { id: "snf", kickoff: SUN_NIGHT, label: "PIT at CIN", final: false },
     { id: "mon", kickoff: MON, label: "LAC at BAL", final: false },
   ];
-  const check = (
-    now: Date,
-    input: Partial<Pick<Parameters<typeof checkPickSubmission>[0], "existing" | "picks" | "powGameId">>,
-  ) =>
-    checkPickSubmission({
-      games,
-      existing: [],
-      picks: [],
-      powGameId: null,
-      timeZone: ET,
-      now,
-      ...input,
-    });
+  type Submission = Pick<Parameters<typeof checkPickSubmission>[0], "existing" | "picks" | "powGameId">;
+  const check = (now: Date, input: Partial<Submission>) =>
+    checkPickSubmission({ games, existing: [], picks: [], powGameId: null, now, ...input });
 
   const WEDNESDAY = et(2026, 11, 11, 12);
-  const SUNDAY_7AM = et(2026, 11, 15, 7);
+  const SUNDAY_NOON = et(2026, 11, 15, 12);
+  const SUNDAY_2PM = et(2026, 11, 15, 14);
 
   it("accepts everything early in the week", () => {
     expect(
@@ -104,10 +91,10 @@ describe("checkPickSubmission", () => {
     ).toBeNull();
   });
 
-  it("lets picks and the POW change before 6am on game day", () => {
+  it("lets a pick and the POW change on game day, until kickoff", () => {
     const existing = [{ gameId: "sun", side: "home" as const, isPow: true }];
     expect(
-      check(et(2026, 11, 15, 5), {
+      check(SUNDAY_NOON, {
         existing,
         picks: [
           { gameId: "sun", side: "away" },
@@ -116,58 +103,53 @@ describe("checkPickSubmission", () => {
         powGameId: "mon",
       }),
     ).toBeNull();
+    expect(check(SUNDAY_NOON, { existing, powGameId: null })).toBeNull();
   });
 
-  it("accepts a late pick on game day, but not as the POW", () => {
-    expect(check(SUNDAY_7AM, { picks: [{ gameId: "sun", side: "away" }] })).toBeNull();
-    expect(check(SUNDAY_7AM, { picks: [{ gameId: "sun", side: "away" }], powGameId: "sun" })).toMatch(
-      /can't be your POW/,
-    );
-  });
-
-  it("still allows a Monday POW on Sunday morning", () => {
-    expect(check(SUNDAY_7AM, { picks: [{ gameId: "mon", side: "away" }], powGameId: "mon" })).toBeNull();
-  });
-
-  it("freezes an existing pick after 6am on game day", () => {
-    const existing = [{ gameId: "sun", side: "home" as const, isPow: false }];
-    expect(check(SUNDAY_7AM, { existing, picks: [{ gameId: "sun", side: "away" }] })).toMatch(
-      /can't be changed/,
-    );
-    // Resubmitting the same side is not a change.
-    expect(check(SUNDAY_7AM, { existing, picks: [{ gameId: "sun", side: "home" }] })).toBeNull();
+  it("lets a pick made on game day be the POW", () => {
+    expect(check(SUNDAY_NOON, { picks: [{ gameId: "sun", side: "away" }], powGameId: "sun" })).toBeNull();
   });
 
   it("rejects picks after kickoff, for that game only", () => {
-    const afterEarlyKickoff = et(2026, 11, 15, 13, 5);
-    expect(check(afterEarlyKickoff, { picks: [{ gameId: "sun", side: "home" }] })).toMatch(
+    const existing = [{ gameId: "sun", side: "home" as const, isPow: false }];
+    expect(check(SUNDAY_2PM, { picks: [{ gameId: "sun", side: "home" }] })).toMatch(/already kicked off/);
+    expect(check(SUNDAY_2PM, { existing, picks: [{ gameId: "sun", side: "away" }] })).toMatch(
       /already kicked off/,
     );
-    expect(check(afterEarlyKickoff, { picks: [{ gameId: "snf", side: "home" }] })).toBeNull();
+    // Resubmitting the same side is not a change.
+    expect(check(SUNDAY_2PM, { existing, picks: [{ gameId: "sun", side: "home" }] })).toBeNull();
+    expect(check(SUNDAY_2PM, { picks: [{ gameId: "snf", side: "home" }] })).toBeNull();
   });
 
-  it("doesn't let a POW be moved off or removed from a game after 6am on its day", () => {
+  it("doesn't let a POW be moved off or removed from a game that has kicked off", () => {
     const existing = [
       { gameId: "sun", side: "home" as const, isPow: true },
       { gameId: "mon", side: "home" as const, isPow: false },
     ];
-    expect(check(SUNDAY_7AM, { existing, powGameId: "mon" })).toMatch(/can't be moved or removed/);
-    expect(check(SUNDAY_7AM, { existing, powGameId: null })).toMatch(/can't be moved or removed/);
-    expect(check(SUNDAY_7AM, { existing, powGameId: "sun" })).toBeNull();
+    expect(check(SUNDAY_2PM, { existing, powGameId: "mon" })).toMatch(/can't be moved or removed/);
+    expect(check(SUNDAY_2PM, { existing, powGameId: null })).toMatch(/can't be moved or removed/);
+    expect(check(SUNDAY_2PM, { existing, powGameId: "sun" })).toBeNull();
+  });
+
+  it("doesn't let the POW go on a game that has kicked off", () => {
+    const existing = [
+      { gameId: "sun", side: "home" as const, isPow: false },
+      { gameId: "mon", side: "home" as const, isPow: true },
+    ];
+    expect(check(SUNDAY_2PM, { existing, powGameId: "sun" })).toMatch(
+      /can't be your POW: it has already kicked off/,
+    );
+    // Any game still to be played can take it.
+    expect(
+      check(SUNDAY_2PM, { existing, picks: [{ gameId: "snf", side: "away" }], powGameId: "snf" }),
+    ).toBeNull();
   });
 
   it("closes a game as soon as it has a result, whatever the clock says", () => {
     // The admin entered Monday's score early in the week.
     const withResult = games.map((g) => (g.id === "mon" ? { ...g, final: true } : g));
-    const checkFinal = (
-      input: Pick<Parameters<typeof checkPickSubmission>[0], "existing" | "picks" | "powGameId">,
-    ) =>
-      checkPickSubmission({
-        games: withResult,
-        timeZone: ET,
-        now: WEDNESDAY,
-        ...input,
-      });
+    const checkFinal = (input: Submission) =>
+      checkPickSubmission({ games: withResult, now: WEDNESDAY, ...input });
     const saved = [{ gameId: "mon", side: "home" as const, isPow: true }];
 
     expect(checkFinal({ existing: [], picks: [{ gameId: "mon", side: "home" }], powGameId: null })).toMatch(
@@ -193,31 +175,6 @@ describe("checkPickSubmission", () => {
     ).toBeNull();
   });
 
-  describe("a player with no POW on Sunday morning", () => {
-    // A Monday doubleheader, so there is more than one Monday game to choose from.
-    const MON_EARLY = et(2026, 11, 16, 19, 15);
-    const doubleheader = [...games, { id: "mon2", kickoff: MON_EARLY, label: "DEN at LV", final: false }];
-    const checkWeek = (
-      now: Date,
-      input: Pick<Parameters<typeof checkPickSubmission>[0], "existing" | "picks" | "powGameId">,
-    ) => checkPickSubmission({ games: doubleheader, timeZone: ET, now, ...input });
-    const powOn = (gameId: string) => ({
-      existing: [],
-      picks: [{ gameId, side: "home" as const }],
-      powGameId: gameId,
-    });
-
-    it("can choose either Monday game, but no Sunday game", () => {
-      expect(checkWeek(SUNDAY_7AM, powOn("mon"))).toBeNull();
-      expect(checkWeek(SUNDAY_7AM, powOn("mon2"))).toBeNull();
-      expect(checkWeek(SUNDAY_7AM, powOn("snf"))).toMatch(/can't be your POW/);
-    });
-
-    it("can't make a late Monday pick the POW", () => {
-      expect(checkWeek(et(2026, 11, 16, 7), powOn("mon"))).toMatch(/can't be your POW/);
-    });
-  });
-
   it("requires a pick on the POW game", () => {
     expect(check(WEDNESDAY, { powGameId: "mon" })).toMatch(/Pick a side/);
   });
@@ -229,13 +186,14 @@ describe("checkPickSubmission", () => {
 
 describe("checkTiebreakerGuess", () => {
   const check = (now: Date, existing: number | null, total: number | null, final = false) =>
-    checkTiebreakerGuess({ tiebreakerGame: { kickoff: MON, final }, existing, total, timeZone: ET, now });
+    checkTiebreakerGuess({ tiebreakerGame: { kickoff: MON, final }, existing, total, now });
 
-  it("can be entered until kickoff and changed until 6am on game day", () => {
-    expect(check(et(2026, 11, 15, 12), 40, 44)).toBeNull();
+  it("can be entered and changed until kickoff, but not removed", () => {
     expect(check(et(2026, 11, 16, 12), null, 44)).toBeNull();
-    expect(check(et(2026, 11, 16, 12), 40, 44)).toMatch(/can't be changed/);
+    expect(check(et(2026, 11, 16, 12), 40, 44)).toBeNull();
+    expect(check(et(2026, 11, 16, 12), 40, null)).toMatch(/can't be removed/);
     expect(check(et(2026, 11, 16, 21), null, 44)).toMatch(/kicked off/);
+    expect(check(et(2026, 11, 16, 21), 40, 44)).toMatch(/kicked off/);
     expect(check(et(2026, 11, 16, 21), 40, 40)).toBeNull();
   });
 
