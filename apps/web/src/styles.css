@@ -45,6 +45,16 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-2xl: 22px;
+  /* The light running along the POW bar on the splash (`components/Splash.tsx`). */
+  --animate-splash-sweep: splash-sweep 1.6s ease-in-out infinite;
+  @keyframes splash-sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
 }
 
 :root {
