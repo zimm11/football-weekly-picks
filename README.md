@@ -66,8 +66,8 @@ Running it again overwrites `.env`.
 | `APP_URL`                  | Web origin that links in emails point at                     | `http://localhost:5173` locally                                   |
 | `UNSUBSCRIBE_SECRET`       | Signs unsubscribe links (32+ characters); turns email on     | A fixed local-only value                                          |
 | `EMAIL_FROM`               | Sender of notification emails                                | `POW Pick'em <noreply@pow-pickem.com>`                            |
-| `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                    | `150` (`10000` locally)                                           |
-| `EMAIL_MONTHLY_LIMIT`      | Most notification emails sent per UTC calendar month         | `2500` (`100000` locally)                                         |
+| `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                    | `1000` (`10000` locally)                                          |
+| `EMAIL_MONTHLY_LIMIT`      | Most notification emails sent per UTC calendar month         | `10000` (`100000` locally)                                        |
 
 The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
 needs no environment variables. Database credentials stay on the API server.
@@ -525,8 +525,9 @@ idempotent. Runs that did something log an `email_jobs` line with counts; failur
 
 **Budget.** Workers Paid includes 3,000 emails a month across the account, then $0.35 per 1,000. Before every
 notification email the API takes a slot from a per-day counter (`email_usage`) and stops at
-`EMAIL_DAILY_LIMIT` (150) or `EMAIL_MONTHLY_LIMIT` (2,500, per UTC calendar month), which leaves room for
-Auth's emails inside the included 3,000. Over budget, emails wait in the outbox until the next UTC day, and
+`EMAIL_DAILY_LIMIT` (1,000) or `EMAIL_MONTHLY_LIMIT` (10,000, per UTC calendar month). These are a safety cap
+against runaway sending, well above what the leagues use; a month at the cap would cost about $2.45 beyond
+the included 3,000. Over budget, emails wait in the outbox until the next UTC day, and
 ones that expire meanwhile (a reminder after its game day's first kickoff) are skipped with
 `last_error = 'OVER_BUDGET'`. Cloudflare also sets a daily quota of its own that starts low on new accounts
 and grows with use; if it refuses a send with `E_DAILY_LIMIT_EXCEEDED`, the API stops for the rest of the

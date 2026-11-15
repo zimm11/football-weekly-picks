@@ -322,8 +322,8 @@ export const emailOutbox = pgTable(
 
 /**
  * Notification emails handed to Cloudflare Email Sending per UTC day. The API reserves a slot here before every
- * send and stops at its daily and monthly limits, so it stays inside the plan's included sends with room left for
- * Auth's own emails (which share them but don't pass through the API).
+ * send and stops at its daily and monthly limits, a safety cap against runaway sending. Auth's own emails don't
+ * pass through the API and aren't counted here.
  */
 export const emailUsage = pgTable("email_usage", {
   /** The UTC calendar day. */

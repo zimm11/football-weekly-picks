@@ -178,8 +178,8 @@ describe("email environment", () => {
     const env = loadEnv(base);
     expect(env.UNSUBSCRIBE_SECRET).toBeUndefined();
     expect(env.EMAIL_FROM).toBe("POW Pick'em <noreply@pow-pickem.com>");
-    // Under the 3,000 a month Workers Paid includes, leaving room for Auth's emails.
-    expect([env.EMAIL_DAILY_LIMIT, env.EMAIL_MONTHLY_LIMIT]).toEqual([150, 2500]);
+    // A safety cap, well above normal use.
+    expect([env.EMAIL_DAILY_LIMIT, env.EMAIL_MONTHLY_LIMIT]).toEqual([1000, 10000]);
     expect(loadEnv({ ...base, EMAIL_DAILY_LIMIT: "20" }).EMAIL_DAILY_LIMIT).toBe(20);
     expect(() => loadEnv({ ...base, EMAIL_DAILY_LIMIT: "-1" })).toThrow(/EMAIL_DAILY_LIMIT/);
   });

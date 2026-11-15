@@ -46,11 +46,12 @@ const sharedFields = {
   /** Local mailer: the Supabase stack's test inbox, used instead of Cloudflare. Refused when NODE_ENV=production. */
   INBOX_URL: z.url().optional(),
   /**
-   * The most notification emails the API hands the provider per UTC day and month. The monthly default stays
-   * under the 3,000 a month that Workers Paid includes, leaving room for Auth's emails, which share it.
+   * The most notification emails the API hands the provider per UTC day and month: a safety cap against a
+   * runaway loop, set well above what the leagues need. Past the 3,000 a month Workers Paid includes, sends cost
+   * $0.35 per 1,000, so a month at the cap costs about $2.45 more.
    */
-  EMAIL_DAILY_LIMIT: z.coerce.number().int().min(0).default(150),
-  EMAIL_MONTHLY_LIMIT: z.coerce.number().int().min(0).default(2500),
+  EMAIL_DAILY_LIMIT: z.coerce.number().int().min(0).default(1000),
+  EMAIL_MONTHLY_LIMIT: z.coerce.number().int().min(0).default(10000),
 };
 
 /** Email settings that only make sense together. Shared by both entrypoints' schemas. */
