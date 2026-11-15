@@ -18,7 +18,7 @@ import { NameForm } from "./components/NameForm";
 import { NewPasswordForm } from "./components/NewPasswordForm";
 import { type Credentials, SignInForm, type SignInMode } from "./components/SignInForm";
 import { SimulatedClockBanner } from "./components/SimulatedClockBanner";
-import { ListSkeleton } from "./components/Skeletons";
+import { Splash } from "./components/Splash";
 import { buttonVariants } from "./components/ui/button";
 import { notifyDone } from "./notify";
 import { FeedbackPage } from "./pages/FeedbackPage";
@@ -156,13 +156,7 @@ export function App() {
       </Shell>
     );
   }
-  if (session === undefined) {
-    return (
-      <div className="mx-auto max-w-4xl px-4 pt-20">
-        <ListSkeleton label="Loading" rows={2} />
-      </div>
-    );
-  }
+  if (session === undefined) return <Splash />;
   if (!session) {
     if (route.page === "leagues") {
       return (
@@ -293,7 +287,7 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
       ) : (
         <>
           {error && <Notice kind="alert">{error}</Notice>}
-          {!me && !error && <ListSkeleton label="Loading" rows={2} />}
+          {!me && !error && <Splash />}
           {me && (!me.displayName || editingName) && (
             <div className="mx-auto grid max-w-sm gap-5 pt-6">
               <div className="grid gap-2">
@@ -316,7 +310,9 @@ function SignedIn({ userId, route }: { userId: string; route: ReturnType<typeof 
           )}
           {me?.displayName && !editingName && (
             <>
-              {(route.page === "leagues" || route.page === "login") && <LeaguesPage />}
+              {(route.page === "leagues" || route.page === "login") && (
+                <LeaguesPage playerName={me.displayName} />
+              )}
               {route.page === "join" && <JoinPage code={route.code} />}
               {route.page === "league" && (
                 <LeaguePage

@@ -7,6 +7,7 @@ import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
 import { ListSkeleton } from "../components/Skeletons";
+import { Splash } from "../components/Splash";
 import { notifyDone } from "../notify";
 import { Link, navigate } from "../router";
 import { useLoad } from "./useLoad";
@@ -15,8 +16,14 @@ import { useLoad } from "./useLoad";
 export const rowLink =
   "flex min-h-16 items-center gap-3 rounded-xl bg-card px-4 py-3 text-foreground no-underline transition-colors hover:bg-raised";
 
-export function LeaguesPage() {
+/** Whether the leagues have loaded once since the app opened: only that first load gets the splash. */
+let openedOnce = false;
+
+export function LeaguesPage({ playerName }: { playerName?: string }) {
   const leagues = useLoad(() => unwrap<LeagueSummary[]>(api.leagues.$get()), "leagues");
+  // Read once, so the page keeps its fade-in after the flag flips below.
+  const [opening] = useState(() => !openedOnce);
+  if (leagues.data) openedOnce = true;
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -37,9 +44,12 @@ export function LeaguesPage() {
   }
 
   if (leagues.error) return <Notice kind="alert">{leagues.error}</Notice>;
-  if (!leagues.data) return <ListSkeleton label="Loading your leagues" rows={2} />;
+  if (!leagues.data) {
+    // Opening the app lands here, so the first load continues the splash; coming back later shows the list's shape.
+    return opening ? <Splash name={playerName} /> : <ListSkeleton label="Loading your leagues" rows={2} />;
+  }
   return (
-    <div className="grid gap-6">
+    <div className={opening ? "grid animate-in gap-6 fade-in duration-300" : "grid gap-6"}>
       <h2 className="text-4xl leading-none font-extrabold">Your leagues</h2>
       {leagues.data.length === 0 ? (
         <Card>
