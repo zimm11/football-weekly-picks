@@ -38,10 +38,13 @@
   --color-pow: var(--pow);
   --color-pow-foreground: var(--pow-foreground);
   --color-win: var(--win);
-  --radius-sm: 1px;
-  --radius-md: 2px;
-  --radius-lg: 2px;
-  --radius-xl: 3px;
+  --color-raised: var(--raised);
+  /* Soft, rounded surfaces: controls at md, cards at xl, sheets at 2xl. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 22px;
 }
 
 :root {
@@ -50,7 +53,9 @@
   --background: #070d1f;
   --foreground: #f1f4fb;
   --chrome: #030817;
-  --card: #101a36;
+  --card: #0f1834;
+  /* One step up from a card: selected rows, inputs on a card, hover. */
+  --raised: #17234a;
   --card-foreground: #f1f4fb;
   --popover: #131f41;
   --popover-foreground: #f1f4fb;
@@ -62,15 +67,25 @@
   --muted-foreground: #94a0bd;
   --accent: #1a2750;
   --accent-foreground: #f1f4fb;
-  --border: #24315a;
-  --input: #33437a;
+  /* Hairlines, not outlines: surfaces are told apart by their fill. */
+  --border: #94a0bd1f;
+  --input: #94a0bd33;
   --ring: #4d7cff;
   /* Red belongs to the Pick of the Week and nothing else, so errors and removals are coral. */
   --pow: #ff3d5e;
   --pow-foreground: #ffffff;
   --destructive: #ffa37a;
   --win: #3ddc97;
-  --radius: 2px;
+  --radius: 10px;
+  /* Avatar fills: muted enough to sit on navy, distinct enough to tell players apart. */
+  --avatar-1: #3b5bdb;
+  --avatar-2: #2f9e77;
+  --avatar-3: #c2410c;
+  --avatar-4: #7c3aed;
+  --avatar-5: #0e7490;
+  --avatar-6: #b45309;
+  --avatar-7: #be185d;
+  --avatar-8: #4d7c0f;
   /* Toasts float above the phone's tab bar and a pinned save bar; on wider screens only the save bar. */
   --toast-bottom: calc(9.5rem + env(safe-area-inset-bottom, 0px));
 }
@@ -91,11 +106,14 @@
   body {
     @apply bg-background text-foreground m-0 text-base leading-normal antialiased;
   }
+  /* Two levels of type: scoreboard capitals for titles, plain Barlow for labels and small headings. */
   h1,
   h2,
-  h3,
-  h4 {
+  h3 {
     @apply font-display m-0 font-bold tracking-wide uppercase;
+  }
+  h4 {
+    @apply m-0 font-sans text-sm font-semibold text-muted-foreground;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -127,13 +145,25 @@
     @apply w-full border-collapse text-sm;
   }
   .data-table th {
-    @apply font-display text-muted-foreground border-b px-2.5 py-2 text-left text-sm font-bold tracking-wider whitespace-nowrap uppercase;
+    @apply text-muted-foreground border-b px-2.5 py-2 text-left text-xs font-medium whitespace-nowrap;
   }
   .data-table td {
     @apply border-b px-2.5 py-2.5 whitespace-nowrap;
   }
   .data-table .num {
     @apply num;
+  }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  /* The first column stays put while the rest of a wide table scrolls under it. */
+  .sticky-first :is(th, td):first-child {
+    @apply bg-card sticky left-0 z-10;
+  }
+  /* The signed-in player's row, raised a step; the sticky cell follows it. */
+  .data-table tr[data-me] > *,
+  .sticky-first tr[data-me] > :first-child {
+    @apply bg-raised;
   }
 
   /*
@@ -151,14 +181,14 @@
       @apply grid gap-3;
     }
     .card-rows tr {
-      @apply bg-card grid items-center gap-x-2 gap-y-3 rounded-md border p-3;
+      @apply bg-card grid items-center gap-x-2 gap-y-3 rounded-xl p-3;
     }
     .card-rows td {
       @apply block min-w-0 border-0 p-0 whitespace-normal;
     }
     .card-rows td[data-label]::before {
       content: attr(data-label);
-      @apply font-display text-muted-foreground block text-xs font-bold tracking-wider uppercase;
+      @apply text-muted-foreground block text-xs font-medium;
     }
   }
 }

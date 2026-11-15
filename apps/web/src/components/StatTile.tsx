@@ -14,10 +14,8 @@ export function StatTile({
   className?: string;
 }) {
   return (
-    <div className={cn("grid content-start gap-1 rounded-md border bg-card p-3", className)}>
-      <dt className="font-display text-xs font-bold tracking-wider text-muted-foreground uppercase">
-        {label}
-      </dt>
+    <div className={cn("grid content-start gap-1 rounded-xl bg-card p-3", className)}>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="m-0 font-display text-3xl leading-none font-bold tabular-nums">{value}</dd>
       {detail && <dd className="m-0 text-sm text-muted-foreground">{detail}</dd>}
     </div>

@@ -1,6 +1,7 @@
 import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { type Standings, winRate } from "@picks/shared";
 import { formatAverage, formatPercent, formatRecord } from "../format";
+import { Avatar } from "./Avatar";
 
 type Entry = Standings["entries"][number];
 
@@ -36,11 +37,14 @@ export function RankChange({ change }: { change: number | null }) {
 /** Season leaderboard. Pts, POWs, W–L and the night-game columns are the season tiebreakers, in order. */
 export function StandingsTable({ entries, currentUserId }: Props) {
   return (
-    <div className="table-scroll -mx-4 px-4">
-      <table aria-label="Season standings" className="data-table max-sm:[&_td]:px-2 max-sm:[&_th]:px-2">
+    // Rank, avatar and name share the first column, which stays put while the numbers scroll on a phone.
+    <div className="table-scroll rounded-xl bg-card">
+      <table
+        aria-label="Season standings"
+        className="data-table sticky-first max-sm:[&_td]:px-2 max-sm:[&_th]:px-2"
+      >
         <thead>
           <tr>
-            <th className="num">#</th>
             <th>Player</th>
             <th className="num">Pts</th>
             <th className="num" title="Pick of the Week record (wins break ties)">
@@ -66,14 +70,27 @@ export function StandingsTable({ entries, currentUserId }: Props) {
         </thead>
         <tbody>
           {entries.map((entry) => (
-            <tr key={entry.userId} className={entry.userId === currentUserId ? "bg-primary/10" : undefined}>
-              <td className="num font-display text-lg font-bold text-muted-foreground">
-                {entry.rank}
-                <RankChange change={entry.rankChange} />
-              </td>
+            <tr key={entry.userId} data-me={entry.userId === currentUserId || undefined}>
               <td className="font-medium">
-                {entry.userId === currentUserId ? <strong>{entry.displayName}</strong> : entry.displayName}
-                {entry.removed && <span className="text-muted-foreground"> (no longer in the league)</span>}
+                <span className="flex items-center gap-2.5">
+                  <span className="w-5 text-right font-display text-lg font-bold text-muted-foreground tabular-nums">
+                    {entry.rank}
+                  </span>
+                  <Avatar name={entry.displayName} />
+                  <span className="grid leading-tight">
+                    <span>
+                      {entry.userId === currentUserId ? (
+                        <strong>{entry.displayName}</strong>
+                      ) : (
+                        entry.displayName
+                      )}
+                      <RankChange change={entry.rankChange} />
+                    </span>
+                    {entry.removed && (
+                      <span className="text-xs text-muted-foreground">No longer in the league</span>
+                    )}
+                  </span>
+                </span>
               </td>
               <td className="num font-display text-xl">
                 <strong>{entry.points}</strong>

@@ -77,7 +77,7 @@ export function WeekBody({
 
       {phase === "awaiting" && (
         <Card>
-          <h4 className="text-xl">Awaiting finalization</h4>
+          <h4 className="text-lg text-foreground">Awaiting finalization</h4>
           <p className="m-0 text-sm text-muted-foreground">
             All final scores are entered. Picks stay private and this week does not count in standings until
             the admin finalizes it.

@@ -4,7 +4,7 @@ export function MessageQuote({ quote }: { quote: Quote }) {
   return (
     <blockquote
       aria-label={`Quoted message from ${quote.authorName}`}
-      className="m-0 grid min-w-0 gap-2 border-l-2 border-primary bg-secondary/50 p-3"
+      className="m-0 grid min-w-0 gap-2 rounded-r-lg border-l-2 border-primary bg-raised/60 p-3"
     >
       <p className="m-0 text-sm font-semibold break-words">{quote.authorName} wrote:</p>
       <p className="m-0 line-clamp-3 whitespace-pre-wrap break-words text-muted-foreground">{quote.body}</p>

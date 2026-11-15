@@ -28,9 +28,9 @@ function Toaster(props: ToasterProps) {
       }
       toastOptions={{
         classNames: {
-          toast: "font-sans! text-base! font-medium! shadow-lg! shadow-black/50!",
-          success: "border-l-4! border-l-win!",
-          error: "border-l-4! border-l-destructive!",
+          toast: "font-sans! text-base! font-medium! rounded-xl! shadow-lg! shadow-black/50!",
+          success: "[&_[data-icon]]:text-win!",
+          error: "[&_[data-icon]]:text-destructive!",
         },
       }}
       {...props}

@@ -16,9 +16,7 @@ export function LandingPage({
     <div className="grid gap-10 py-4 sm:gap-14 sm:py-8">
       <section className="grid items-center gap-8 md:grid-cols-[1.15fr_1fr]" aria-labelledby="welcome-title">
         <div className="grid justify-items-start gap-5">
-          <p className="m-0 font-display text-sm font-bold tracking-[0.2em] text-primary uppercase">
-            Your league. Every week. All season.
-          </p>
+          <p className="m-0 text-sm font-semibold text-primary">Your league. Every week. All season.</p>
           <h2 id="welcome-title" className="text-6xl leading-[0.9] font-extrabold sm:text-7xl">
             Beat the spread.
             <br />
@@ -43,7 +41,7 @@ export function LandingPage({
 
         <Card aria-label="Example pick" className="gap-0 overflow-hidden p-0">
           <div className="flex items-center justify-between gap-2 border-b bg-chrome px-5 py-3">
-            <span className="font-display font-bold tracking-widest uppercase">The weekly game plan</span>
+            <span className="text-sm font-semibold">The weekly game plan</span>
             <span className="text-xs text-muted-foreground">Example</span>
           </div>
           <div className="grid gap-5 p-5">
@@ -55,18 +53,16 @@ export function LandingPage({
               <span className="shrink-0 font-display text-lg font-bold text-muted-foreground">3 PTS</span>
             </div>
             <div className="grid grid-cols-2 gap-2 font-display text-xl font-bold uppercase">
-              <div className="flex min-h-20 items-center justify-center gap-2 rounded-md border-2 border-primary bg-primary text-primary-foreground">
+              <div className="flex min-h-20 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground shadow-md shadow-primary/25">
                 <CheckCircleIcon aria-hidden weight="fill" className="size-5" /> Buffalo −3.5
               </div>
-              <div className="flex min-h-20 items-center justify-center rounded-md border-2 border-input">
-                Miami +3.5
-              </div>
+              <div className="flex min-h-20 items-center justify-center rounded-lg bg-raised">Miami +3.5</div>
             </div>
             <p className="m-0 text-sm text-muted-foreground">
               Buffalo needs to win by 4 or more for this pick to win.
             </p>
             <div className="flex items-center gap-3 border-y py-4">
-              <span className="rounded-md bg-pow px-3 py-2 font-display text-xl font-extrabold text-pow-foreground">
+              <span className="rounded-lg bg-pow px-3 py-2 font-display text-xl font-extrabold text-pow-foreground">
                 POW
               </span>
               <div>
@@ -105,7 +101,7 @@ export function LandingPage({
       <section
         id="get-started"
         aria-labelledby="get-started-title"
-        className="grid scroll-mt-6 gap-6 md:grid-cols-2 md:gap-10"
+        className="grid scroll-mt-20 gap-6 md:grid-cols-2 md:gap-10"
       >
         <div className="grid content-start gap-5">
           <div className="grid gap-2">

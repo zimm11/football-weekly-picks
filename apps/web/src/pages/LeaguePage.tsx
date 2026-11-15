@@ -107,49 +107,51 @@ export function LeaguePage({
       active={tab}
       seasonSelector={
         tab !== "messages" && (
-          <div className="grid gap-3">
-            <Field label="Season" className="w-full sm:w-72">
-              <NativeSelect
-                value={startingSeason ? "new" : year}
-                onChange={(event) => {
-                  if (event.target.value === "new") setStartingSeason(true);
-                  else chooseYear(Number(event.target.value));
-                }}
-              >
-                {years.map((value) => (
-                  <option key={value} value={value}>
-                    {value} NFL season
-                    {detail.weeks.some((week) => week.year === value) ? "" : " · Not started"}
-                  </option>
-                ))}
-                {detail.role === "admin" && <option value="new">Start a new season…</option>}
-              </NativeSelect>
-            </Field>
-            {startingSeason && detail.role === "admin" && (
-              <Card aria-label="Start a new season">
-                <h3 className="text-2xl">Start a new season</h3>
-                <p className="m-0 text-sm text-muted-foreground">
-                  Use the year the NFL season starts. Your league and members carry over. The season is
-                  created when you prepare its first week.
-                </p>
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    chooseYear(Number(new FormData(event.currentTarget).get("year")));
-                  }}
-                  className="flex flex-wrap items-end gap-3"
-                >
-                  <Field label="New season year" className="w-40">
-                    <Input name="year" type="number" required min={2020} max={2100} defaultValue={nextYear} />
-                  </Field>
-                  <Button type="submit">Use season</Button>
-                  <Button type="button" variant="outline" onClick={() => setStartingSeason(false)}>
-                    Cancel
-                  </Button>
-                </form>
-              </Card>
-            )}
-          </div>
+          <NativeSelect
+            aria-label="Season"
+            value={startingSeason ? "new" : year}
+            onChange={(event) => {
+              if (event.target.value === "new") setStartingSeason(true);
+              else chooseYear(Number(event.target.value));
+            }}
+            className="h-11 w-28 shrink-0 truncate rounded-full border-transparent bg-raised pr-2 pl-4 text-sm font-semibold"
+          >
+            {years.map((value) => (
+              <option key={value} value={value}>
+                {value}
+                {detail.weeks.some((week) => week.year === value) ? "" : " · Not started"}
+              </option>
+            ))}
+            {detail.role === "admin" && <option value="new">New season…</option>}
+          </NativeSelect>
+        )
+      }
+      seasonPanel={
+        tab !== "messages" &&
+        startingSeason &&
+        detail.role === "admin" && (
+          <Card aria-label="Start a new season">
+            <h3 className="text-2xl">Start a new season</h3>
+            <p className="m-0 text-sm text-muted-foreground">
+              Use the year the NFL season starts. Your league and members carry over. The season is created
+              when you prepare its first week.
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                chooseYear(Number(new FormData(event.currentTarget).get("year")));
+              }}
+              className="flex flex-wrap items-end gap-3"
+            >
+              <Field label="New season year" className="w-40">
+                <Input name="year" type="number" required min={2020} max={2100} defaultValue={nextYear} />
+              </Field>
+              <Button type="submit">Use season</Button>
+              <Button type="button" variant="outline" onClick={() => setStartingSeason(false)}>
+                Cancel
+              </Button>
+            </form>
+          </Card>
         )
       }
     >
@@ -376,9 +378,8 @@ function SeasonTab({
           <section aria-label="Leaderboard" className="grid gap-3">
             {standings.data.weeks.length > 0 && <Eyebrow>Leaderboard</Eyebrow>}
             <StandingsTable entries={standings.data.entries} currentUserId={userId} />
-            <p className="m-0 text-sm text-muted-foreground">
-              Standings count closed weeks only. Ties are broken by POWs won, then wins, then Monday night and
-              Sunday night wins.
+            <p className="m-0 text-xs text-muted-foreground">
+              Closed weeks only. Ties go to POWs won, then wins, then MNF and SNF wins.
             </p>
           </section>
           {standings.data.weeks.length > 0 && (

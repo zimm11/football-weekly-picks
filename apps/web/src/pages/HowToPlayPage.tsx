@@ -25,13 +25,13 @@ function Steps({ steps }: { steps: { title: string; detail: ReactNode }[] }) {
       {steps.map(({ title, detail }, index) => (
         <li key={title} className="flex gap-4 border-t py-5 first:border-0 first:pt-0 last:pb-0">
           <span
-            className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary font-display text-xl font-bold text-primary"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 font-display text-xl font-bold text-primary"
             aria-hidden
           >
             {index + 1}
           </span>
           <div className="grid gap-1">
-            <h4 className="text-xl">{title}</h4>
+            <h4 className="text-lg text-foreground">{title}</h4>
             <p className="m-0 text-muted-foreground">{detail}</p>
           </div>
         </li>
@@ -44,9 +44,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="grid gap-8 py-3 sm:gap-10">
       <header className="grid justify-items-start gap-4">
-        <p className="m-0 font-display text-sm font-bold tracking-[0.2em] text-primary uppercase">
-          The league playbook
-        </p>
+        <p className="m-0 text-sm font-semibold text-primary">The league playbook</p>
         <h2 className="text-5xl leading-none font-extrabold sm:text-6xl">How to play</h2>
         <p className="m-0 max-w-2xl text-lg text-muted-foreground">
           POW Pick'em brings your crew together for the NFL regular season. Each week, pick games against the
@@ -57,19 +55,19 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </Link>
       </header>
 
-      <nav aria-label="Guide sections" className="grid grid-cols-2 border-y sm:grid-cols-4">
+      <nav aria-label="Guide sections" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {sections.map(([id, title]) => (
           <a
             key={id}
             href={`#${id}`}
-            className="flex min-h-14 items-center justify-center px-2 text-center font-display text-lg font-bold text-foreground uppercase hover:bg-secondary"
+            className="flex min-h-12 items-center justify-center rounded-xl bg-card px-2 text-center text-sm font-semibold text-foreground no-underline transition-colors hover:bg-raised"
           >
             {title}
           </a>
         ))}
       </nav>
 
-      <section id="home-screen" aria-labelledby="home-screen-title" className="grid scroll-mt-6 gap-5">
+      <section id="home-screen" aria-labelledby="home-screen-title" className="grid scroll-mt-20 gap-5">
         <div className="flex items-center gap-3">
           <DeviceMobileIcon aria-hidden className="size-7 text-primary" />
           <h3 id="home-screen-title" className="text-3xl">
@@ -84,7 +82,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         <HomeScreenInstructions />
       </section>
 
-      <section id="rules" aria-labelledby="rules-title" className="grid scroll-mt-6 gap-5">
+      <section id="rules" aria-labelledby="rules-title" className="grid scroll-mt-20 gap-5">
         <div className="flex items-center gap-3">
           <TrophyIcon aria-hidden className="size-7 text-primary" />
           <h3 id="rules-title" className="text-3xl">
@@ -92,12 +90,12 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
           </h3>
         </div>
         <Card>
-          <h4 className="text-2xl">Play the spread</h4>
+          <h4 className="text-lg text-foreground">Play the spread</h4>
           <p className="m-0 text-muted-foreground">
             Pick the team you think will cover the displayed spread, rather than simply win the game. A minus
             line means the team is favored; a plus line gives the underdog a head start.
           </p>
-          <div className="border-l-4 border-primary bg-primary/10 p-4">
+          <div className="rounded-lg bg-primary/10 p-4">
             <p className="m-0 font-semibold">Example: Buffalo −3.5 vs. Miami +3.5</p>
             <p className="mt-1 mb-0 text-muted-foreground">
               Buffalo covers by winning by 4 or more. Miami covers by winning outright or losing by 3 or
@@ -113,7 +111,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="content-start">
-            <h4 className="text-2xl">What each game is worth</h4>
+            <h4 className="text-lg text-foreground">What each game is worth</h4>
             <dl className="m-0 grid gap-0 text-sm">
               {[
                 ["Sunday daytime", "1 point"],
@@ -134,7 +132,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
             </p>
           </Card>
           <Card className="content-start border-t-4 border-t-pow">
-            <h4 className="text-2xl">One POW. Bigger stakes.</h4>
+            <h4 className="text-lg text-foreground">One POW. Bigger stakes.</h4>
             <p className="m-0 text-muted-foreground">
               Mark one of your picks as your Pick of the Week. If it covers, you earn the game's points plus{" "}
               <strong className="text-pow">{POW_BONUS} bonus points</strong>. A losing or pushed POW earns no
@@ -150,7 +148,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </div>
 
         <Card>
-          <h4 className="text-2xl">Know the deadlines</h4>
+          <h4 className="text-lg text-foreground">Know the deadlines</h4>
           <p className="m-0 text-muted-foreground">
             Pick deadlines use <strong className="text-foreground">your league's time zone</strong>, shown in
             the League tab.
@@ -170,7 +168,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
                 "No new picks or changes. A game also closes as soon as the admin records a result, regardless of the time.",
               ],
             ].map(([title, detail]) => (
-              <div key={title} className="border-l-2 border-primary pl-3">
+              <div key={title} className="rounded-lg bg-raised p-3">
                 <dt className="font-semibold">{title}</dt>
                 <dd className="mt-1 ml-0 text-sm text-muted-foreground">{detail}</dd>
               </div>
@@ -184,7 +182,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </Card>
 
         <Card>
-          <h4 className="text-2xl">How winners are decided</h4>
+          <h4 className="text-lg text-foreground">How winners are decided</h4>
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="grid content-start gap-2">
               <h5 className="m-0 font-semibold">Weekly winner</h5>
@@ -222,7 +220,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </Card>
       </section>
 
-      <section id="players" aria-labelledby="players-title" className="grid scroll-mt-6 gap-5">
+      <section id="players" aria-labelledby="players-title" className="grid scroll-mt-20 gap-5">
         <div className="flex items-center gap-3">
           <UsersThreeIcon aria-hidden className="size-7 text-primary" />
           <h3 id="players-title" className="text-3xl">
@@ -270,7 +268,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
         </Card>
       </section>
 
-      <section id="admins" aria-labelledby="admins-title" className="grid scroll-mt-6 gap-5">
+      <section id="admins" aria-labelledby="admins-title" className="grid scroll-mt-20 gap-5">
         <div className="flex items-center gap-3">
           <ListChecksIcon aria-hidden className="size-7 text-primary" />
           <h3 id="admins-title" className="text-3xl">

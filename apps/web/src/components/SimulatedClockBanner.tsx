@@ -11,7 +11,7 @@ export function SimulatedClockBanner({ now, offsetMs }: { now: Date; offsetMs: n
     timeZoneName: "short",
   });
   return (
-    <p role="status" className="m-0 bg-secondary px-4 py-1 text-center font-display text-sm uppercase">
+    <p role="status" className="m-0 bg-raised px-4 py-1 text-center text-sm font-medium">
       Simulated time: {label}
     </p>
   );

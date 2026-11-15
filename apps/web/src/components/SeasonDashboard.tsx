@@ -4,6 +4,7 @@ import { cn } from "cn";
 import { useState } from "react";
 import { Card, Eyebrow } from "@/components/ui/card";
 import { formatAverage, formatPercent, formatRecord, ordinal } from "../format";
+import { Avatar } from "./Avatar";
 import { averagePoints, RankChange } from "./StandingsTable";
 import { StatGrid, StatTile } from "./StatTile";
 
@@ -85,7 +86,7 @@ export function WeeklyPointsChart({ weeks, entry }: { weeks: Week[]; entry: Pick
   return (
     <Card className="gap-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <h4 className="text-base tracking-widest text-muted-foreground">Points by week</h4>
+        <h4>Points by week</h4>
         <div className="flex items-center gap-4 text-xs text-muted-foreground" aria-hidden>
           <span className="flex items-center gap-1.5">
             <span className="inline-block size-2.5 rounded-[2px] bg-primary" /> You
@@ -163,11 +164,11 @@ export function WeekByWeekTable({
   return (
     <section aria-label="Week by week" className="grid gap-3">
       <Eyebrow>Week by week</Eyebrow>
-      <div className="table-scroll -mx-4 px-4">
+      <div className="table-scroll rounded-xl bg-card">
         <table aria-label="Points by week" className="data-table max-sm:[&_td]:px-2 max-sm:[&_th]:px-2">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 w-full bg-background">Player</th>
+              <th className="sticky left-0 z-10 w-full bg-card">Player</th>
               {standings.weeks.map((week) => (
                 <th key={week.id} className="num" title={weekLabel(week.number)}>
                   W{week.number}
@@ -180,15 +181,18 @@ export function WeekByWeekTable({
             {standings.entries.map((entry) => {
               const mine = entry.userId === currentUserId;
               return (
-                <tr key={entry.userId}>
+                <tr key={entry.userId} data-me={mine || undefined}>
                   <th
                     scope="row"
                     className={cn(
-                      "sticky left-0 z-10 border-b bg-background px-2.5 py-2.5 text-left font-sans text-sm font-medium tracking-normal whitespace-nowrap normal-case text-foreground",
-                      mine && "font-bold shadow-[inset_3px_0_0_var(--primary)]",
+                      "sticky left-0 z-10 border-b px-2.5 py-2.5 text-left font-sans text-sm font-medium tracking-normal whitespace-nowrap normal-case text-foreground",
+                      mine ? "bg-raised font-bold" : "bg-card",
                     )}
                   >
-                    {entry.displayName}
+                    <span className="flex items-center gap-2">
+                      <Avatar name={entry.displayName} size="sm" />
+                      {entry.displayName}
+                    </span>
                   </th>
                   {standings.weeks.map((week, i) => {
                     const result = entry.weekly[i];
@@ -202,11 +206,7 @@ export function WeekByWeekTable({
                     return (
                       <td
                         key={week.id}
-                        className={cn(
-                          "num",
-                          result.isWinner && "bg-win/10 font-semibold text-win",
-                          mine && !result.isWinner && "bg-primary/10",
-                        )}
+                        className={cn("num", result.isWinner && "bg-win/10 font-semibold text-win")}
                         title={`${weekLabel(week.number)}: ${ordinal(result.rank)}`}
                       >
                         {result.isWinner && (
@@ -232,7 +232,7 @@ export function WeekByWeekTable({
             <tr>
               <th
                 scope="row"
-                className="sticky left-0 z-10 border-b-0 bg-background px-2.5 py-2 text-left text-sm"
+                className="sticky left-0 z-10 border-b-0 bg-card px-2.5 py-2 text-left font-sans text-xs font-medium tracking-normal text-muted-foreground normal-case"
               >
                 Avg
               </th>
@@ -273,8 +273,11 @@ export function PickSplitsTable({ entries, currentUserId }: { entries: Entry[]; 
   return (
     <section aria-label="Pick splits" className="grid gap-3">
       <Eyebrow>Pick splits</Eyebrow>
-      <div className="table-scroll -mx-4 px-4">
-        <table aria-label="Pick splits" className="data-table max-sm:[&_td]:px-2 max-sm:[&_th]:px-2">
+      <div className="table-scroll rounded-xl bg-card">
+        <table
+          aria-label="Pick splits"
+          className="data-table sticky-first max-sm:[&_td]:px-2 max-sm:[&_th]:px-2"
+        >
           <thead>
             <tr>
               <th>Player</th>
@@ -287,9 +290,16 @@ export function PickSplitsTable({ entries, currentUserId }: { entries: Entry[]; 
           </thead>
           <tbody>
             {entries.map((entry) => (
-              <tr key={entry.userId} className={entry.userId === currentUserId ? "bg-primary/10" : undefined}>
+              <tr key={entry.userId} data-me={entry.userId === currentUserId || undefined}>
                 <td className="font-medium">
-                  {entry.userId === currentUserId ? <strong>{entry.displayName}</strong> : entry.displayName}
+                  <span className="flex items-center gap-2">
+                    <Avatar name={entry.displayName} size="sm" />
+                    {entry.userId === currentUserId ? (
+                      <strong>{entry.displayName}</strong>
+                    ) : (
+                      entry.displayName
+                    )}
+                  </span>
                 </td>
                 {SPLITS.map((s) => (
                   <td key={s.key} className="num">

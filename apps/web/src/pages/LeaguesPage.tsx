@@ -12,7 +12,7 @@ import { useLoad } from "./useLoad";
 
 /** A whole row that is one link: easier to hit with a thumb than a word of text. */
 export const rowLink =
-  "flex min-h-16 items-center gap-3 rounded-md border bg-card px-4 py-3 text-foreground no-underline transition-colors hover:border-primary/60";
+  "flex min-h-16 items-center gap-3 rounded-xl bg-card px-4 py-3 text-foreground no-underline transition-colors hover:bg-raised";
 
 export function LeaguesPage() {
   const leagues = useLoad(() => unwrap<LeagueSummary[]>(api.leagues.$get()), "leagues");
@@ -56,6 +56,9 @@ export function LeaguesPage() {
           {leagues.data.map((league) => (
             <li key={league.id}>
               <Link to={`/leagues/${league.id}`} className={rowLink}>
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-display text-lg font-bold text-primary">
+                  {league.name.trim().charAt(0).toUpperCase()}
+                </span>
                 <span className="mr-auto font-display text-2xl font-bold tracking-wide uppercase">
                   {league.name}
                 </span>

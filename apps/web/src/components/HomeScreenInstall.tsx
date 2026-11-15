@@ -25,7 +25,7 @@ import {
 export function HomeScreenInstructions({ platform = "other" }: { platform?: HomeScreenPlatform }) {
   const ios = (
     <Card>
-      <h4 className="text-2xl">iPhone or iPad · Safari</h4>
+      <h4 className="text-lg text-foreground">iPhone or iPad · Safari</h4>
       <ol className="m-0 grid list-decimal gap-3 pl-5 text-muted-foreground">
         <li>Open www.pow-pickem.com in Safari.</li>
         <li>
@@ -38,7 +38,7 @@ export function HomeScreenInstructions({ platform = "other" }: { platform?: Home
   );
   const android = (
     <Card>
-      <h4 className="text-2xl">Android · Chrome</h4>
+      <h4 className="text-lg text-foreground">Android · Chrome</h4>
       <ol className="m-0 grid list-decimal gap-3 pl-5 text-muted-foreground">
         <li>Open www.pow-pickem.com in Chrome.</li>
         <li>Tap the three-dot menu (⋮), then Add to Home screen or Install app.</li>

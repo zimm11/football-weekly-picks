@@ -1,7 +1,9 @@
 import {
+  CaretDownIcon,
   CaretRightIcon,
   ChartBarIcon,
   CheckCircleIcon,
+  InfoIcon,
   LockIcon,
   PencilSimpleLineIcon,
 } from "@phosphor-icons/react";
@@ -33,15 +35,15 @@ import { TeamLogo } from "./TeamLogo";
 
 // A pressed button stays fully lit after it locks, so a frozen pick still reads as the pick.
 const pickButton =
-  "min-h-14 rounded-md border-2 border-input bg-background transition-colors enabled:hover:border-primary/60 disabled:cursor-not-allowed disabled:aria-[pressed=false]:opacity-40";
+  "relative min-h-14 rounded-lg bg-raised ring-inset transition-[background-color,box-shadow,transform] enabled:hover:ring-2 enabled:hover:ring-primary/40 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:aria-[pressed=false]:opacity-40";
 const sideClass = cn(
   pickButton,
   // Logo over name on a phone, where the two buttons share a narrow row; side by side once there is room.
-  "flex min-w-0 flex-col items-center justify-center gap-1 px-2 py-2 text-center sm:flex-row sm:justify-start sm:gap-3 sm:px-3 sm:text-left aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground",
+  "flex min-w-0 flex-col items-center justify-center gap-1 px-2 py-2.5 text-center sm:flex-row sm:justify-start sm:gap-3 sm:px-3 sm:text-left aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-md aria-pressed:shadow-primary/25",
 );
 const powClass = cn(
   pickButton,
-  "w-14 font-display text-base font-extrabold tracking-wider text-muted-foreground aria-pressed:border-pow aria-pressed:bg-pow aria-pressed:text-pow-foreground",
+  "w-14 font-display text-base font-extrabold tracking-wider text-muted-foreground aria-pressed:bg-pow aria-pressed:text-pow-foreground aria-pressed:shadow-md aria-pressed:shadow-pow/30 enabled:hover:ring-pow/40",
 );
 
 type Props = {
@@ -154,15 +156,22 @@ export function PickSheet({
           needsPow={needsPow}
           pow={savedPowGame ? matchup(savedPowGame) : null}
         />
-        <p className="m-0 text-sm text-muted-foreground">
-          Picks and your POW lock at {LOCK_HOUR}am on game day. A missed pick can still go in until kickoff,
-          but it can't be your POW. Your POW is worth {POW_BONUS} extra points if it wins. If you don't choose
-          a POW, you don't get one.
-        </p>
+        <details className="group text-sm text-muted-foreground">
+          <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-1.5 font-medium hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <InfoIcon aria-hidden className="size-4" />
+            How locks work
+            <CaretDownIcon aria-hidden className="size-3.5 transition-transform group-open:rotate-180" />
+          </summary>
+          <p className="m-0 pb-1">
+            Picks and your POW lock at {LOCK_HOUR}am on game day. A missed pick can still go in until kickoff,
+            but it can't be your POW. Your POW is worth {POW_BONUS} extra points if it wins. If you don't
+            choose a POW, you don't get one.
+          </p>
+        </details>
 
         {days.map(({ day, games: dayGames }) => (
           <section key={day} aria-label={day} className="grid gap-2">
-            <h4 className="mt-2 text-lg tracking-widest text-muted-foreground">{day}</h4>
+            <h4 className="mt-3 px-1">{day}</h4>
             {dayGames.map((game) => {
               const window = windowOf(game);
               const sideLocked = window === "closed" || (window === "late" && saved.has(game.id));
@@ -171,7 +180,7 @@ export function PickSheet({
               const covered = coveringSide({ ...game, kickoff: new Date(game.kickoff) });
               const mine = sides[game.id];
               return (
-                <div className="grid gap-2.5 rounded-md border bg-card p-3" key={game.id}>
+                <div className="grid gap-3 rounded-xl bg-card p-3" key={game.id}>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
                     <span className="mr-auto tabular-nums">{kickoffTime(game.kickoff, timeZone)}</span>
                     {game.id === tiebreakerGameId && <Badge variant="outline">Tiebreaker game</Badge>}
@@ -194,7 +203,7 @@ export function PickSheet({
                         {covered === mine ? "Won" : covered === "push" ? "Push" : "Lost"}
                       </Badge>
                     )}
-                    <Badge className="-skew-x-12">
+                    <Badge>
                       {game.points} {game.points === 1 ? "pt" : "pts"}
                     </Badge>
                   </div>
@@ -214,12 +223,19 @@ export function PickSheet({
                           onClick={() => choose(game, side)}
                           className={sideClass}
                         >
+                          {mine === side && (
+                            <CheckCircleIcon
+                              aria-hidden
+                              weight="fill"
+                              className="absolute top-1.5 right-1.5 size-4 opacity-90"
+                            />
+                          )}
                           <TeamLogo abbr={abbr} size={36} />
                           <span className="grid min-w-0 max-w-full gap-0.5">
                             <span className="truncate font-display text-lg leading-tight font-bold uppercase sm:text-xl sm:tracking-wide">
                               {team}
                             </span>
-                            <span className="text-sm tabular-nums opacity-80">
+                            <span className="text-sm font-medium tabular-nums opacity-75">
                               {line.slice(team.length + 1)}
                               {side === "home" && " · home"}
                             </span>
@@ -243,9 +259,9 @@ export function PickSheet({
                       type="button"
                       aria-label={`Matchup: ${matchup(game)}`}
                       onClick={() => setMatchupGame(game)}
-                      className="-mx-3 -mb-3 flex min-h-11 items-center gap-2 border-t px-3 font-display text-base font-bold tracking-wide text-muted-foreground uppercase transition-colors hover:bg-secondary hover:text-foreground"
+                      className="-mx-3 -mb-3 flex min-h-11 items-center gap-2 rounded-b-xl border-t px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-raised hover:text-foreground"
                     >
-                      <ChartBarIcon aria-hidden weight="fill" className="size-5" />
+                      <ChartBarIcon aria-hidden weight="fill" className="size-4" />
                       Stats, news &amp; market
                       <CaretRightIcon aria-hidden weight="bold" className="ml-auto size-4" />
                     </button>
@@ -257,7 +273,7 @@ export function PickSheet({
         ))}
 
         {tiebreakerGame && (
-          <div className="mt-2 rounded-md border bg-card p-3">
+          <div className="mt-2 rounded-xl bg-card p-3">
             <Field label={`Tiebreaker: total points scored in ${matchup(tiebreakerGame)}`}>
               <Input
                 type="number"
@@ -286,17 +302,17 @@ export function PickSheet({
         )}
 
         {/* Always on screen, so saving never means scrolling past sixteen games. */}
-        <div className={cn("sticky z-30 -mx-4 mt-2 border-t bg-chrome", TAB_BAR_OFFSET)}>
+        <div className={cn("sticky z-30 -mx-4 mt-2 border-t bg-chrome/90 backdrop-blur-md", TAB_BAR_OFFSET)}>
           <div
             role="progressbar"
             aria-label="Games picked"
             aria-valuemin={0}
             aria-valuemax={games.length}
             aria-valuenow={picked}
-            className="h-1 bg-secondary"
+            className="h-1 bg-raised"
           >
             <div
-              className="h-full bg-primary transition-[width]"
+              className="h-full rounded-r-full bg-primary transition-[width] duration-300"
               style={{ width: `${(picked / Math.max(games.length, 1)) * 100}%` }}
             />
           </div>
@@ -357,17 +373,16 @@ function PickStatus({
   /** The saved POW. Null when there isn't one. */
   pow: string | null;
 }) {
-  const box = "flex items-center gap-3 rounded-md border border-l-4 p-3";
+  const box = "flex items-center gap-3 rounded-xl p-3";
+  const title = "m-0 font-semibold leading-tight";
   const savedLine = `${savedCount} of ${gameCount} saved`;
 
   if (dirty) {
     return (
-      <section aria-label="Pick status" className={cn(box, "border-l-destructive bg-destructive/10")}>
-        <PencilSimpleLineIcon aria-hidden weight="fill" className="size-8 shrink-0 text-destructive" />
+      <section aria-label="Pick status" className={cn(box, "bg-destructive/10")}>
+        <PencilSimpleLineIcon aria-hidden weight="fill" className="size-7 shrink-0 text-destructive" />
         <div>
-          <p className="m-0 font-display text-xl leading-tight font-bold tracking-wide uppercase">
-            Not saved yet
-          </p>
+          <p className={title}>Not saved yet</p>
           <p className="m-0 text-sm text-muted-foreground">
             You've made changes. Press Save to keep them. {savedLine} so far.
           </p>
@@ -380,12 +395,10 @@ function PickStatus({
 
   if (left === 0 && extras === 0) {
     return (
-      <section aria-label="Pick status" className={cn(box, "border-l-win bg-win/10")}>
-        <CheckCircleIcon aria-hidden weight="fill" className="size-8 shrink-0 text-win" />
+      <section aria-label="Pick status" className={cn(box, "bg-win/10")}>
+        <CheckCircleIcon aria-hidden weight="fill" className="size-7 shrink-0 text-win" />
         <div>
-          <p className="m-0 font-display text-xl leading-tight font-bold tracking-wide text-win uppercase">
-            You're set for the week
-          </p>
+          <p className={cn(title, "text-win")}>You're set for the week</p>
           <p className="m-0 text-sm text-muted-foreground">
             {missed === 0
               ? `All ${plural(gameCount, "game", "games")} picked and saved.`
@@ -399,13 +412,13 @@ function PickStatus({
   }
 
   return (
-    <section aria-label="Pick status" className={cn(box, "border-l-primary bg-primary/10")}>
-      <span className="min-w-10 text-center font-display text-5xl leading-none font-extrabold text-primary tabular-nums">
+    <section aria-label="Pick status" className={cn(box, "bg-primary/10")}>
+      <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/15 font-display text-3xl leading-none font-extrabold text-primary tabular-nums">
         {/* With every game picked, what is left is the POW, the tiebreaker guess, or both. */}
         {left || extras}
       </span>
       <div>
-        <p className="m-0 font-display text-xl leading-tight font-bold tracking-wide uppercase">
+        <p className={title}>
           {left === 0
             ? `${extras === 1 ? "thing" : "things"} left to do`
             : `${left === 1 ? "game" : "games"} left to pick`}

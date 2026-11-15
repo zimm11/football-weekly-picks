@@ -39,7 +39,7 @@ export function SeasonWeeks({
         </p>
       </div>
       {next === null && (
-        <p className="m-0 border-l-4 border-primary pl-3 text-sm">
+        <p className="m-0 rounded-lg bg-primary/10 px-3 py-2 text-sm">
           {finalCount === MAX_WEEK
             ? "Season complete. All 18 weeks are final. Choose Start a new season in the season selector when you're ready."
             : "All 18 weeks are prepared. Manage an existing week below; finalize the remaining weeks to finish the season."}

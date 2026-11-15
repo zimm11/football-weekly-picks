@@ -115,16 +115,17 @@ export function WeekAwards({ games, results, tiebreakerGameId, showWinner = fals
       <Eyebrow>Awards</Eyebrow>
       <ul className="m-0 grid list-none gap-2 p-0 md:grid-cols-2">
         {list.map((award) => (
-          <li key={award.key} className="flex items-start gap-3 rounded-md border bg-card p-3">
+          <li key={award.key} className="flex items-start gap-3 rounded-xl bg-card p-3">
             <award.icon
               aria-hidden
               weight="fill"
-              className={cn("mt-0.5 size-7 shrink-0", award.tone ?? "text-muted-foreground")}
+              className={cn(
+                "mt-0.5 size-9 shrink-0 rounded-full bg-raised p-1.5",
+                award.tone ?? "text-muted-foreground",
+              )}
             />
             <div className="grid min-w-0 gap-0.5">
-              <span className="font-display text-xs font-bold tracking-wider text-muted-foreground uppercase">
-                {award.title}
-              </span>
+              <span className="text-xs font-medium text-muted-foreground">{award.title}</span>
               <strong className="font-display text-2xl leading-none font-bold tracking-wide break-words uppercase">
                 {award.names.join(", ")}
               </strong>

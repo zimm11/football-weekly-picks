@@ -135,13 +135,13 @@ describe("StandingsTable", () => {
       />,
     );
     const cells = (row: number) => screen.getByRole("row").nth(row).getByRole("cell");
-    // Rank (with movement), player, points, POW record, W–L, win %, average points.
-    for (const [i, text] of ["1", "Pat", "42", "3–1", "20–0", "100%", "21"].entries()) {
+    // Rank and player (with movement) share the first cell; then points, POW record, W–L, win %, average.
+    for (const [i, text] of [/^1.*Pat/, "42", "3–1", "20–0", "100%", "21"].entries()) {
       await expect.element(cells(1).nth(i)).toMatchTextContent(text);
     }
     await expect.element(cells(1).nth(0)).toMatchTextContent("up 1 since last week");
     // Sam missed a week, so the average is over the one week played.
-    for (const [i, text] of ["2", "Sam", "30", "1–1", "18–4", "82%", "30"].entries()) {
+    for (const [i, text] of [/^2.*Sam/, "30", "1–1", "18–4", "82%", "30"].entries()) {
       await expect.element(cells(2).nth(i)).toMatchTextContent(text);
     }
   });
