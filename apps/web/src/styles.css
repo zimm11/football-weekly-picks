@@ -96,6 +96,12 @@
   }
 }
 
+/* The cross-fade between screens (`router.tsx`): quick, so it reads as polish rather than a wait. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 140ms;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

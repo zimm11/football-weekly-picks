@@ -1,4 +1,5 @@
 import { type AnchorHTMLAttributes, type MouseEvent, useEffect, useState, useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 
 /*
  * A minimal History API router: the app has a handful of screens, so a routing library isn't worth its weight.
@@ -40,9 +41,24 @@ export function navigate(to: string, flash?: Flash) {
   const go = () => {
     leaveGuard = undefined;
     window.history.pushState(flash ? { flash } : null, "", to);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    withTransition(() => window.dispatchEvent(new PopStateEvent("popstate")));
   };
   requestLeave(go);
+}
+
+/**
+ * A short cross-fade between screens where the browser supports view transitions and the player hasn't
+ * asked for reduced motion. `flushSync` renders the new screen inside the transition so the browser
+ * captures it; anywhere else the screen simply changes.
+ */
+function withTransition(update: () => void) {
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  if (!document.startViewTransition || reduce) return update();
+  const transition = document.startViewTransition(() => flushSync(update));
+  // A navigation that starts before the last fade ends skips that fade (its screen still changes), which
+  // rejects these promises. Nothing waits on them, so the rejection is expected and dropped.
+  transition.ready.catch(() => {});
+  transition.finished.catch(() => {});
 }
 
 /** Also guards view changes (such as switching seasons) that do not change the URL. */

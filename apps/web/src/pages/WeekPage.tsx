@@ -7,6 +7,7 @@ import { Card, Notice } from "@/components/ui/card";
 import { api, messageOf, unwrap } from "../api";
 import { LeagueLayout } from "../components/LeagueNav";
 import { PickSheet } from "../components/PickSheet";
+import { LeagueSkeleton, WeekSkeleton } from "../components/Skeletons";
 import { WeekAwards } from "../components/WeekAwards";
 import { WeekResultsTable } from "../components/WeekResultsTable";
 import { GameBreakdown, WeekSummary } from "../components/WeekSummary";
@@ -16,15 +17,29 @@ import { Link } from "../router";
 import { useLoad } from "./useLoad";
 import { useNow } from "./useNow";
 
-/** The week's number and state, with room on the right for the one thing to do next. */
-export function WeekHeading({ view, action, now }: { view: WeekView; action?: ReactNode; now: Date }) {
+/**
+ * The week's number and state, with room on the right for the one thing to do next. `yearShown` says the
+ * season is already on screen (the league header's season pill), so the year is left to screen readers.
+ */
+export function WeekHeading({
+  view,
+  action,
+  now,
+  yearShown = false,
+}: {
+  view: WeekView;
+  action?: ReactNode;
+  now: Date;
+  yearShown?: boolean;
+}) {
   const phase = weekPhase(view.status, view.games, now);
   return (
     <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
       <div className="grid gap-1.5">
         <Badge variant={view.status === "open" ? "default" : "outline"}>{WEEK_PHASE_LABEL[phase]}</Badge>
         <h3 className="text-5xl leading-[0.9] font-extrabold">
-          {weekLabel(view.number)} <span className="text-2xl text-muted-foreground">· {view.year}</span>
+          {weekLabel(view.number)}{" "}
+          <span className={yearShown ? "sr-only" : "text-2xl text-muted-foreground"}>· {view.year}</span>
         </h3>
       </div>
       {action}
@@ -37,9 +52,12 @@ export function WeekBody({
   view,
   userId,
   onChange,
+  yearShown,
 }: {
   view: WeekView;
   userId: string;
+  /** The league header is showing the season, so the heading needn't. */
+  yearShown?: boolean;
   /** Hands back the week as it stands after a save. */
   onChange: (view: WeekView) => void;
 }) {
@@ -63,6 +81,7 @@ export function WeekBody({
       <WeekHeading
         view={view}
         now={now}
+        yearShown={yearShown}
         action={
           view.role === "admin" && (
             <Link
@@ -144,8 +163,8 @@ export function WeekBody({
 export function WeekLoader({ weekId, userId }: { weekId: string; userId: string }) {
   const week = useLoad(() => unwrap<WeekView>(api.weeks[":weekId"].$get({ param: { weekId } })), weekId);
   if (week.error) return <Notice kind="alert">{week.error}</Notice>;
-  if (!week.data) return <p className="text-muted-foreground">Loading…</p>;
-  return <WeekBody view={week.data} userId={userId} onChange={week.setData} />;
+  if (!week.data) return <WeekSkeleton />;
+  return <WeekBody view={week.data} userId={userId} onChange={week.setData} yearShown />;
 }
 
 /** `/weeks/:id`: one week, reached from the results list or a link someone shared. */
@@ -153,7 +172,7 @@ export function WeekPage({ weekId, userId }: { weekId: string; userId: string })
   const week = useLoad(() => unwrap<WeekView>(api.weeks[":weekId"].$get({ param: { weekId } })), weekId);
   if (week.error) return <Notice kind="alert">{week.error}</Notice>;
   const view = week.data;
-  if (!view) return <p className="text-muted-foreground">Loading…</p>;
+  if (!view) return <LeagueSkeleton />;
   return (
     <LeagueLayout
       leagueId={view.leagueId}

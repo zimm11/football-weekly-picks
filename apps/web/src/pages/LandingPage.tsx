@@ -1,6 +1,15 @@
-import { ArrowRightIcon, CheckCircleIcon, LockIcon, TrophyIcon } from "@phosphor-icons/react";
+import {
+  ArrowRightIcon,
+  CheckCircleIcon,
+  FireIcon,
+  FootballIcon,
+  LockIcon,
+  TrophyIcon,
+} from "@phosphor-icons/react";
 import { LOCK_HOUR, POW_BONUS } from "@picks/shared";
 import { type Credentials, SignInForm, type SignInMode } from "../components/SignInForm";
+import { TeamLogo } from "../components/TeamLogo";
+import { Badge } from "../components/ui/badge";
 import { buttonVariants } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Link } from "../router";
@@ -39,61 +48,62 @@ export function LandingPage({
           </p>
         </div>
 
-        <Card aria-label="Example pick" className="gap-0 overflow-hidden p-0">
-          <div className="flex items-center justify-between gap-2 border-b bg-chrome px-5 py-3">
-            <span className="text-sm font-semibold">The weekly game plan</span>
-            <span className="text-xs text-muted-foreground">Example</span>
+        {/* The same card players pick from, filled in as an example. */}
+        <Card aria-label="Example pick" className="gap-4 p-4 shadow-2xl shadow-primary/10">
+          <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span>Monday night · 8:15 PM</span>
+            <span className="flex gap-1.5">
+              <Badge variant="outline">Example</Badge>
+              <Badge>3 pts</Badge>
+            </span>
           </div>
-          <div className="grid gap-5 p-5">
-            <div className="flex items-end justify-between gap-2">
-              <div>
-                <p className="m-0 text-sm text-muted-foreground">Monday night</p>
-                <h3 className="text-3xl">Buffalo at Miami</h3>
-              </div>
-              <span className="shrink-0 font-display text-lg font-bold text-muted-foreground">3 PTS</span>
+          <div aria-hidden className="grid grid-cols-[1fr_1fr_auto] gap-2">
+            <div className="relative flex min-h-24 flex-col items-center justify-center gap-1 rounded-lg bg-primary text-primary-foreground shadow-md shadow-primary/25">
+              <CheckCircleIcon weight="fill" className="absolute top-1.5 right-1.5 size-4 opacity-90" />
+              <TeamLogo abbr="BUF" size={36} />
+              <span className="font-display text-xl leading-tight font-bold uppercase">Bills</span>
+              <span className="text-sm font-medium opacity-75">−3.5</span>
             </div>
-            <div className="grid grid-cols-2 gap-2 font-display text-xl font-bold uppercase">
-              <div className="flex min-h-20 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground shadow-md shadow-primary/25">
-                <CheckCircleIcon aria-hidden weight="fill" className="size-5" /> Buffalo −3.5
-              </div>
-              <div className="flex min-h-20 items-center justify-center rounded-lg bg-raised">Miami +3.5</div>
+            <div className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-lg bg-raised">
+              <TeamLogo abbr="MIA" size={36} />
+              <span className="font-display text-xl leading-tight font-bold uppercase">Dolphins</span>
+              <span className="text-sm font-medium opacity-75">+3.5 · home</span>
             </div>
-            <p className="m-0 text-sm text-muted-foreground">
-              Buffalo needs to win by 4 or more for this pick to win.
-            </p>
-            <div className="flex items-center gap-3 border-y py-4">
-              <span className="rounded-lg bg-pow px-3 py-2 font-display text-xl font-extrabold text-pow-foreground">
-                POW
-              </span>
-              <div>
-                <p className="m-0 font-semibold">Your strongest call of the week</p>
-                <p className="m-0 text-sm text-muted-foreground">Win it for +{POW_BONUS} bonus points.</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">A winning Monday POW</span>
-              <span className="font-display text-3xl font-bold text-win">{3 + POW_BONUS} points</span>
+            <div className="flex w-14 items-center justify-center rounded-lg bg-pow font-display text-base font-extrabold tracking-wider text-pow-foreground shadow-md shadow-pow/30">
+              POW
             </div>
           </div>
+          <p className="m-0 text-sm text-muted-foreground">
+            Buffalo at Miami: the Bills need to win by 4 or more. Make it your POW and a win is worth{" "}
+            <strong className="text-win">{3 + POW_BONUS} points</strong>.
+          </p>
         </Card>
       </section>
 
-      <section aria-label="The basics" className="grid gap-5 border-y py-6 sm:grid-cols-3 sm:gap-6">
+      <section aria-label="The basics" className="grid gap-4 sm:grid-cols-3">
         {[
-          ["01", "Pick the slate", "Choose a side in every game. The spread is the score to beat."],
-          ["02", "Call your POW", `Back one pick for ${POW_BONUS} extra points if it wins.`],
-          [
-            "03",
-            "Chase first place",
-            "See everyone's picks and the standings after the admin closes the week.",
-          ],
-        ].map(([number, title, detail]) => (
-          <div key={number} className="flex gap-3">
-            <span className="font-display text-3xl font-bold text-primary">{number}</span>
-            <div className="grid content-start gap-1">
-              <h3 className="text-xl">{title}</h3>
-              <p className="m-0 text-sm text-muted-foreground">{detail}</p>
-            </div>
+          {
+            icon: FootballIcon,
+            title: "Pick the slate",
+            detail: "Choose a side in every game. The spread is the score to beat.",
+          },
+          {
+            icon: FireIcon,
+            title: "Call your POW",
+            detail: `Back one pick for ${POW_BONUS} extra points if it wins.`,
+          },
+          {
+            icon: TrophyIcon,
+            title: "Chase first place",
+            detail: "See everyone's picks and the standings after the admin closes the week.",
+          },
+        ].map(({ icon: Icon, title, detail }) => (
+          <div key={title} className="grid content-start gap-2 rounded-xl bg-card p-4">
+            <span className="flex size-10 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <Icon aria-hidden weight="fill" className="size-5" />
+            </span>
+            <h3 className="text-xl">{title}</h3>
+            <p className="m-0 text-sm text-muted-foreground">{detail}</p>
           </div>
         ))}
       </section>

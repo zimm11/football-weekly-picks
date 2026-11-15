@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
+import { ListSkeleton } from "../components/Skeletons";
 import { notifyDone } from "../notify";
 import { Link, navigate } from "../router";
 import { useLoad } from "./useLoad";
@@ -36,7 +37,7 @@ export function LeaguesPage() {
   }
 
   if (leagues.error) return <Notice kind="alert">{leagues.error}</Notice>;
-  if (!leagues.data) return <p className="text-muted-foreground">Loading…</p>;
+  if (!leagues.data) return <ListSkeleton label="Loading your leagues" rows={2} />;
   return (
     <div className="grid gap-6">
       <h2 className="text-4xl leading-none font-extrabold">Your leagues</h2>
@@ -105,7 +106,7 @@ export function JoinPage({ code }: { code: string }) {
   }
 
   if (invite.error) return <Notice kind="alert">{invite.error}</Notice>;
-  if (!invite.data) return <p className="text-muted-foreground">Loading…</p>;
+  if (!invite.data) return <ListSkeleton label="Loading invite" rows={1} />;
   return (
     <div className="mx-auto grid max-w-sm gap-5 pt-6">
       <div className="grid gap-2">

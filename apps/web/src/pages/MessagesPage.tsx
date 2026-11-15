@@ -1,15 +1,31 @@
-import { ArrowBendUpLeftIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+  ArrowBendUpLeftIcon,
+  CaretLeftIcon,
+  DotsThreeIcon,
+  PaperPlaneRightIcon,
+  PlusIcon,
+  PushPinIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import type { MessageReaction, MessageThread, MessageQuote as Quote, ThreadDetail } from "@picks/shared";
 import { cn } from "cn";
 import { useEffect, useRef, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
 import { Avatar } from "../components/Avatar";
 import { useUnsavedGuard } from "../components/ConfirmDialog";
+import { TAB_BAR_OFFSET } from "../components/LeagueNav";
 import { MessageQuote } from "../components/MessageQuote";
 import { MessageReactions } from "../components/MessageReactions";
+import { ListSkeleton } from "../components/Skeletons";
 import { Badge } from "../components/ui/badge";
 import { Button, buttonVariants } from "../components/ui/button";
 import { Card, Notice } from "../components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Field, fieldClass, Input } from "../components/ui/input";
 import { relativeTime } from "../format";
 import { notifyDone, notifyError } from "../notify";
@@ -41,48 +57,107 @@ export function MessageComposer({
     if (quote?.id) replyInput.current?.focus();
   }, [quote?.id]);
   const guard = useUnsavedGuard(!!(title || body || quote), "message edits");
+  // The reply box starts one line tall and grows with what is typed, up to a few lines.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `body` is what changes the height to measure.
+  useEffect(() => {
+    const box = replyInput.current;
+    if (!reply || !box) return;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
+  }, [reply, body]);
+  const submitting = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await onSubmit({ title, body });
+      setTitle("");
+      setBody("");
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (reply) {
+    return (
+      <form
+        className="grid gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitting();
+        }}
+      >
+        {guard}
+        {quote && (
+          <section
+            aria-label="Reply quote preview"
+            className="flex items-center gap-2 rounded-lg bg-raised py-1 pr-1 pl-3 text-sm"
+          >
+            <ArrowBendUpLeftIcon aria-hidden className="size-4 shrink-0 text-primary" />
+            <p className="m-0 min-w-0 flex-1 truncate">
+              <span className="font-semibold">{quote.authorName} wrote:</span>{" "}
+              <span className="text-muted-foreground">{quote.body}</span>
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Remove quote"
+              className="size-9 rounded-full"
+              disabled={busy}
+              onClick={onCancelQuote}
+            >
+              <XIcon aria-hidden className="size-4" />
+            </Button>
+          </section>
+        )}
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={replyInput}
+            aria-label="Reply"
+            placeholder="Write a reply…"
+            rows={1}
+            className={`${fieldClass} min-h-11 resize-none rounded-2xl py-2.5`}
+            required
+            maxLength={5000}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            disabled={busy}
+          />
+          <Button
+            aria-label={busy ? "Posting…" : "Post reply"}
+            size="icon"
+            className="rounded-full"
+            disabled={busy || !body.trim()}
+          >
+            <PaperPlaneRightIcon aria-hidden weight="fill" />
+          </Button>
+        </div>
+        {error && <Notice kind="alert">{error}</Notice>}
+      </form>
+    );
+  }
   return (
     <form
       className="grid gap-3"
-      onSubmit={async (e) => {
+      onSubmit={(e) => {
         e.preventDefault();
-        setBusy(true);
-        setError("");
-        try {
-          await onSubmit({ title, body });
-          setTitle("");
-          setBody("");
-        } catch (err) {
-          setError(messageOf(err));
-        } finally {
-          setBusy(false);
-        }
+        submitting();
       }}
     >
       {guard}
-      {!reply && (
-        <Field label="Thread title">
-          <Input
-            required
-            maxLength={120}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={busy}
-          />
-        </Field>
-      )}
-      {quote && (
-        <section className="grid gap-2" aria-label="Reply quote preview">
-          <MessageQuote quote={quote} />
-          <Button type="button" variant="ghost" disabled={busy} onClick={onCancelQuote}>
-            Remove quote
-          </Button>
-        </section>
-      )}
-      <Field label={reply ? "Reply" : "Message"}>
+      <Field label="Thread title">
+        <Input
+          required
+          maxLength={120}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          disabled={busy}
+        />
+      </Field>
+      <Field label="Message">
         <textarea
-          ref={replyInput}
-          aria-label={reply ? "Reply" : "Message"}
+          aria-label="Message"
           className={`${fieldClass} min-h-32 py-3`}
           required
           maxLength={5000}
@@ -92,9 +167,7 @@ export function MessageComposer({
         />
       </Field>
       {error && <Notice kind="alert">{error}</Notice>}
-      <Button disabled={busy || !body.trim() || (!reply && !title.trim())}>
-        {busy ? "Posting…" : reply ? "Post reply" : "Create thread"}
-      </Button>
+      <Button disabled={busy || !body.trim() || !title.trim()}>{busy ? "Posting…" : "Create thread"}</Button>
     </form>
   );
 }
@@ -120,7 +193,13 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
   if (threadId === "new")
     return (
       <Card>
-        <Link to={base}>‹ Message board</Link>
+        <Link
+          className="flex min-h-11 w-fit items-center gap-1 text-sm font-medium text-muted-foreground no-underline hover:text-foreground"
+          to={base}
+        >
+          <CaretLeftIcon aria-hidden weight="bold" className="size-3.5" />
+          Message board
+        </Link>
         <h3 className="text-2xl">New thread</h3>
         <MessageComposer
           onSubmit={async (json) => {
@@ -144,7 +223,7 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
         </Link>
       </div>
       {list.error && <Notice kind="alert">{list.error}</Notice>}
-      {!list.data && !list.error && <p>Loading messages…</p>}
+      {!list.data && !list.error && <ListSkeleton label="Loading messages" rows={3} />}
       {list.data?.length === 0 && <Card>No threads yet. Start the conversation.</Card>}
       {!!list.data?.length && (
         <ul className="m-0 grid list-none divide-y divide-border overflow-hidden rounded-xl bg-card p-0">
@@ -189,13 +268,13 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
   const endpoint = api.leagues[":leagueId"].messages[":threadId"];
   const now = useNow();
   const thread = useLoad(() => unwrap<ThreadDetail>(endpoint.$get({ param })), threadId);
-  const [refreshing, setRefreshing] = useState(false);
   const [pinning, setPinning] = useState(false);
   const [quote, setQuote] = useState<Quote>();
   const [replyBusy, setReplyBusy] = useState(false);
   const [readError, setReadError] = useState("");
+  const version = thread.data?.version;
+  const { setData } = thread;
   useEffect(() => {
-    const version = thread.data?.version;
     if (!version) return;
     const markRead = () => {
       if (document.visibilityState !== "visible") return;
@@ -215,45 +294,83 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
     markRead();
     document.addEventListener("visibilitychange", markRead);
     return () => document.removeEventListener("visibilitychange", markRead);
-  }, [thread.data, leagueId, threadId]);
+  }, [version, leagueId, threadId]);
+  // New replies arrive on their own: every 30 seconds while the thread is on screen, and on returning to it.
+  // A failed refresh is left alone; the next one tries again.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      unwrap<ThreadDetail>(
+        api.leagues[":leagueId"].messages[":threadId"].$get({ param: { leagueId, threadId } }),
+      ).then(setData, () => {});
+    };
+    const timer = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [leagueId, threadId, setData]);
+
+  async function togglePin() {
+    if (!thread.data) return;
+    setPinning(true);
+    try {
+      const result = await unwrap<{ pinned: boolean }>(
+        endpoint.pin.$put({ param, json: { pinned: !thread.data.pinned } }),
+      );
+      thread.setData((current) => current && { ...current, pinned: result.pinned });
+      notifyDone(result.pinned ? "Announcement pinned." : "Announcement unpinned.");
+    } catch (err) {
+      notifyError(messageOf(err));
+    } finally {
+      setPinning(false);
+    }
+  }
+
   return (
     <section className="grid gap-3">
-      <Link className="flex min-h-11 items-center" to={`/leagues/${leagueId}/messages`}>
-        ‹ Message board
+      <Link
+        className="flex min-h-11 w-fit items-center gap-1 text-sm font-medium text-muted-foreground no-underline hover:text-foreground"
+        to={`/leagues/${leagueId}/messages`}
+      >
+        <CaretLeftIcon aria-hidden weight="bold" className="size-3.5" />
+        Message board
       </Link>
       {thread.error && <Notice kind="alert">{thread.error}</Notice>}
       {readError && <Notice kind="alert">Could not mark this thread read: {readError}</Notice>}
       {thread.data ? (
         <>
-          <div className="grid gap-3 sm:flex sm:items-center sm:justify-between">
-            <div className="grid min-w-0 gap-2">
-              {thread.data.pinned && <Badge>Pinned announcement</Badge>}
+          <div className="flex items-start gap-2">
+            <div className="grid min-w-0 flex-1 gap-2">
+              {thread.data.pinned && (
+                <Badge>
+                  <PushPinIcon aria-hidden weight="fill" className="size-3.5" />
+                  Pinned announcement
+                </Badge>
+              )}
               <h3 className="text-2xl break-words">{thread.data.title}</h3>
             </div>
             {thread.data.canPin && (
-              <Button
-                variant="outline"
-                disabled={pinning}
-                onClick={async () => {
-                  setPinning(true);
-                  try {
-                    const result = await unwrap<{ pinned: boolean }>(
-                      endpoint.pin.$put({
-                        param,
-                        json: { pinned: !thread.data?.pinned },
-                      }),
-                    );
-                    thread.setData((current) => current && { ...current, pinned: result.pinned });
-                    notifyDone(result.pinned ? "Announcement pinned." : "Announcement unpinned.");
-                  } catch (err) {
-                    notifyError(messageOf(err));
-                  } finally {
-                    setPinning(false);
-                  }
-                }}
-              >
-                {pinning ? "Saving…" : thread.data.pinned ? "Unpin announcement" : "Pin announcement"}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Thread options"
+                    className="-mt-1 rounded-full text-muted-foreground hover:text-foreground"
+                    disabled={pinning}
+                  >
+                    <DotsThreeIcon aria-hidden weight="bold" className="size-6" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={togglePin}>
+                    <PushPinIcon aria-hidden />
+                    {thread.data.pinned ? "Unpin announcement" : "Pin announcement"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
           {thread.data.posts.map((p) => (
@@ -262,6 +379,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               id={`message-${p.id}`}
               tabIndex={-1}
               aria-label={`Message ${p.position} by ${p.authorName}`}
+              className="gap-3"
             >
               <p className="m-0 flex items-center gap-2.5 text-sm">
                 <Avatar name={p.authorName} />
@@ -295,7 +413,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
                 />
                 <Button
                   variant="ghost"
-                  className="ml-auto gap-1.5 px-2 font-sans text-sm font-medium tracking-normal text-muted-foreground normal-case hover:text-foreground"
+                  className="ml-auto gap-1.5 px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
                   aria-label={`Quote message ${p.position} by ${p.authorName}`}
                   disabled={replyBusy}
                   onClick={() => setQuote({ id: p.id, authorName: p.authorName, body: p.body })}
@@ -306,23 +424,13 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               </div>
             </Card>
           ))}
-          <Button
-            variant="outline"
-            disabled={refreshing}
-            onClick={async () => {
-              setRefreshing(true);
-              try {
-                thread.setData(await unwrap<ThreadDetail>(endpoint.$get({ param })));
-              } catch (err) {
-                notifyError(messageOf(err));
-              } finally {
-                setRefreshing(false);
-              }
-            }}
+          {/* Always on screen, like a chat app, so replying never means scrolling to the end. */}
+          <div
+            className={cn(
+              "sticky z-30 -mx-4 border-t bg-chrome/90 px-4 py-3 backdrop-blur-md",
+              TAB_BAR_OFFSET,
+            )}
           >
-            {refreshing ? "Refreshing…" : "Refresh replies"}
-          </Button>
-          <Card>
             <MessageComposer
               reply
               quote={quote}
@@ -342,10 +450,10 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
                 }
               }}
             />
-          </Card>
+          </div>
         </>
       ) : (
-        !thread.error && <p>Loading thread…</p>
+        !thread.error && <ListSkeleton label="Loading thread" rows={3} />
       )}
     </section>
   );
