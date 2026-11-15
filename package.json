@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
-    "build": "pnpm -r build",
+    "worker:dev": "pnpm --filter @picks/api dev:worker",
+    "build": "pnpm --filter @picks/web build && pnpm --filter @picks/api build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && node --test scripts/*.test.mjs",
     "lint": "biome check .",

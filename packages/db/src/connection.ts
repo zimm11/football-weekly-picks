@@ -33,11 +33,18 @@ export function databaseOptions(value: string) {
   };
 }
 
-/** Verify both the client link and the database leg behind a pooler before serving requests. */
-export async function checkDatabaseConnection(client: Sql, value: string) {
-  const url = parseDatabaseUrl(value);
+/**
+ * Verify both the client link and the database leg behind a pooler before serving requests. TLS is required
+ * unless the URL is a loopback one; `requireTls` overrides that when the URL doesn't say where the database is
+ * (a Hyperdrive connection string).
+ */
+export async function checkDatabaseConnection(
+  client: Sql,
+  value: string,
+  requireTls = !["localhost", "127.0.0.1", "[::1]"].includes(parseDatabaseUrl(value).hostname),
+) {
   await client`select 1`;
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+  if (requireTls) {
     const [row] = await client`select ssl from pg_stat_ssl where pid = pg_backend_pid()`;
     if (row?.ssl !== true) {
       throw Object.assign(new Error("The pooler database connection requires TLS."), {

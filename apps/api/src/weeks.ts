@@ -204,22 +204,24 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
   }
 
   /**
-   * The provider's view of a week, fetched at most once per `RESULTS_REFRESH_MS` and shared by every league
-   * and player reading that week. A failed fetch is remembered for the same time, so a provider outage
-   * isn't asked again on every page load. Resolves to null when the provider couldn't be reached.
+   * The provider's view of a week, fetched at most once per `RESULTS_REFRESH_MS` per server instance and shared
+   * by every league and player reading that week. A failed fetch is remembered for the same time, so a provider
+   * outage isn't asked again on every page load. Resolves to null when the provider couldn't be reached. Only
+   * the settled answer is kept (a Workers request must not wait on another request's fetch), so reads that
+   * miss at the same moment each ask.
    */
-  const recentWeeks = new Map<string, { at: number; games: Promise<ProviderGame[] | null> }>();
-  function providerWeek(year: number, number: number, requestId?: string) {
+  const recentWeeks = new Map<string, { at: number; games: ProviderGame[] | null }>();
+  async function providerWeek(year: number, number: number, requestId?: string) {
     const key = `${year}:${number}`;
     const at = now().getTime();
     const cached = recentWeeks.get(key);
     if (cached && at >= cached.at && at - cached.at < RESULTS_REFRESH_MS) return cached.games;
-    const fetched = nfl.getWeek(year, number).catch((err) => {
+    const games = await nfl.getWeek(year, number).catch((err) => {
       logError("results_autosync", err, requestId);
       return null;
     });
-    recentWeeks.set(key, { at, games: fetched });
-    return fetched;
+    recentWeeks.set(key, { at, games });
+    return games;
   }
 
   /**

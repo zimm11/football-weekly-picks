@@ -348,17 +348,19 @@ const CACHE_LIMIT = 200;
 
 /**
  * Remembers each key's result for `ttlMs`, so a league opening the same game doesn't refetch it per player.
- * Requests in flight are shared; failures aren't kept. Expiry runs on the real clock, not the league's.
+ * Only settled results are kept: on Workers a request must not wait on I/O another request started, so two
+ * requests that miss at the same moment each fetch. Failures aren't kept. Expiry runs on the real clock, not
+ * the league's.
  */
 export function cached<T>(ttlMs: number, clock: () => number = Date.now) {
-  const entries = new Map<string, { at: number; value: Promise<T> }>();
-  return (key: string, load: () => Promise<T>): Promise<T> => {
+  const entries = new Map<string, { at: number; value: T }>();
+  return async (key: string, load: () => Promise<T>): Promise<T> => {
     const hit = entries.get(key);
     if (hit && clock() - hit.at < ttlMs) return hit.value;
-    const value = load();
+    const at = clock();
+    const value = await load();
     entries.delete(key);
-    entries.set(key, { at: clock(), value });
-    value.catch(() => entries.get(key)?.value === value && entries.delete(key));
+    entries.set(key, { at, value });
     // Oldest out first: a Map keeps insertion order.
     for (const oldest of entries.keys()) {
       if (entries.size <= CACHE_LIMIT) break;

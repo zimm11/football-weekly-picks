@@ -4,3 +4,5 @@ packages:
   - e2e
 allowBuilds:
   esbuild: true
+  # Wrangler's local runtime: its install script checks that the platform binary matches.
+  workerd: true
