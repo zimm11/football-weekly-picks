@@ -5,22 +5,38 @@
 //
 //   pnpm worker:dev   → http://localhost:<PORT + 1000> (override with WORKER_PORT)
 //
-// Needs `pnpm db:start` and `pnpm env:local`. Hyperdrive isn't emulated locally: the Worker connects straight to
-// the local database named by DATABASE_URL.
+// Reads the local stack's settings from .env (`pnpm db:start`, then `pnpm env:local`) or, in CI, from the
+// environment. Hyperdrive isn't emulated locally: the Worker connects straight to the database at DATABASE_URL.
 import { execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const envFile = path.join(ROOT, ".env");
 try {
-  process.loadEnvFile(envFile);
-} catch {
-  console.error("No .env found. Run `pnpm db:start` and then `pnpm env:local` first.");
+  process.loadEnvFile(path.join(ROOT, ".env"));
+} catch {}
+if (!process.env.DATABASE_URL || !process.env.SUPABASE_URL) {
+  console.error("No local Supabase settings. Run `pnpm db:start` and then `pnpm env:local` first.");
   process.exit(1);
 }
 const port = process.env.WORKER_PORT ?? String(Number(process.env.PORT ?? 8787) + 1000);
 
-execFileSync("pnpm", ["--filter", "@picks/web", "build"], { cwd: ROOT, stdio: "inherit" });
+// The Worker gets only the settings it reads (as in production), through a private temporary file.
+const dir = mkdtempSync(path.join(tmpdir(), "picks-worker-"));
+const envFile = path.join(dir, ".env");
+const vars = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "OPERATOR_USER_IDS"]
+  .filter((key) => process.env[key] !== undefined)
+  .map((key) => `${key}=${JSON.stringify(process.env[key])}`);
+writeFileSync(envFile, `${vars.join("\n")}\n`, { mode: 0o600 });
+const cleanUp = () => rmSync(dir, { recursive: true, force: true });
+
+try {
+  execFileSync("pnpm", ["--filter", "@picks/web", "build"], { cwd: ROOT, stdio: "inherit" });
+} catch {
+  cleanUp();
+  process.exit(1);
+}
 
 const wrangler = spawn(
   "pnpm",
@@ -39,4 +55,7 @@ const wrangler = spawn(
   },
 );
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => wrangler.kill(signal));
-wrangler.on("exit", (code) => process.exit(code ?? 0));
+wrangler.on("exit", (code) => {
+  cleanUp();
+  process.exit(code ?? 0);
+});
