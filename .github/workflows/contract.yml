@@ -1,0 +1,77 @@
+name: Feed contracts
+
+# ESPN's feeds are unofficial and can change without notice, and the app leans on conventions Kalshi doesn't
+# promise. Once a day, check today's real responses from both against what the app reads
+# (`pnpm test:contract`). A failed scheduled or manual run opens an issue labeled `feed-contract` (or comments
+# on the open one); the next passing run closes it. Pull requests that touch the parsing run the same checks,
+# without the issue.
+on:
+  schedule:
+    - cron: "0 12 * * *" # 7–8am US Eastern
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/api/src/nfl.ts
+      - apps/api/src/insights.ts
+      - apps/api/test/contract/**
+      - apps/api/vitest.contract.config.ts
+      - packages/shared/src/teams.ts
+      - scripts/contract-issue.mjs
+      - .github/workflows/contract.yml
+
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ALERT_LABEL: feed-contract
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check ESPN's and Kalshi's feeds against what the app reads
+        run: >-
+          pnpm --filter @picks/api test:contract
+          --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/contract.json"
+
+      - name: Open or update the alert issue
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/contract-issue.mjs "$RUNNER_TEMP/contract.json" "$RUN_URL" > "$RUNNER_TEMP/issue.md"
+          open=$(gh issue list --label "$ALERT_LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh label create "$ALERT_LABEL" --color D93F0B --force \
+              --description "ESPN or Kalshi no longer matches what the app reads"
+            gh issue create --title "A data feed no longer matches what the app reads" \
+              --label "$ALERT_LABEL" --body-file "$RUNNER_TEMP/issue.md"
+          fi
+
+      - name: Close the alert issue once the feeds match again
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label "$ALERT_LABEL" --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "The contract checks pass again: $RUN_URL"
+          done

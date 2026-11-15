@@ -384,19 +384,20 @@ so nothing works offline.
 
 Run workspace commands from the repository root:
 
-| Command            | Purpose                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| `pnpm dev`         | Start web and API development servers                                              |
-| `pnpm build`       | Build web assets to `apps/web/dist` and the API bundle to `apps/api/dist/index.js` |
-| `pnpm lint`        | Check formatting and lint rules with Biome                                         |
-| `pnpm format`      | Apply Biome formatting and fixes                                                   |
-| `pnpm typecheck`   | Type-check workspace packages                                                      |
-| `pnpm test`        | Run unit, API, component, and Node script tests                                    |
-| `pnpm check`       | Run lint, type checking, and `pnpm test`                                           |
-| `pnpm test:e2e`    | Run full-stack Playwright tests                                                    |
-| `pnpm test:e2e:ui` | Open Playwright's interactive test runner                                          |
-| `pnpm test:all`    | Run `pnpm test` followed by E2E tests                                              |
-| `pnpm icons`       | Redraw the app icons in `apps/web/public` after changing `scripts/icons.mjs`       |
+| Command              | Purpose                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `pnpm dev`           | Start web and API development servers                                              |
+| `pnpm build`         | Build web assets to `apps/web/dist` and the API bundle to `apps/api/dist/index.js` |
+| `pnpm lint`          | Check formatting and lint rules with Biome                                         |
+| `pnpm format`        | Apply Biome formatting and fixes                                                   |
+| `pnpm typecheck`     | Type-check workspace packages                                                      |
+| `pnpm test`          | Run unit, API, component, and Node script tests                                    |
+| `pnpm check`         | Run lint, type checking, and `pnpm test`                                           |
+| `pnpm test:e2e`      | Run full-stack Playwright tests                                                    |
+| `pnpm test:e2e:ui`   | Open Playwright's interactive test runner                                          |
+| `pnpm test:all`      | Run `pnpm test` followed by E2E tests                                              |
+| `pnpm test:contract` | Check ESPN's and Kalshi's live feeds against what the app reads                    |
+| `pnpm icons`         | Redraw the app icons in `apps/web/public` after changing `scripts/icons.mjs`       |
 
 `pnpm check` does not include E2E tests or production builds. `pnpm test:all` does not include lint or
 type checking. For a full local verification, run `pnpm check`, `pnpm test:e2e`, and `pnpm build` after
@@ -411,6 +412,18 @@ starting Supabase, generating `.env`, and installing the browsers.
 | API                                 | Vitest + `app.request()` in `apps/api/test/`                              | Database suites require local Supabase and `DATABASE_URL`; they skip if it is unset |
 | Components and router               | Vitest browser mode + Playwright Chromium in `apps/web/src/**/*.test.tsx` | Installed Chromium; no running app or database                                      |
 | End-to-end                          | Playwright in `e2e/tests/`                                                | Local Supabase, generated `.env`, Chromium, and WebKit                              |
+| Feed contracts                      | Vitest in `apps/api/test/contract/`                                       | Network access to ESPN and Kalshi; run daily by `.github/workflows/contract.yml`    |
+
+ESPN's scoreboard, game summary, news and logo feeds are unofficial. The app reads them leniently, so a
+change empties part of the matchup sheet rather than breaking it, which also means nothing in the app
+notices. `pnpm test:contract` runs the app's own URLs, schemas and parsers against today's responses and
+fails on anything that would quietly empty or misread what players see: a missing field, an unknown team
+abbreviation, a spread with the wrong sign, an empty week. Kalshi's API is documented, but the app relies on
+conventions it doesn't promise (event tickers built from the kickoff date and team codes, spread strikes on
+the half point), and a ticker it doesn't list comes back as an empty list rather than an error. So the same
+checks look up the games kicking off in the next three days on Kalshi exactly as the app does, and check
+that its prices agree with ESPN about who is favored. The daily workflow opens a GitHub issue (label
+`feed-contract`) when a check fails and closes it when they pass again.
 
 E2E starts the API and web servers automatically, or reuses `pnpm dev` outside CI. With
 `E2E_TARGET=worker` (as CI runs it) it tests the production build in the Workers runtime instead, through

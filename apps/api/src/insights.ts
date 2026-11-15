@@ -6,6 +6,7 @@ import {
   zonedParts,
 } from "@picks/shared";
 import { z } from "zod";
+import { ESPN_SITE_API } from "./nfl";
 
 /** The parts of a game the market lookup needs. */
 export type MarketGame = { homeTeam: string; awayTeam: string; kickoff: Date; spread: number | null };
@@ -98,7 +99,21 @@ const leadersSchema = z.array(
 
 const pickcenterSchema = z.array(z.object({ overUnder: z.number().nullish() }));
 
-const newsSchema = z.object({
+/**
+ * The sections of ESPN's game summary the matchup sheet reads, by their key in the feed. Each is parsed on
+ * its own, so a changed one disappears from the sheet rather than failing it. Exported for the live contract
+ * checks (`pnpm test:contract`), which are what notice.
+ */
+export const ESPN_SUMMARY_SECTIONS = {
+  header: headerSchema,
+  boxscore: boxscoreSchema,
+  lastFiveGames: lastFiveSchema,
+  injuries: injuriesSchema,
+  leaders: leadersSchema,
+  pickcenter: pickcenterSchema,
+} as const;
+
+export const espnNewsSchema = z.object({
   articles: z.array(
     z.object({
       headline: z.string(),
@@ -134,7 +149,7 @@ function espnLink(href: string): string | null {
 
 export function parseEspnNews(json: unknown): TeamInsights["news"] {
   const news: TeamInsights["news"] = [];
-  for (const article of section(newsSchema, json)?.articles ?? []) {
+  for (const article of section(espnNewsSchema, json)?.articles ?? []) {
     const url = espnLink(article.links.web.href);
     if (url && news.length < NEWS_LIMIT)
       news.push({ headline: article.headline, url, published: article.published });
@@ -222,9 +237,11 @@ export function parseEspnSummary(
 
 // ---------- Kalshi: prediction-market prices ----------
 
+const KALSHI = "https://api.elections.kalshi.com/trade-api/v2";
+
 // Kalshi spells two teams differently from the schedule provider.
 const KALSHI_CODES: Record<string, string> = { JAX: "JAC", WSH: "WAS" };
-const kalshiCode = (abbr: string) => KALSHI_CODES[abbr] ?? abbr;
+export const kalshiCode = (abbr: string) => KALSHI_CODES[abbr] ?? abbr;
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 /** The game's part of a Kalshi event ticker: Eastern kickoff date, away team, home team ("26NOV15NEDET"). */
@@ -234,7 +251,18 @@ export function kalshiEventSuffix(game: Pick<MarketGame, "homeTeam" | "awayTeam"
   return `${date}${kalshiCode(game.awayTeam)}${kalshiCode(game.homeTeam)}`;
 }
 
-const kalshiMarketsSchema = z.object({
+/** Kalshi's series for an NFL game's winner and its spread ladder. */
+export const KALSHI_SERIES = { winner: "KXNFLGAME", spread: "KXNFLSPREAD" } as const;
+
+/** One game's markets in a series. Kalshi answers an event it doesn't list with an empty list, not a 404. */
+export const kalshiMarketsUrl = (series: string, suffix: string) =>
+  `${KALSHI}/markets?event_ticker=${series}-${suffix}&limit=200`;
+
+/**
+ * The parts of a Kalshi market the app reads. Prices that don't parse count as no quote, so a renamed field
+ * shows nothing rather than failing; the live contract checks (`pnpm test:contract`) are what notice.
+ */
+export const kalshiMarketsSchema = z.object({
   markets: z.array(
     z.object({
       ticker: z.string(),
@@ -370,8 +398,10 @@ export function cached<T>(ttlMs: number, clock: () => number = Date.now) {
   };
 }
 
-const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
-const KALSHI = "https://api.elections.kalshi.com/trade-api/v2";
+export const espnSummaryUrl = (externalId: string) => `${ESPN_SITE_API}/summary?event=${externalId}`;
+export const espnNewsUrl = (teamId: string) =>
+  `${ESPN_SITE_API}/news?team=${encodeURIComponent(teamId)}&limit=${NEWS_LIMIT + 2}`;
+
 const MATCHUP_TTL = 10 * 60_000;
 const MARKET_TTL = 2 * 60_000;
 
@@ -391,15 +421,12 @@ export function liveInsights(
 
   const matchups = cached<MatchupInsights | null>(MATCHUP_TTL, clock);
   async function loadMatchup(externalId: string) {
-    const summary = await getJson(`${ESPN}/summary?event=${externalId}`, "ESPN summary");
+    const summary = await getJson(espnSummaryUrl(externalId), "ESPN summary");
     const ids = espnTeamIds(summary);
     if (!ids) return null;
     // News is a bonus: without it the stats still show.
     const newsFor = (teamId: string) =>
-      getJson(`${ESPN}/news?team=${encodeURIComponent(teamId)}&limit=${NEWS_LIMIT + 2}`, "ESPN news").then(
-        parseEspnNews,
-        () => [],
-      );
+      getJson(espnNewsUrl(teamId), "ESPN news").then(parseEspnNews, () => []);
     const [home, away] = await Promise.all([newsFor(ids.home), newsFor(ids.away)]);
     return parseEspnSummary(summary, externalId, { home, away });
   }
@@ -407,12 +434,11 @@ export function liveInsights(
   // The board is cached per game, not per league: each league reads it against its own spread.
   const boards = cached<MarketBoard>(MARKET_TTL, clock);
   async function loadBoard(suffix: string, game: MarketGame) {
-    const marketsOf = (series: string) =>
-      getJson(`${KALSHI}/markets?event_ticker=${series}-${suffix}&limit=200`, "Kalshi markets");
+    const marketsOf = (series: string) => getJson(kalshiMarketsUrl(series, suffix), "Kalshi markets");
     const [winner, spread] = await Promise.all([
-      marketsOf("KXNFLGAME"),
+      marketsOf(KALSHI_SERIES.winner),
       // The spread ladder is a bonus: the win probability still shows without it.
-      marketsOf("KXNFLSPREAD").catch(() => null),
+      marketsOf(KALSHI_SERIES.spread).catch(() => null),
     ]);
     return parseKalshiBoard(winner, spread, game);
   }
