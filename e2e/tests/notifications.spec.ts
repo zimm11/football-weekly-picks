@@ -7,7 +7,10 @@ test("Your leagues suggests notifications once, and Settings holds them with iPh
 }) => {
   // Headless Chromium reports notifications as denied; a real browser that hasn't asked yet says "default".
   await page.addInitScript(() => {
-    if ("Notification" in window) Object.defineProperty(Notification, "permission", { get: () => "default" });
+    // The E2E code has no DOM types; this runs in the page, where Notification may not exist (iPhone emulation).
+    const browser = globalThis as { Notification?: object };
+    if (browser.Notification)
+      Object.defineProperty(browser.Notification, "permission", { get: () => "default" });
   });
   await page.reload();
   const prompt = page.getByRole("region", { name: "Pick reminders" });
