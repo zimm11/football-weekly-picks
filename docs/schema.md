@@ -31,6 +31,7 @@ erDiagram
   weeks ||--o{ picks : "week_id"
   games ||--o{ picks : "game_id"
   auth_users ||--o{ picks : "user_id"
+  games ||--o{ picks : "game_id, week_id"
   auth_users ||--o| profiles : "user_id"
   push_subscriptions ||--o{ push_deliveries : "subscription_id"
   leagues ||--o{ push_deliveries : "league_id"

@@ -1,6 +1,6 @@
 {
-  "id": "0efc7cbc-238e-4291-a32f-007470f5496c",
-  "prevId": "d4989757-8af4-4474-a65d-9df86ca471ed",
+  "id": "c529105a-7c23-44c6-8e4f-5abffcf3e0b2",
+  "prevId": "00ae0c2b-a79f-43eb-9666-0c0a996a9f48",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -151,7 +151,16 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "email_outbox_kind_check": {
+          "name": "email_outbox_kind_check",
+          "value": "\"email_outbox\".\"kind\" in ('new_thread', 'pick_reminder')"
+        },
+        "email_outbox_status_check": {
+          "name": "email_outbox_status_check",
+          "value": "\"email_outbox\".\"status\" in ('pending', 'sending', 'sent', 'failed', 'skipped')"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.email_usage": {
@@ -278,7 +287,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "feedback_kind_check": {
+          "name": "feedback_kind_check",
+          "value": "\"feedback\".\"kind\" in ('bug', 'feature', 'other')"
+        },
+        "feedback_status_check": {
+          "name": "feedback_status_check",
+          "value": "\"feedback\".\"status\" in ('open', 'done')"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.games": {
@@ -503,7 +521,12 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "league_members_role_check": {
+          "name": "league_members_role_check",
+          "value": "\"league_members\".\"role\" in ('admin', 'member')"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.leagues": {
@@ -1153,6 +1176,21 @@
           ],
           "onUpdate": "no action",
           "onDelete": "cascade"
+        },
+        "picks_game_week_fk": {
+          "name": "picks_game_week_fk",
+          "tableFrom": "picks",
+          "columnsFrom": [
+            "game_id",
+            "week_id"
+          ],
+          "tableTo": "games",
+          "columnsTo": [
+            "id",
+            "week_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1167,7 +1205,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "picks_side_check": {
+          "name": "picks_side_check",
+          "value": "\"picks\".\"side\" in ('home', 'away')"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.profiles": {
@@ -1470,7 +1513,16 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "push_deliveries_kind_check": {
+          "name": "push_deliveries_kind_check",
+          "value": "\"push_deliveries\".\"kind\" in ('new_thread', 'pick_reminder')"
+        },
+        "push_deliveries_status_check": {
+          "name": "push_deliveries_status_check",
+          "value": "\"push_deliveries\".\"status\" in ('pending', 'sent', 'skipped', 'failed')"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.push_subscriptions": {
@@ -1996,7 +2048,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "weeks_status_check": {
+          "name": "weeks_status_check",
+          "value": "\"weeks\".\"status\" in ('draft', 'open', 'final')"
+        }
+      },
       "isRLSEnabled": true
     }
   },

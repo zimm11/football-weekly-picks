@@ -2,8 +2,10 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
+  check,
   date,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -25,6 +27,23 @@ import { authUsers } from "drizzle-orm/supabase";
  * bypasses RLS; this stops clients holding the public publishable key from reading or writing
  * tables directly through Supabase's auto-generated REST API.
  */
+
+/*
+ * The values each enum-like text column may hold. `text({ enum })` only types the column in TypeScript, so
+ * every such column also gets a CHECK constraint (`oneOf`) built from the same list.
+ */
+const MEMBER_ROLES = ["admin", "member"] as const;
+const WEEK_STATUSES = ["draft", "open", "final"] as const;
+const PICK_SIDES = ["home", "away"] as const;
+const FEEDBACK_KINDS = ["bug", "feature", "other"] as const;
+const FEEDBACK_STATUSES = ["open", "done"] as const;
+const NOTIFICATION_KINDS = ["new_thread", "pick_reminder"] as const;
+const EMAIL_STATUSES = ["pending", "sending", "sent", "failed", "skipped"] as const;
+const PUSH_STATUSES = ["pending", "sent", "skipped", "failed"] as const;
+
+/** A CHECK constraint holding `column` to `values`. The values are fixed identifiers, written into the SQL. */
+const oneOf = (name: string, column: AnyPgColumn, values: readonly string[]) =>
+  check(name, sql`${column} in (${sql.raw(values.map((v) => `'${v}'`).join(", "))})`);
 
 const createdAt = () => timestamp({ withTimezone: true }).notNull().defaultNow();
 const userRef = () =>
@@ -62,14 +81,16 @@ export const leagueMembers = pgTable(
       .notNull()
       .references(() => leagues.id, { onDelete: "cascade" }),
     userId: userRef(),
-    role: text({ enum: ["admin", "member"] })
-      .notNull()
-      .default("member"),
+    role: text({ enum: MEMBER_ROLES }).notNull().default("member"),
     joinedAt: createdAt(),
     /** Set when the admin removes the player. They lose access, but stay in the results of weeks already played. */
     removedAt: timestamp({ withTimezone: true }),
   },
-  (t) => [primaryKey({ columns: [t.leagueId, t.userId] }), index("league_members_user_idx").on(t.userId)],
+  (t) => [
+    primaryKey({ columns: [t.leagueId, t.userId] }),
+    index("league_members_user_idx").on(t.userId),
+    oneOf("league_members_role_check", t.role, MEMBER_ROLES),
+  ],
 ).enableRLS();
 
 /** One NFL season of a league. A league keeps its members from year to year. */
@@ -98,9 +119,7 @@ export const weeks = pgTable(
     /** Regular-season week, 1–18. */
     number: integer().notNull(),
     /** draft: the admin is setting games and spreads. open: players pick. final: scored, picks revealed. */
-    status: text({ enum: ["draft", "open", "final"] })
-      .notNull()
-      .default("draft"),
+    status: text({ enum: WEEK_STATUSES }).notNull().default("draft"),
     /**
      * The admin's explicit choice of tiebreaker game. Null means "use the default" (the last Monday game, else
      * the last game), worked out from the slate on every read. Players guess this game's total.
@@ -116,6 +135,10 @@ export const weeks = pgTable(
   (t) => [
     unique("weeks_season_number_key").on(t.seasonId, t.number),
     index("weeks_tiebreaker_game_idx").on(t.tiebreakerGameId),
+    oneOf("weeks_status_check", t.status, WEEK_STATUSES),
+    // Also in the database, from a hand-written migration because Drizzle can't express its delete rule:
+    // `weeks_tiebreaker_game_week_fk`, (tiebreaker_game_id, id) → games (id, week_id), ON DELETE SET NULL
+    // (tiebreaker_game_id). It keeps the tiebreaker to one of the week's own games.
   ],
 ).enableRLS();
 
@@ -166,7 +189,7 @@ export const picks = pgTable(
       .references(() => games.id, { onDelete: "cascade" }),
     userId: userRef(),
     /** The team picked to beat the spread. */
-    side: text({ enum: ["home", "away"] }).notNull(),
+    side: text({ enum: PICK_SIDES }).notNull(),
     /** The player's Pick of the Week. At most one per player per week. */
     isPow: boolean().notNull().default(false),
     createdAt: createdAt(),
@@ -177,6 +200,14 @@ export const picks = pgTable(
     // The pick save and the week view read one player's picks for a week.
     index("picks_week_user_idx").on(t.weekId, t.userId),
     index("picks_user_idx").on(t.userId),
+    oneOf("picks_side_check", t.side, PICK_SIDES),
+    // The denormalized week must be the game's own. It cascades like the single-column key on `gameId`, so
+    // removing a game never depends on which of the two keys Postgres checks first.
+    foreignKey({
+      name: "picks_game_week_fk",
+      columns: [t.gameId, t.weekId],
+      foreignColumns: [games.id, games.weekId],
+    }).onDelete("cascade"),
     uniqueIndex("picks_one_pow_per_week").on(t.weekId, t.userId).where(sql`${t.isPow}`),
   ],
 ).enableRLS();
@@ -310,19 +341,21 @@ export const feedback = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     /** Who sent it. Null once that account is deleted; the report is kept. */
     userId: uuid().references(() => authUsers.id, { onDelete: "set null" }),
-    kind: text({ enum: ["bug", "feature", "other"] }).notNull(),
+    kind: text({ enum: FEEDBACK_KINDS }).notNull(),
     message: text().notNull(),
     /** The app path the player was on when they opened the form, e.g. "/leagues/<id>/standings". */
     page: text(),
     /** The browser's user agent, to help reproduce a bug. */
     userAgent: text(),
     /** open: not dealt with yet. done: the operator has handled it. */
-    status: text({ enum: ["open", "done"] })
-      .notNull()
-      .default("open"),
+    status: text({ enum: FEEDBACK_STATUSES }).notNull().default("open"),
     createdAt: createdAt(),
   },
-  (t) => [index("feedback_user_created_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("feedback_user_created_idx").on(t.userId, t.createdAt),
+    oneOf("feedback_kind_check", t.kind, FEEDBACK_KINDS),
+    oneOf("feedback_status_check", t.status, FEEDBACK_STATUSES),
+  ],
 ).enableRLS();
 export type OutboxMessage = { subject: string; html: string; text: string; listUnsubscribeUrl: string };
 
@@ -335,15 +368,13 @@ export const emailOutbox = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     userId: userRef(),
-    kind: text({ enum: ["new_thread", "pick_reminder"] }).notNull(),
+    kind: text({ enum: NOTIFICATION_KINDS }).notNull(),
     /** Identifies the email's purpose (e.g. `thread:<id>:<user>`) so a retried or repeated job never queues it twice. */
     dedupeKey: text().notNull().unique(),
     /** Rendered message: subject, HTML and plain-text bodies, and the one-click unsubscribe URL for its headers. */
     message: jsonb().$type<OutboxMessage>().notNull(),
     /** pending → sending → sent; or failed (gave up), or skipped (no address, opted out, or too late to be useful). */
-    status: text({ enum: ["pending", "sending", "sent", "failed", "skipped"] })
-      .notNull()
-      .default("pending"),
+    status: text({ enum: EMAIL_STATUSES }).notNull().default("pending"),
     attempts: integer().notNull().default(0),
     /** When a pending row may next be tried; also when a `sending` claim is considered abandoned. */
     nextAttemptAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -357,6 +388,8 @@ export const emailOutbox = pgTable(
   (t) => [
     index("email_outbox_due_idx").on(t.status, t.nextAttemptAt),
     index("email_outbox_user_idx").on(t.userId),
+    oneOf("email_outbox_kind_check", t.kind, NOTIFICATION_KINDS),
+    oneOf("email_outbox_status_check", t.status, EMAIL_STATUSES),
   ],
 ).enableRLS();
 
@@ -403,14 +436,12 @@ export const pushDeliveries = pgTable(
       .references(() => leagues.id, { onDelete: "cascade" }),
     threadId: uuid().references(() => messageThreads.id, { onDelete: "cascade" }),
     weekId: uuid().references(() => weeks.id, { onDelete: "cascade" }),
-    kind: text({ enum: ["new_thread", "pick_reminder"] }).notNull(),
+    kind: text({ enum: NOTIFICATION_KINDS }).notNull(),
     /** Thread id or week id + local game date, scoped to subscription by the unique index. */
     eventKey: text().notNull(),
     /** Game ids are rechecked for missing picks immediately before a reminder is sent. */
     gameIds: text().array().notNull().default(sql`'{}'::text[]`),
-    status: text({ enum: ["pending", "sent", "skipped", "failed"] })
-      .notNull()
-      .default("pending"),
+    status: text({ enum: PUSH_STATUSES }).notNull().default("pending"),
     attempts: integer().notNull().default(0),
     nextAttemptAt: createdAt(),
     expiresAt: timestamp({ withTimezone: true }).notNull(),
@@ -424,5 +455,7 @@ export const pushDeliveries = pgTable(
     index("push_delivery_thread_idx").on(t.threadId),
     index("push_delivery_week_idx").on(t.weekId),
     index("push_delivery_created_idx").on(t.createdAt),
+    oneOf("push_deliveries_kind_check", t.kind, NOTIFICATION_KINDS),
+    oneOf("push_deliveries_status_check", t.status, PUSH_STATUSES),
   ],
 ).enableRLS();
