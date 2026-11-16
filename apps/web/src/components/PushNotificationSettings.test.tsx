@@ -41,6 +41,7 @@ describe("push settings", () => {
   it("explains iPhone home-screen installation without offering an unusable permission button", async () => {
     const screen = await render(<PushNotificationSettings {...props} support="home-screen" />);
     await expect.element(screen.getByRole("heading", { name: "iPhone or iPad · Safari" })).toBeVisible();
+    await expect.element(screen.getByRole("heading", { name: "Android · Chrome" })).not.toBeInTheDocument();
     await expect
       .element(screen.getByRole("button", { name: "Enable notifications" }))
       .not.toBeInTheDocument();
@@ -51,6 +52,11 @@ describe("push settings", () => {
       .element(screen.getByRole("status"))
       .toHaveTextContent("Notifications are blocked on this device.");
     await expect.element(screen.getByRole("button", { name: "Enable notifications" })).toBeDisabled();
+    // How to unblock them stays folded away until asked for.
+    const steps = screen.getByText(/Settings → Notifications → POW Pick'em/);
+    await expect.element(steps).not.toBeVisible();
+    await screen.getByText("How to turn them back on").click();
+    await expect.element(steps).toBeVisible();
     await screen.unmount();
     const off = await render(<PushNotificationSettings {...props} configured={false} />);
     await expect.element(off.getByText(/Notifications aren't available yet/)).toBeVisible();

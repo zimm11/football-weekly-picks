@@ -74,6 +74,8 @@ describe("HomeScreenSheet", () => {
     await expect.element(screen.getByRole("heading", { name: "iPhone or iPad · Safari" })).toBeVisible();
     await expect.element(screen.getByRole("heading", { name: "Android · Chrome" })).not.toBeInTheDocument();
     await expect.element(screen.getByRole("button", { name: "Not now" })).not.toBeInTheDocument();
+    // Installing is only half of it on iPhone: the steps end by pointing at notifications.
+    await expect.element(screen.getByText(/open Notifications from the account menu/)).toBeVisible();
   });
 
   it("shows every platform when it can't tell", async () => {

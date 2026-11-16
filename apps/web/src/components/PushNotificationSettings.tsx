@@ -1,3 +1,4 @@
+import { CaretDownIcon, InfoIcon } from "@phosphor-icons/react";
 import type { PushPreferences } from "@picks/shared";
 import { type FormEvent, useState } from "react";
 import type { PushSupport } from "../push";
@@ -61,7 +62,8 @@ export function PushNotificationSettings({
               On iPhone or iPad, add POW Pick'em to your home screen, open its icon, then return here to
               enable notifications. Requires iOS or iPadOS 16.4 or later.
             </p>
-            <HomeScreenInstructions />
+            {/* Only iPhone and iPad browser tabs reach this state, so only their steps apply. */}
+            <HomeScreenInstructions platform="ios" />
           </>
         ) : support === "unsupported" ? (
           <p className="m-0 text-muted-foreground">
@@ -82,10 +84,32 @@ export function PushNotificationSettings({
                   : "Notifications are off for this device."}
             </p>
             {denied && (
-              <p className="m-0 text-muted-foreground">
-                Notifications are blocked. Allow them in your device or browser notification settings, then
-                return here.
-              </p>
+              <details className="group text-sm text-muted-foreground">
+                <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-1.5 font-medium hover:text-foreground [&::-webkit-details-marker]:hidden">
+                  <InfoIcon aria-hidden className="size-4" />
+                  How to turn them back on
+                  <CaretDownIcon
+                    aria-hidden
+                    className="size-3.5 transition-transform group-open:rotate-180"
+                  />
+                </summary>
+                <ul className="m-0 grid gap-2 pb-1 pl-5">
+                  <li>
+                    <strong className="font-medium text-foreground">iPhone or iPad:</strong> Settings →
+                    Notifications → POW Pick'em → Allow Notifications.
+                  </li>
+                  <li>
+                    <strong className="font-medium text-foreground">Android:</strong> in Chrome, tap the icon
+                    left of the address → Permissions → Notifications → Allow. For the home-screen app,
+                    long-press its icon → App info → Notifications.
+                  </li>
+                  <li>
+                    <strong className="font-medium text-foreground">Computer:</strong> click the icon left of
+                    the address → allow Notifications.
+                  </li>
+                </ul>
+                <p className="m-0 pb-1">Then come back here and tap Enable notifications.</p>
+              </details>
             )}
             {enabled && (
               <form onSubmit={save} className="grid gap-3">
