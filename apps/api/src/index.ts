@@ -6,11 +6,12 @@ import { shiftedClock } from "./clock";
 import { mailpitMailer } from "./email";
 import { loadEnv } from "./env";
 import { liveInsights } from "./insights";
+import { runScheduledJobs } from "./jobs";
 import { logError } from "./logging";
 import { espnProvider } from "./nfl";
-import { runEmailJobs } from "./outbox";
+import { webPushSender } from "./pushSender";
 
-/** How often local development runs the email job. Production's Cron Trigger is in wrangler.jsonc. */
+/** How often local development runs the scheduled jobs. Production's Cron Trigger is in wrangler.jsonc. */
 const LOCAL_JOB_INTERVAL_MS = 60_000;
 
 async function main() {
@@ -37,8 +38,17 @@ async function main() {
       : undefined;
   if (!email) console.warn("Email is off: set INBOX_URL (`pnpm env:local`) to send notifications locally");
   const now = clock?.now ?? (() => new Date());
+  const push =
+    env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT
+      ? webPushSender({
+          publicKey: env.VAPID_PUBLIC_KEY,
+          privateKey: env.VAPID_PRIVATE_KEY,
+          subject: env.VAPID_SUBJECT,
+        })
+      : undefined;
   const app = createApp({
     db,
+    push,
     verifyToken: supabaseTokenVerifier(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY),
     nfl: espnProvider(),
     insights: liveInsights(),
@@ -56,21 +66,18 @@ async function main() {
     console.log(`API listening on http://localhost:${info.port}`);
   });
 
-  // Production runs the email job from the Worker's Cron Trigger; locally a timer stands in for it.
+  // Production runs the scheduled jobs from the Worker's Cron Trigger; locally a timer stands in for it.
   let running = false;
-  const jobs = email
-    ? setInterval(async () => {
-        if (running) return;
-        running = true;
-        try {
-          await runEmailJobs(db, email, now());
-        } catch (error) {
-          logError("email_jobs", error);
-        } finally {
-          running = false;
-        }
-      }, LOCAL_JOB_INTERVAL_MS)
-    : undefined;
+  const jobs =
+    email || push
+      ? setInterval(async () => {
+          if (running) return;
+          running = true;
+          await runScheduledJobs(db, { email, push }, now()).finally(() => {
+            running = false;
+          });
+        }, LOCAL_JOB_INTERVAL_MS)
+      : undefined;
 
   const shutdown = async () => {
     clearInterval(jobs);

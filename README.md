@@ -68,6 +68,9 @@ Running it again overwrites `.env`.
 | `EMAIL_FROM`               | Sender of notification emails                                | `POW Pick'em <noreply@pow-pickem.com>`                            |
 | `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                    | `1000` (`10000` locally)                                          |
 | `EMAIL_MONTHLY_LIMIT`      | Most notification emails sent per UTC calendar month         | `10000` (`100000` locally)                                        |
+| `VAPID_PUBLIC_KEY`         | Web Push public key; with the next two, turns push on        | Unset locally                                                     |
+| `VAPID_PRIVATE_KEY`        | Web Push private key (secret)                                | Unset locally                                                     |
+| `VAPID_SUBJECT`            | Contact for push services (`mailto:` or `https:`)            | Unset locally                                                     |
 
 The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
 needs no environment variables. Database credentials stay on the API server.
@@ -156,6 +159,23 @@ same instructions open once on their own with a **Not now** button; they never r
 None of this shows when running from the home-screen app. To see the one-time prompt again locally,
 remove `pow:home-screen-offered` from the site's local storage. Open the new icon after adding it;
 you may need to sign in again. The app requires an internet connection.
+
+### Push notifications
+
+Open **Notifications & pick reminders** on Your leagues, or **Notifications** in the account menu, then
+**Enable notifications** on each device that should get them and approve the browser's permission prompt.
+On iPhone and iPad (iOS 16.4+), first add POW Pick'em to the home screen and open it from its icon;
+ordinary iPhone browser tabs show those steps instead of asking for permission.
+
+Each device has its own switches for **New league threads** and **Missing-pick reminders**, alongside the
+email switches under **Account settings**. A new thread notifies the league's other current members who
+opted in (replies don't). Reminders start at 7pm league time the evening before a game day, only for games
+still to pick, and expire at that day's first kickoff; picks and membership are checked again just before
+sending. Notifications show league names and thread titles on the lock screen, never picks or message
+bodies. Signing out disconnects the device.
+
+Locally, push is off (no VAPID keys), so the settings screen says it isn't available yet. To try it in a
+desktop browser, put a pair from `node scripts/vapid-keys.mjs` and a `VAPID_SUBJECT` in `.env`.
 
 ### Feedback and app operator
 
@@ -261,7 +281,7 @@ emails sent by the local Auth service.
 
 ## League rules
 
-The app's `/how-to-play` page explains the player and admin flows.
+The app's `/how-to-play` page explains the player and admin flows, including reminders by email and notification.
 [`packages/shared/src/rules.ts`](packages/shared/src/rules.ts) is the implementation of scoring and locks,
 and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the weekly awards.
 
@@ -375,8 +395,9 @@ a key, both are cached in memory, and either can fail on its own: the sheet show
 added by hand has no ESPN stats. The sheet contains public background only, never this league's picks.
 Team logos are loaded by the browser from ESPN's image CDN (`a.espncdn.com`).
 
-The web app has a manifest and icons so it can be installed to a home screen. There is no service worker,
-so nothing works offline.
+The web app has a manifest and icons so it can be installed to a home screen. A push-only service worker
+(`apps/web/public/push-sw.js`, served with `Cache-Control: no-cache` from `_headers`) shows notifications
+and caches nothing, so nothing works offline.
 
 ## Development and testing
 
@@ -573,6 +594,36 @@ One-time setup:
    queues and sends nothing (the cron runs and returns at once). Changing it later breaks the unsubscribe
    links in emails already sent. `APP_URL` is a var in `wrangler.jsonc`; `EMAIL_FROM`, `EMAIL_DAILY_LIMIT` and
    `EMAIL_MONTHLY_LIMIT` can be overridden the same way, if the plan changes.
+
+### Push notifications
+
+Web Push needs no vendor: the Worker encrypts and signs each notification itself (`src/webPush.ts`, RFC 8291
+and RFC 8292 on WebCrypto) and posts it to the browser's push service (Apple, Google, Mozilla, Microsoft).
+Push is off until all three VAPID secrets are set; until then the settings screen says it isn't available
+yet. Nothing is sent to a device that hasn't opted in.
+
+One-time setup, from `apps/api`:
+
+```sh
+node ../../scripts/vapid-keys.mjs > /tmp/vapid.json   # keep this pair; a new one orphans every device
+node -p 'require("/tmp/vapid.json").publicKey'  | pnpm exec wrangler secret put VAPID_PUBLIC_KEY
+node -p 'require("/tmp/vapid.json").privateKey' | pnpm exec wrangler secret put VAPID_PRIVATE_KEY
+echo "mailto:<a contact address>"               | pnpm exec wrangler secret put VAPID_SUBJECT
+rm /tmp/vapid.json
+```
+
+The same Cron Trigger as email (`*/5 * * * *`) queues due reminders and sends up to 100 pending deliveries
+per run with five concurrent senders; larger backlogs carry over to the next run. A new thread's
+notifications are queued inside its transaction and sent in the request's `waitUntil` after it commits.
+Runs that did something log a `push_jobs` line with counts. Transient failures retry after 5, 10, 20 and
+40 minutes, then stop after five attempts. A 404 or 410 from a push service removes that device and its
+queue. Delivery rows are kept 30 days. Delivery is at least once: the notification tag and the `Topic`
+header replace a duplicate after an ambiguous send.
+
+Subscription endpoints and keys are private capabilities: never logged, and sends go only to known HTTPS
+push services. Before relying on it, smoke-test an installed iPhone app and an Android browser: subscribe,
+get a thread alert with the app closed, open its link, change preferences, and turn notifications off.
+Desktop WebKit emulation can't establish real iPhone delivery.
 
 ### Release sequence
 

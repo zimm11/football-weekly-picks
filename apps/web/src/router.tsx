@@ -93,6 +93,7 @@ export type Route =
   | { page: "login" }
   | { page: "reset-password" }
   | { page: "how-to-play" }
+  | { page: "notifications" }
   | { page: "feedback" }
   | { page: "operator" }
   | { page: "account" }
@@ -113,6 +114,7 @@ export function matchRoute(path: string): Route {
   if (!first) return { page: "leagues" };
   if (first === "login" && !second) return { page: "login" };
   if (first === "reset-password" && !second) return { page: "reset-password" };
+  if (first === "notifications" && !second) return { page: "notifications" };
   if (first === "how-to-play" && !second) return { page: "how-to-play" };
   if (first === "feedback" && !second) return { page: "feedback" };
   if (first === "operator" && !second) return { page: "operator" };

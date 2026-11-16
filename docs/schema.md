@@ -32,6 +32,11 @@ erDiagram
   games ||--o{ picks : "game_id"
   auth_users ||--o{ picks : "user_id"
   auth_users ||--o| profiles : "user_id"
+  push_subscriptions ||--o{ push_deliveries : "subscription_id"
+  leagues ||--o{ push_deliveries : "league_id"
+  message_threads |o--o{ push_deliveries : "thread_id"
+  weeks |o--o{ push_deliveries : "week_id"
+  auth_users ||--o{ push_subscriptions : "user_id"
   leagues ||--o{ seasons : "league_id"
   weeks ||--o{ tiebreaker_guesses : "week_id"
   auth_users ||--o{ tiebreaker_guesses : "user_id"
@@ -141,6 +146,31 @@ erDiagram
     text display_name
     boolean email_new_threads
     boolean email_pick_reminders
+    timestamptz created_at
+  }
+  push_deliveries {
+    uuid id PK
+    uuid subscription_id FK
+    uuid league_id FK
+    uuid thread_id FK
+    uuid week_id FK
+    text kind
+    text event_key
+    text[] game_ids
+    text status
+    integer attempts
+    timestamptz next_attempt_at
+    timestamptz expires_at
+    timestamptz created_at
+  }
+  push_subscriptions {
+    uuid id PK
+    uuid user_id FK
+    text endpoint UK
+    text p256dh
+    text auth
+    boolean new_threads
+    boolean pick_reminders
     timestamptz created_at
   }
   seasons {
@@ -342,6 +372,43 @@ What a player is called on leaderboards, and which emails they want.
 | `display_name` | text | no |  |  |
 | `email_new_threads` | boolean | no |  | Email the player when someone starts a message thread in one of their leagues. Has a default. |
 | `email_pick_reminders` | boolean | no |  | Email the player the evening before a game day on which they still have games to pick. Has a default. |
+| `created_at` | timestamptz | no |  | Has a default. |
+
+### `push_deliveries`
+
+Durable per-device delivery queue. Unique event keys prevent repeated cron calls from queuing twice.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `subscription_id` | uuid | no | FK → `push_subscriptions.id` |  |
+| `league_id` | uuid | no | FK → `leagues.id` |  |
+| `thread_id` | uuid | yes | FK → `message_threads.id` |  |
+| `week_id` | uuid | yes | FK → `weeks.id` |  |
+| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`. |
+| `event_key` | text | no |  | Thread id or week id + local game date, scoped to subscription by the unique index. |
+| `game_ids` | text[] | no |  | Game ids are rechecked for missing picks immediately before a reminder is sent. Has a default. |
+| `status` | text | no |  | One of: `pending`, `sent`, `skipped`, `failed`. Has a default. |
+| `attempts` | integer | no |  | Has a default. |
+| `next_attempt_at` | timestamptz | no |  | Has a default. |
+| `expires_at` | timestamptz | no |  |  |
+| `created_at` | timestamptz | no |  | Has a default. |
+
+Unique together: (`subscription_id`, `kind`, `event_key`).
+
+### `push_subscriptions`
+
+A browser/device explicitly opted into push for one player. Endpoints and keys are private capabilities.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `user_id` | uuid | no | FK → `auth.users.id` |  |
+| `endpoint` | text | no | unique | Only supported HTTPS browser push services; never returned to other players or logged. |
+| `p256dh` | text | no |  |  |
+| `auth` | text | no |  |  |
+| `new_threads` | boolean | no |  | Preferences apply to this device, independently of the player's other devices. Has a default. |
+| `pick_reminders` | boolean | no |  | Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 ### `seasons`

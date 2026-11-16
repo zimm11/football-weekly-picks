@@ -84,6 +84,7 @@ const operationMessages = {
   results_autosync: "Automatic results provider request failed.",
   matchup_insights: "Matchup stats provider request failed.",
   market_insights: "Prediction market provider request failed.",
+  push_delivery: "Push notification delivery failed.",
   startup: "API startup failed; check environment configuration.",
   email_send: "Sending an email failed.",
   email_jobs: "Email job failed.",
@@ -114,7 +115,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /apps\/api\/src\/(app|auth|context|email|env|index|insights|leagues|logging|messages|nfl|operator|outbox|templates|unsubscribe|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /apps\/api\/src\/(app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|nfl|operator|outbox|push|pushQueue|pushSender|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;
@@ -134,6 +135,9 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
             "UNSUBSCRIBE_SECRET",
             "EMAIL_DAILY_LIMIT",
             "EMAIL_MONTHLY_LIMIT",
+            "VAPID_PUBLIC_KEY",
+            "VAPID_PRIVATE_KEY",
+            "VAPID_SUBJECT",
           ].includes(field),
         )
       : undefined;
@@ -149,10 +153,9 @@ export function logWarning(name: keyof typeof warnings) {
   console.warn(JSON.stringify({ event: "warning", name, message: warnings[name] }));
 }
 
-/** A summary of one scheduled email run: counts only, and only when it did something. */
-export function logEmailJobs(result: Record<string, number>) {
-  if (Object.values(result).some((n) => n > 0))
-    console.log(JSON.stringify({ event: "email_jobs", ...result }));
+/** A summary of one scheduled run: counts only, and only when it did something. */
+export function logJobRun(event: "email_jobs" | "push_jobs", result: Record<string, number>) {
+  if (Object.values(result).some((n) => n > 0)) console.log(JSON.stringify({ event, ...result }));
 }
 
 export const requestLogger = createMiddleware<{ Variables: AuthVariables }>(async (c, next) => {

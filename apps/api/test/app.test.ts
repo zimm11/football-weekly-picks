@@ -115,7 +115,6 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     appUrl: "https://picks.test",
     unsubscribeSecret: "test-unsubscribe-secret-that-is-long-enough",
     limits,
-    background: (task) => pending.push(task()),
   };
   const app = createApp({
     db,
@@ -140,6 +139,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     },
     now: () => now,
     email,
+    background: (task) => pending.push(task()),
   });
   /** What the Worker's Cron Trigger runs. */
   const runJobs = async () => ({ body: await runEmailJobs(db, email, now) });

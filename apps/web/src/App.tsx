@@ -20,7 +20,7 @@ import { type Credentials, SignInForm, type SignInMode } from "./components/Sign
 import { SimulatedClockBanner } from "./components/SimulatedClockBanner";
 import { Splash } from "./components/Splash";
 import { buttonVariants } from "./components/ui/button";
-import { notifyDone } from "./notify";
+import { notifyDone, notifyError } from "./notify";
 import { AccountPage } from "./pages/AccountPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { HowToPlayPage } from "./pages/HowToPlayPage";
@@ -28,10 +28,12 @@ import { LandingPage } from "./pages/LandingPage";
 import { LeaguePage } from "./pages/LeaguePage";
 import { JoinPage, LeaguesPage } from "./pages/LeaguesPage";
 import { ManageWeekPage } from "./pages/ManageWeekPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { OperatorPage } from "./pages/OperatorPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { useNow } from "./pages/useNow";
 import { WeekPage } from "./pages/WeekPage";
+import { disablePush, reconcilePushAccount } from "./push";
 import { Link, matchRoute, navigate, usePath } from "./router";
 
 /**
@@ -234,7 +236,9 @@ function SignedIn({
   const homeScreen = useHomeScreenHelp();
 
   useEffect(() => {
-    unwrap<Me>(api.me.$get()).then(setMe, (err) => setError(messageOf(err)));
+    reconcilePushAccount()
+      .then(() => unwrap<Me>(api.me.$get()))
+      .then(setMe, (err) => setError(messageOf(err)));
   }, []);
 
   async function saveName(displayName: string) {
@@ -249,7 +253,14 @@ function SignedIn({
     }
   }
 
-  const signOut = async () => (await getSupabase()).auth.signOut();
+  const signOut = async () => {
+    try {
+      await disablePush();
+      await (await getSupabase()).auth.signOut();
+    } catch (err) {
+      notifyError(messageOf(err));
+    }
+  };
 
   async function savePassword(password: string) {
     const { error } = await (await getSupabase()).auth.updateUser({ password });
@@ -274,6 +285,7 @@ function SignedIn({
           <DropdownMenuItem onSelect={() => setEditingName(true)}>Change your name</DropdownMenuItem>
         )}
         <DropdownMenuItem onSelect={() => navigate("/account")}>Account settings</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate("/notifications")}>Notifications</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/reset-password")}>Change password</DropdownMenuItem>
         {me?.displayName && route.page !== "feedback" && (
           // Carries the screen they were on, so a bug report says where it happened.
@@ -353,6 +365,7 @@ function SignedIn({
               )}
               {route.page === "week" && <WeekPage weekId={route.weekId} userId={userId} />}
               {route.page === "manage-week" && <ManageWeekPage weekId={route.weekId} userId={userId} />}
+              {route.page === "notifications" && <NotificationsPage />}
               {route.page === "feedback" && <FeedbackPage />}
               {route.page === "operator" && me.isOperator && <OperatorPage />}
               {(route.page === "not-found" || (route.page === "operator" && !me.isOperator)) && (

@@ -52,13 +52,46 @@ const sharedFields = {
    */
   EMAIL_DAILY_LIMIT: z.coerce.number().int().min(0).default(1000),
   EMAIL_MONTHLY_LIMIT: z.coerce.number().int().min(0).default(10000),
+
+  // ---------- Web Push (all three or none: without them, push is switched off) ----------
+  /** The VAPID public key (65-byte uncompressed P-256 point, base64url). Browsers subscribe with it. */
+  VAPID_PUBLIC_KEY: z
+    .string()
+    .regex(/^B[A-Za-z0-9_-]{86}$/)
+    .optional(),
+  /** The matching private key (32 bytes, base64url). A secret; changing the pair orphans every subscription. */
+  VAPID_PRIVATE_KEY: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{43}$/)
+    .optional(),
+  /** A contact push services can reach: `mailto:` or `https:`. */
+  VAPID_SUBJECT: z
+    .string()
+    .regex(/^(mailto:|https:\/\/).+/)
+    .optional(),
 };
 
-/** Email settings that only make sense together. Shared by both entrypoints' schemas. */
-function emailRules(
-  env: { NODE_ENV?: string; APP_URL?: string; UNSUBSCRIBE_SECRET?: string; INBOX_URL?: string },
+/** Email and push settings that only make sense together. Shared by both entrypoints' schemas. */
+function settingRules(
+  env: {
+    NODE_ENV?: string;
+    APP_URL?: string;
+    UNSUBSCRIBE_SECRET?: string;
+    INBOX_URL?: string;
+    VAPID_PUBLIC_KEY?: string;
+    VAPID_PRIVATE_KEY?: string;
+    VAPID_SUBJECT?: string;
+  },
   ctx: z.RefinementCtx,
 ) {
+  const vapid = [env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT];
+  if (vapid.some(Boolean) && !vapid.every(Boolean)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["VAPID_PUBLIC_KEY"],
+      message: "Set all three VAPID variables together, or leave all unset.",
+    });
+  }
   if (env.INBOX_URL && env.NODE_ENV === "production") {
     ctx.addIssue({
       code: "custom",
@@ -111,13 +144,13 @@ const envSchema = z
     path: ["CLOCK_OVERRIDE"],
     message: "CLOCK_OVERRIDE is for local testing and is not allowed when NODE_ENV=production",
   })
-  .superRefine(emailRules);
+  .superRefine(settingRules);
 
 /**
  * The Worker gets its database from the Hyperdrive binding and sends email through the EMAIL binding, so it
  * has no DATABASE_URL, PORT or clock override.
  */
-const workerEnvSchema = z.object(sharedFields).superRefine(emailRules);
+const workerEnvSchema = z.object(sharedFields).superRefine(settingRules);
 
 export type Env = z.infer<typeof envSchema>;
 
