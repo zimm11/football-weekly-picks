@@ -13,16 +13,18 @@ ALTER TABLE "push_deliveries" ADD CONSTRAINT "push_deliveries_kind_check" CHECK 
 ALTER TABLE "push_deliveries" ADD CONSTRAINT "push_deliveries_status_check" CHECK ("status" IN ('pending', 'sent', 'skipped', 'failed'));--> statement-breakpoint
 
 -- A pick's denormalized week must be its game's week, and the tiebreaker must be one of the week's own games.
--- NO ACTION, so the existing single-column foreign keys still decide what a game delete does (cascade the picks,
--- clear the tiebreaker) before these are checked.
-ALTER TABLE "picks" ADD CONSTRAINT "picks_game_week_fk" FOREIGN KEY ("game_id", "week_id") REFERENCES "public"."games"("id", "week_id");--> statement-breakpoint
-ALTER TABLE "weeks" ADD CONSTRAINT "weeks_tiebreaker_game_week_fk" FOREIGN KEY ("tiebreaker_game_id", "id") REFERENCES "public"."games"("id", "week_id");--> statement-breakpoint
+-- Each repeats the delete behavior of the single-column key beside it (cascade the picks, clear the tiebreaker).
+-- With NO ACTION instead, removing a game would only work while Postgres happened to fire the older key's
+-- trigger first; triggers fire in name order, so that could flip.
+ALTER TABLE "picks" ADD CONSTRAINT "picks_game_week_fk" FOREIGN KEY ("game_id", "week_id") REFERENCES "public"."games"("id", "week_id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "weeks" ADD CONSTRAINT "weeks_tiebreaker_game_week_fk" FOREIGN KEY ("tiebreaker_game_id", "id") REFERENCES "public"."games"("id", "week_id") ON DELETE SET NULL ("tiebreaker_game_id");--> statement-breakpoint
 
 -- Clients never query the database directly: the API connects as a privileged role, and browsers hold only the
 -- publishable key for Supabase Auth. RLS (enabled with no policies) already blocks rows through the Data API,
 -- but Supabase's default grants still give `anon` and `authenticated` every privilege on every public table,
--- including TRUNCATE, which RLS doesn't cover. Take them away, for existing objects and ones created later, so
--- a forgotten `.enableRLS()` can't expose a table either.
+-- including TRUNCATE, which RLS doesn't cover. Take them away, for existing objects and for tables and sequences
+-- created later, so a forgotten `.enableRLS()` can't expose a table either. (A function created later is still
+-- executable through Postgres's built-in PUBLIC default; the app has none.)
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;--> statement-breakpoint
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;--> statement-breakpoint
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon, authenticated;--> statement-breakpoint
