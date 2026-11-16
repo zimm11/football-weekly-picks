@@ -1,5 +1,25 @@
-# Cloudflare Static Assets headers. Vite puts a content hash in every file name under /assets, so these can be
-# cached forever.
+# Cloudflare Static Assets headers. Every rule that matches a path applies, so the pages, scripts, icons and the
+# push service worker all get the security headers below. /api/* runs the Worker first and sets its own.
+#
+# Content-Security-Policy, by directive:
+# - script-src 'self': the built app has no inline scripts.
+# - style-src 'unsafe-inline': Sonner (the toasts) injects a <style> element at runtime.
+# - img-src a.espncdn.com: team logos (components/TeamLogo.tsx). data: covers inlined small images.
+# - font-src data:: the fonts are bundled, and Vite may inline a small one.
+# - connect-src *.supabase.co: Supabase Auth. Local Supabase (127.0.0.1/localhost) is listed so `pnpm worker:dev`
+#   and the E2E tests against the Worker work with the same file.
+# - worker-src 'self': the push service worker (push-sw.js).
+# Links out (ESPN, Kalshi) are plain navigations, which the policy doesn't restrict.
+# HSTS without includeSubDomains or preload, by choice.
+/*
+  Strict-Transport-Security: max-age=15552000
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://a.espncdn.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co http://127.0.0.1:* http://localhost:*; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+
+# Vite puts a content hash in every file name under /assets, so these can be cached forever.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
