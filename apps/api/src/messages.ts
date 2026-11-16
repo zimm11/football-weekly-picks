@@ -9,9 +9,12 @@ import {
   pinThreadSchema,
   readThreadSchema,
   replySchema,
+  THREAD_PAGE_SIZE,
   type ThreadDetail,
+  type ThreadPage,
+  threadListQuerySchema,
 } from "@picks/shared";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, type SQL, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
@@ -66,25 +69,25 @@ export function messageRoutes({
     }
     return result;
   }
-  return new Hono<{ Variables: AuthVariables }>()
-    .get("/leagues/:leagueId/messages", auth, leagueParam, async (c) => {
-      const { leagueId } = c.req.valid("param");
-      await requireMember(db, leagueId, c.var.user.id);
-      const rows = await db
-        .select({
-          thread: messageThreads,
-          authorName: profiles.displayName,
-          readVersion: messageReads.version,
-        })
-        .from(messageThreads)
-        .leftJoin(profiles, eq(profiles.userId, messageThreads.authorId))
-        .leftJoin(
-          messageReads,
-          and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, c.var.user.id)),
-        )
-        .where(eq(messageThreads.leagueId, leagueId))
-        .orderBy(desc(messageThreads.pinned), desc(messageThreads.updatedAt), desc(messageThreads.id));
-      const result: MessageThread[] = rows.map(({ thread: t, authorName, readVersion }) => ({
+  /** Threads newest first (pinned before the rest), each marked unread for this player or not. */
+  async function listThreads(userId: string, where: SQL | undefined, limit?: number) {
+    const query = db
+      .select({
+        thread: messageThreads,
+        authorName: profiles.displayName,
+        readVersion: messageReads.version,
+      })
+      .from(messageThreads)
+      .leftJoin(profiles, eq(profiles.userId, messageThreads.authorId))
+      .leftJoin(
+        messageReads,
+        and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, userId)),
+      )
+      .where(where)
+      .orderBy(desc(messageThreads.pinned), desc(messageThreads.updatedAt), desc(messageThreads.id));
+    const rows = await (limit === undefined ? query : query.limit(limit));
+    return rows.map(
+      ({ thread: t, authorName, readVersion }): MessageThread => ({
         id: t.id,
         title: t.title,
         pinned: t.pinned,
@@ -93,9 +96,70 @@ export function messageRoutes({
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
         unread: (readVersion ?? 0) < t.version,
-      }));
-      return c.json(result);
-    })
+      }),
+    );
+  }
+  /** How many of the league's threads have posts this player hasn't read, across every page. */
+  async function unreadThreads(userId: string, leagueId: string) {
+    const [row] = await db
+      .select({ n: count() })
+      .from(messageThreads)
+      .leftJoin(
+        messageReads,
+        and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, userId)),
+      )
+      .where(
+        and(
+          eq(messageThreads.leagueId, leagueId),
+          sql`coalesce(${messageReads.version}, 0) < ${messageThreads.version}`,
+        ),
+      );
+    return row?.n ?? 0;
+  }
+  return new Hono<{ Variables: AuthVariables }>()
+    .get(
+      "/leagues/:leagueId/messages",
+      auth,
+      leagueParam,
+      zValidator("query", threadListQuerySchema, (result, c) => {
+        if (!result.success) return c.json({ error: "Invalid page." }, 400);
+      }),
+      async (c) => {
+        const { leagueId } = c.req.valid("param");
+        const { before, limit } = c.req.valid("query");
+        const userId = c.var.user.id;
+        await requireMember(db, leagueId, userId);
+        const inLeague = eq(messageThreads.leagueId, leagueId);
+        // Without `limit` or `before`, the whole board as an array: what tabs opened before pagination ask for.
+        if (limit === undefined && before === undefined) return c.json(await listThreads(userId, inLeague));
+        const size = limit ?? THREAD_PAGE_SIZE;
+        const [pinned, rest, unreadCount] = await Promise.all([
+          // Every pinned announcement leads the first page; later pages carry none.
+          before ? [] : listThreads(userId, and(inLeague, eq(messageThreads.pinned, true))),
+          listThreads(
+            userId,
+            and(
+              inLeague,
+              eq(messageThreads.pinned, false),
+              // The cursor thread's position is read from the table, so the comparison keeps the timestamp's
+              // full precision.
+              before
+                ? sql`(${messageThreads.updatedAt}, ${messageThreads.id}) <
+                  (select updated_at, id from message_threads where id = ${before} and league_id = ${leagueId})`
+                : undefined,
+            ),
+            size + 1,
+          ),
+          unreadThreads(userId, leagueId),
+        ]);
+        const page = rest.slice(0, size);
+        return c.json<ThreadPage>({
+          threads: [...pinned, ...page],
+          nextCursor: rest.length > size ? (page.at(-1)?.id ?? null) : null,
+          unreadCount,
+        });
+      },
+    )
     .post("/leagues/:leagueId/messages", auth, leagueParam, body(createThreadSchema), async (c) => {
       const { leagueId } = c.req.valid("param");
       const { league } = await requireMember(db, leagueId, c.var.user.id);

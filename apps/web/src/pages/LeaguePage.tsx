@@ -6,9 +6,12 @@ import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { api, unwrap } from "../api";
 import { now } from "../clock";
 import { LeagueLayout, type LeagueTab } from "../components/LeagueNav";
+import { LoadError } from "../components/LoadError";
 import { LeagueSkeleton } from "../components/Skeletons";
 import { WeekRecap } from "../components/WeekRecap";
+import { recapDecision } from "../lib/recap";
 import { readSeason, rememberSeason } from "../lib/seasonSelection";
+import { usePolling } from "../lib/usePolling";
 import { requestLeave } from "../router";
 import { LeagueTabPanel } from "./LeagueTab";
 import { MessagesPage } from "./MessagesPage";
@@ -34,12 +37,11 @@ export function LeaguePage({
   );
   const [selectedYear, setSelectedYear] = useState(() => readSeason(leagueId));
   const [startingSeason, setStartingSeason] = useState(false);
-  // Decided once, when the league first loads: a week finalized while the player is on the page waits for
-  // their next visit instead of sliding up over whatever they are doing.
   const [recapWeekId, setRecapWeekId] = useState<string | null>();
   const loadedRecapWeekId = league.data?.recapWeekId;
   useEffect(() => {
-    if (loadedRecapWeekId !== undefined) setRecapWeekId((current) => current ?? loadedRecapWeekId);
+    if (loadedRecapWeekId !== undefined)
+      setRecapWeekId((current) => recapDecision(current, loadedRecapWeekId));
   }, [loadedRecapWeekId]);
 
   useEffect(() => {
@@ -49,12 +51,9 @@ export function LeaguePage({
   }, [league.data, selectedYear]);
 
   // Availability counts and display phases are computed by the API using its clock.
-  useEffect(() => {
-    const timer = setInterval(league.reload, 30_000);
-    return () => clearInterval(timer);
-  }, [league.reload]);
+  usePolling(league.reload, 30_000);
 
-  if (league.error && !league.data) return <Notice kind="alert">{league.error}</Notice>;
+  if (league.error && !league.data) return <LoadError message={league.error} onRetry={league.reload} />;
   if (!league.data) {
     return <LeagueSkeleton shape={tab === "picks" ? "week" : tab === "standings" ? "standings" : "list"} />;
   }
@@ -80,6 +79,7 @@ export function LeaguePage({
       leagueId={leagueId}
       leagueName={detail.name}
       active={tab}
+      boardShown={tab === "messages" && !threadId}
       seasonSelector={
         tab !== "messages" && (
           <NativeSelect

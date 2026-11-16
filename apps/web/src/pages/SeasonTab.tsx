@@ -1,7 +1,8 @@
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { type LeagueDetail, type Standings, weekLabel } from "@picks/shared";
-import { Card, Eyebrow, Notice } from "@/components/ui/card";
+import { Card, Eyebrow } from "@/components/ui/card";
 import { api, unwrap } from "../api";
+import { LoadError } from "../components/LoadError";
 import { PickSplitsTable, WeekByWeekTable, YourSeason } from "../components/SeasonDashboard";
 import { StandingsSkeleton } from "../components/Skeletons";
 import { StandingsTable } from "../components/StandingsTable";
@@ -33,7 +34,7 @@ export function SeasonTab({
     `${league.id}:${year}`,
   );
 
-  if (standings.error) return <Notice kind="alert">{standings.error}</Notice>;
+  if (standings.error) return <LoadError message={standings.error} onRetry={standings.reload} />;
   if (!standings.data) return <StandingsSkeleton />;
   const shownYear = standings.data.year;
   const me = standings.data.entries.find((e) => e.userId === userId);

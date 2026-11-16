@@ -293,5 +293,6 @@ export type ThreadDetail = {
   posts: MessagePost[];
 };
 
+export * from "./messages";
 export * from "./push";
 export * from "./reminders";
