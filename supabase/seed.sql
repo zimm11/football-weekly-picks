@@ -16,10 +16,12 @@
 --       - Each closed week records its players (week_participants), as finalizing does, so leaving and
 --         rejoining the league later doesn't change its results. Everyone joined on 2026-08-01.
 -- Messages support emoji reactions, admin-only pinned announcements and quoted replies within a thread.
+-- Admins can permanently delete a thread and its replies, reactions, read markers and queued notifications after confirmation.
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
--- Browser users find Add to home screen in the account menu; on a phone the first save of picks offers it once.
--- The public How to play guide has separate install instructions; none of it shows in the home-screen app.
--- Notifications are opt-in per device: new threads and 7pm league-time reminders for missing picks.
+-- Settings (account menu) holds notifications by email and per device, plus home-screen install help; on a phone
+-- the first save of picks offers the install help once. None of it shows in the home-screen app.
+-- Device notifications are opt-in: new threads and 7pm league-time reminders for missing picks. Your leagues
+-- suggests them once per browser.
 -- No push subscriptions are seeded; VAPID is unset locally, so devices can't subscribe.
 -- Later weeks are deliberately absent: create them in the app so the import from ESPN gets exercised.
 

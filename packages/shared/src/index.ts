@@ -302,6 +302,7 @@ export type ThreadDetail = {
   version: number;
   pinned: boolean;
   canPin: boolean;
+  canDelete: boolean;
   posts: MessagePost[];
 };
 

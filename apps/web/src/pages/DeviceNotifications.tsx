@@ -4,11 +4,12 @@ import { api, messageOf, unwrap } from "../api";
 import { LoadError } from "../components/LoadError";
 import { PushNotificationSettings } from "../components/PushNotificationSettings";
 import { SettingsSkeleton } from "../components/Skeletons";
-import { Card } from "../components/ui/card";
+import { Card, Eyebrow } from "../components/ui/card";
 import { notifyDone } from "../notify";
 import { disablePush, preparePush, pushSupport, savePush } from "../push";
 
-export function NotificationsPage({ userId }: { userId: string }) {
+/** This browser's push notifications: the "On this device" part of Settings. Loads its own state. */
+export function DeviceNotifications({ userId }: { userId: string }) {
   const [support] = useState(pushSupport);
   const [state, setState] = useState<{
     config: PushSettings;
@@ -88,47 +89,50 @@ export function NotificationsPage({ userId }: { userId: string }) {
       notifyDone("Notifications enabled on this device.");
     });
   }
+  if (error || !state) {
+    return (
+      <Card aria-labelledby="device-notifications-heading">
+        <Eyebrow id="device-notifications-heading" className="m-0">
+          On this device
+        </Eyebrow>
+        {error ? (
+          <LoadError
+            message={error}
+            onRetry={() => {
+              setError(undefined);
+              setAttempt((n) => n + 1);
+            }}
+          />
+        ) : (
+          <SettingsSkeleton label="Loading notifications on this device" />
+        )}
+      </Card>
+    );
+  }
   return (
-    <div className="mx-auto grid max-w-2xl gap-5 pt-3">
-      <h2 className="text-4xl leading-none font-extrabold">Notifications</h2>
-      {error ? (
-        <LoadError
-          message={error}
-          onRetry={() => {
-            setError(undefined);
-            setAttempt((n) => n + 1);
-          }}
-        />
-      ) : !state ? (
-        <Card>
-          <SettingsSkeleton label="Loading notification settings" />
-        </Card>
-      ) : (
-        <PushNotificationSettings
-          key={state.device?.id ?? "off"}
-          support={support}
-          configured={state.config.configured}
-          enabled={!!state.device}
-          denied={denied}
-          preferences={state.device ?? { newThreads: true, pickReminders: true }}
-          onEnable={() => change(enable)}
-          onDisable={() =>
-            change(async () => {
-              await disablePush(state.subscription);
-              setState({ ...state, subscription: null, device: null });
-              notifyDone("Notifications turned off on this device.");
-            })
-          }
-          onSave={(preferences) =>
-            change(async () => {
-              if (!state.subscription) throw new Error("Enable notifications first.");
-              const device = await savePush(state.subscription, preferences, userId);
-              setState({ ...state, device });
-              notifyDone("Notification preferences saved.");
-            })
-          }
-        />
-      )}
-    </div>
+    <PushNotificationSettings
+      key={state.device?.id ?? "off"}
+      support={support}
+      configured={state.config.configured}
+      enabled={!!state.device}
+      denied={denied}
+      preferences={state.device ?? { newThreads: true, pickReminders: true }}
+      onEnable={() => change(enable)}
+      onDisable={() =>
+        change(async () => {
+          await disablePush(state.subscription);
+          setState({ ...state, subscription: null, device: null });
+          notifyDone("Notifications turned off on this device.");
+        })
+      }
+      onSave={(preferences) =>
+        change(async () => {
+          if (!state.subscription) throw new Error("Enable notifications first.");
+          const device = await savePush(state.subscription, preferences, userId);
+          setState({ ...state, device });
+          notifyDone("Notification preferences saved.");
+        })
+      }
+    />
   );
 }

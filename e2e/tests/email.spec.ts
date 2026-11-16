@@ -40,7 +40,7 @@ test("emails other members about a new thread, and its link unsubscribes them", 
     await player.goto(unsubscribe ?? "");
     await player.getByRole("button", { name: "Turn off new-thread emails" }).click();
     await expect(player.getByRole("heading", { name: "You're unsubscribed" })).toBeVisible();
-    await player.getByRole("link", { name: "Account settings" }).click();
+    await player.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(player.getByRole("checkbox", { name: /New message threads/ })).not.toBeChecked();
     await expect(player.getByRole("checkbox", { name: /Pick reminders/ })).toBeChecked();
     await player.getByRole("checkbox", { name: /New message threads/ }).check();

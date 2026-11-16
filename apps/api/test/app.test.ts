@@ -4,7 +4,12 @@ import {
   emailUsage,
   leagueMembers,
   leagues,
+  messagePosts,
+  messageReactions,
+  messageReads,
   profiles,
+  pushDeliveries,
+  pushSubscriptions,
   weekParticipants,
 } from "@picks/db";
 import type {
@@ -522,6 +527,99 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(
       (await call(OUTSIDER, "POST", `${path}/replies`, { body: "No access", quotedPostId: postId })).status,
     ).toBe(404);
+  });
+
+  it("allows only active league admins to delete entire threads and their queued notifications", async () => {
+    await settle();
+    const league = (await call<{ id: string }>(ADMIN, "POST", "/leagues", { name: "Thread deletion" })).body;
+    createdLeagues.push(league.id);
+    const invite = (await call<LeagueDetail>(ADMIN, "GET", `/leagues/${league.id}`)).body.inviteCode;
+    await call(PLAYER, "POST", `/invites/${invite}/join`);
+    const base = `/leagues/${league.id}/messages`;
+    // Leave emails pending so deletion is checked before a background sender handles them.
+    const queuedCall = callOn(
+      createApp({ db, verifyToken, publicConfig, nfl: noGames, email, now: () => now, background: () => {} }),
+    );
+    const created = await queuedCall<{ id: string }>(PLAYER, "POST", base, {
+      title: "Remove this",
+      body: "Opening post",
+    });
+    const id = created.body.id;
+    const path = `${base}/${id}`;
+    const kept = await queuedCall<{ id: string }>(PLAYER, "POST", base, {
+      title: "Keep this",
+      body: "Unrelated post",
+    });
+    const original = (await call<ThreadDetail>(ADMIN, "GET", path)).body;
+    expect(original.canDelete).toBe(true);
+    expect((await call<ThreadDetail>(PLAYER, "GET", path)).body.canDelete).toBe(false);
+    const postId = original.posts[0]?.id ?? "";
+    await call(ADMIN, "PUT", `${path}/pin`, { pinned: true });
+    await call(ADMIN, "POST", `${path}/replies`, { body: "Quoted reply", quotedPostId: postId });
+    await call(ADMIN, "POST", `${path}/read`, { version: 2 });
+    await call(PLAYER, "PUT", `${path}/posts/${postId}/reactions`, { emoji: "👍", active: true });
+    expect((await outboxFor(id))?.status).toBe("pending");
+    expect((await app.request(`/api${path}`, { method: "DELETE" })).status).toBe(401);
+    // Even the author cannot delete a thread without the admin role.
+    expect((await call(PLAYER, "DELETE", path)).status).toBe(403);
+    expect((await call(OUTSIDER, "DELETE", path)).status).toBe(404);
+    expect((await call(ADMIN, "DELETE", `/leagues/${leagueId}/messages/${id}`)).status).toBe(404);
+    expect((await call(ADMIN, "DELETE", `${base}/not-a-uuid`)).status).toBe(404);
+    expect((await call(ADMIN, "DELETE", `${base}/00000000-0000-4000-8000-000000009999`)).status).toBe(404);
+    await call(ADMIN, "PATCH", `/leagues/${league.id}/members/${PLAYER}`, { role: "admin" });
+    expect((await call<ThreadDetail>(PLAYER, "GET", path)).body.canDelete).toBe(true);
+    await call(ADMIN, "DELETE", `/leagues/${league.id}/members/${PLAYER}`);
+    expect((await call(PLAYER, "DELETE", path)).status).toBe(404);
+    await call(PLAYER, "POST", `/invites/${invite}/join`);
+    await call(ADMIN, "PATCH", `/leagues/${league.id}/members/${PLAYER}`, { role: "admin" });
+    const posts = (await call<ThreadDetail>(ADMIN, "GET", path)).body.posts;
+    const [subscription] = await db
+      .insert(pushSubscriptions)
+      .values({ userId: ADMIN, endpoint: `https://push.example.test/${id}`, p256dh: "test", auth: "test" })
+      .returning();
+    expect(subscription).toBeDefined();
+    if (!subscription) return;
+    try {
+      await db.insert(pushDeliveries).values({
+        subscriptionId: subscription.id,
+        leagueId: league.id,
+        threadId: id,
+        kind: "new_thread",
+        eventKey: id,
+        expiresAt: new Date(now.getTime() + 60_000),
+      });
+      // A second admin can delete a pinned thread, including one they authored.
+      expect((await call(PLAYER, "DELETE", path)).status).toBe(200);
+      expect((await call(ADMIN, "GET", path)).status).toBe(404);
+      expect((await call(ADMIN, "DELETE", path)).status).toBe(404);
+      expect((await call(ADMIN, "POST", `${path}/replies`, { body: "Too late" })).status).toBe(404);
+      expect((await call(ADMIN, "POST", `${path}/read`, { version: 2 })).status).toBe(404);
+      expect(
+        (await call(ADMIN, "PUT", `${path}/posts/${postId}/reactions`, { emoji: "👍", active: true })).status,
+      ).toBe(404);
+      expect((await call<MessageThread[]>(ADMIN, "GET", base)).body.map((t) => t.id)).toEqual([kept.body.id]);
+      expect(await db.select().from(messagePosts).where(eq(messagePosts.threadId, id))).toEqual([]);
+      expect(await db.select().from(messageReads).where(eq(messageReads.threadId, id))).toEqual([]);
+      expect(
+        await db
+          .select()
+          .from(messageReactions)
+          .where(
+            inArray(
+              messageReactions.postId,
+              posts.map((p) => p.id),
+            ),
+          ),
+      ).toEqual([]);
+      expect(await db.select().from(pushDeliveries).where(eq(pushDeliveries.threadId, id))).toEqual([]);
+      expect(await outboxFor(id)).toBeUndefined();
+      expect((await outboxFor(kept.body.id))?.status).toBe("pending");
+      // Admins can also remove another member's unpinned thread.
+      expect((await call(ADMIN, "DELETE", `${base}/${kept.body.id}`)).status).toBe(200);
+    } finally {
+      await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, subscription.id));
+      await db.delete(leagues).where(eq(leagues.id, league.id));
+    }
   });
 
   it("emails other members about a new thread, and honors one-click unsubscribe", async () => {

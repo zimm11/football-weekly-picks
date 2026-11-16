@@ -230,17 +230,17 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Talk it over in Messages",
                 detail:
-                  "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
+                  "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can permanently delete a thread and all its replies and reactions from its ⋯ menu after confirming. Admins can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
               },
               {
                 title: "Get reminders",
                 detail:
-                  "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default; turn either kind off under Account settings. To get them as notifications on this device too, open Notifications in the account menu and tap Enable notifications. On iPhone and iPad, add POW Pick'em to your home screen first (iOS 16.4 or later).",
+                  "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default. To get them as notifications on this device too, or to turn either kind off, open Settings from the account menu. On iPhone and iPad, add POW Pick'em to your home screen first (iOS 16.4 or later).",
               },
               {
                 title: "Manage your account",
                 detail:
-                  "Tap your name in the header to change your name or password, or to sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them.",
+                  "Tap your name in the header to change your name or password, open Settings, or sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them.",
               },
             ]}
           />

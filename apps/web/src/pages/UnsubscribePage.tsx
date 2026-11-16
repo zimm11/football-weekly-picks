@@ -60,7 +60,7 @@ export function UnsubscribePage({ signedIn }: { signedIn: boolean }) {
         <p className="m-0 text-sm text-muted-foreground">
           {signedIn ? (
             <>
-              Choose which emails you get in <Link to="/account">Account settings</Link>.
+              Choose which emails you get in <Link to="/account">Settings</Link>.
             </>
           ) : (
             <>

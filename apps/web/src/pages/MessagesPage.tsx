@@ -4,6 +4,7 @@ import {
   DotsThreeIcon,
   PlusIcon,
   PushPinIcon,
+  TrashIcon,
 } from "@phosphor-icons/react";
 import {
   type MessageReaction,
@@ -17,6 +18,7 @@ import { cn } from "cn";
 import { useEffect, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
 import { Avatar } from "../components/Avatar";
+import { useConfirm } from "../components/ConfirmDialog";
 import { TAB_BAR_OFFSET } from "../components/LeagueNav";
 import { LoadError } from "../components/LoadError";
 import { MessageComposer } from "../components/MessageComposer";
@@ -36,7 +38,7 @@ import { relativeTime } from "../format";
 import { announceMessagesChanged, MESSAGES_REFRESH_MS, setUnreadThreads } from "../lib/unread";
 import { useAction } from "../lib/useAction";
 import { usePolling } from "../lib/usePolling";
-import { notifyDone } from "../notify";
+import { notifyDone, notifyError } from "../notify";
 import { Link, navigate } from "../router";
 import { useLoad } from "./useLoad";
 import { useNow } from "./useNow";
@@ -178,11 +180,18 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
   const now = useNow();
   const thread = useLoad(() => unwrap<ThreadDetail>(endpoint.$get({ param })), threadId);
   const { busy: pinning, run } = useAction<"pin">();
+  const [deleting, setDeleting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const [quote, setQuote] = useState<Quote>();
   const [replyBusy, setReplyBusy] = useState(false);
   const [readError, setReadError] = useState("");
   const version = thread.data?.version;
   const { setData } = thread;
+  // Unmount the reply composer first so its unsaved guard clears before leaving a deleted thread.
+  useEffect(() => {
+    if (deleted) navigate(`/leagues/${leagueId}/messages`);
+  }, [deleted, leagueId]);
   useEffect(() => {
     if (!version) return;
     const markRead = () => {
@@ -226,8 +235,32 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
     );
   }
 
+  async function deleteThread() {
+    if (!thread.data || deleting || replyBusy) return;
+    if (
+      !(await confirm({
+        title: `Delete “${thread.data.title}”?`,
+        detail:
+          "This permanently deletes the thread, all replies and reactions, and any unsent reply. This can't be undone.",
+        action: "Delete thread",
+      }))
+    )
+      return;
+    setDeleting(true);
+    try {
+      await unwrap(endpoint.$delete({ param }));
+      setDeleted(true);
+      notifyDone("Thread deleted.");
+      announceMessagesChanged();
+    } catch (err) {
+      notifyError(messageOf(err));
+      setDeleting(false);
+    }
+  }
+
   return (
     <section className="grid gap-3">
+      {confirmDialog}
       <Link
         className="flex min-h-11 w-fit items-center gap-1 text-sm font-medium text-muted-foreground no-underline hover:text-foreground"
         to={`/leagues/${leagueId}/messages`}
@@ -249,24 +282,32 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               )}
               <h3 className="text-2xl break-words">{thread.data.title}</h3>
             </div>
-            {thread.data.canPin && (
+            {(thread.data.canPin || thread.data.canDelete) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    aria-label="Thread options"
+                    size={deleting ? "default" : "icon"}
+                    aria-label={deleting ? "Deleting…" : `Options for ${thread.data.title}`}
                     className="-mt-1 rounded-full text-muted-foreground hover:text-foreground"
-                    disabled={!!pinning}
+                    disabled={!!pinning || deleting || replyBusy}
                   >
-                    <DotsThreeIcon aria-hidden weight="bold" className="size-6" />
+                    {deleting ? "Deleting…" : <DotsThreeIcon aria-hidden weight="bold" className="size-6" />}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={togglePin}>
-                    <PushPinIcon aria-hidden />
-                    {thread.data.pinned ? "Unpin announcement" : "Pin announcement"}
-                  </DropdownMenuItem>
+                  {thread.data.canPin && (
+                    <DropdownMenuItem onSelect={togglePin}>
+                      <PushPinIcon aria-hidden />
+                      {thread.data.pinned ? "Unpin announcement" : "Pin announcement"}
+                    </DropdownMenuItem>
+                  )}
+                  {thread.data.canDelete && (
+                    <DropdownMenuItem variant="destructive" onSelect={deleteThread}>
+                      <TrashIcon aria-hidden />
+                      Delete thread
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -313,7 +354,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
                   variant="ghost"
                   className="ml-auto gap-1.5 px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
                   aria-label={`Quote message ${p.position} by ${p.authorName}`}
-                  disabled={replyBusy}
+                  disabled={replyBusy || deleting}
                   onClick={() => setQuote({ id: p.id, authorName: p.authorName, body: p.body })}
                 >
                   <ArrowBendUpLeftIcon aria-hidden className="size-4" />
@@ -329,25 +370,28 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               TAB_BAR_OFFSET,
             )}
           >
-            <MessageComposer
-              reply
-              quote={quote}
-              onCancelQuote={() => setQuote(undefined)}
-              onSubmit={async (json) => {
-                setReplyBusy(true);
-                try {
-                  await unwrap(
-                    endpoint.replies.$post({ param, json: { body: json.body, quotedPostId: quote?.id } }),
-                  );
-                  setQuote(undefined);
-                  notifyDone("Reply posted.");
-                  thread.reload();
-                  announceMessagesChanged();
-                } finally {
-                  setReplyBusy(false);
-                }
-              }}
-            />
+            {!deleted && (
+              <MessageComposer
+                reply
+                disabled={deleting}
+                quote={quote}
+                onCancelQuote={() => setQuote(undefined)}
+                onSubmit={async (json) => {
+                  setReplyBusy(true);
+                  try {
+                    await unwrap(
+                      endpoint.replies.$post({ param, json: { body: json.body, quotedPostId: quote?.id } }),
+                    );
+                    setQuote(undefined);
+                    notifyDone("Reply posted.");
+                    thread.reload();
+                    announceMessagesChanged();
+                  } finally {
+                    setReplyBusy(false);
+                  }
+                }}
+              />
+            )}
           </div>
         </>
       ) : (

@@ -1,14 +1,23 @@
 import { expect, test } from "./fixtures";
 
-test("players can find device notification settings and iPhone installation help", async ({
+test("Your leagues suggests notifications once, and Settings holds them with iPhone installation help", async ({
   page,
   signedIn,
   isMobile,
 }) => {
-  await page.getByRole("link", { name: "Notifications & pick reminders" }).click();
-  await expect(page).toHaveURL(/\/notifications$/);
-  await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Notifications on this device" })).toBeVisible();
+  // Headless Chromium reports notifications as denied; a real browser that hasn't asked yet says "default".
+  await page.addInitScript(() => {
+    // The E2E code has no DOM types; this runs in the page, where Notification may not exist (iPhone emulation).
+    const browser = globalThis as { Notification?: object };
+    if (browser.Notification)
+      Object.defineProperty(browser.Notification, "permission", { get: () => "default" });
+  });
+  await page.reload();
+  const prompt = page.getByRole("region", { name: "Pick reminders" });
+  await prompt.getByRole("link", { name: "Turn on" }).click();
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "On this device" })).toBeVisible();
   if (isMobile) {
     await expect(page.getByRole("heading", { name: "iPhone or iPad · Safari" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Enable notifications", exact: true })).toHaveCount(0);
@@ -17,11 +26,19 @@ test("players can find device notification settings and iPhone installation help
       page.getByText("Notifications aren't available yet. Please check back later."),
     ).toBeVisible();
   }
+  // "Not now" puts the suggestion away for good on this browser.
+  await page.getByRole("link", { name: "POW Pick'em", exact: true }).click();
+  await prompt.getByRole("button", { name: "Not now" }).click();
+  await expect(prompt).not.toBeAttached();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your leagues" })).toBeVisible();
+  await expect(prompt).not.toBeAttached();
+  // Old links to the notifications screen land on Settings.
+  await page.goto("/notifications");
+  await expect(page.getByRole("heading", { name: "On this device" })).toBeVisible();
   await page.getByRole("button", { name: signedIn.displayName }).click();
-  await page.getByRole("menuitem", { name: "Notifications", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Notifications", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Add to home screen" })).toHaveCount(0);
 });
 
 test("a player enables notifications, saves device preferences and turns them off", async ({

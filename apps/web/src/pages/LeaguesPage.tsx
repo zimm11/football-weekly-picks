@@ -1,4 +1,4 @@
-import { BellIcon, CaretRightIcon } from "@phosphor-icons/react";
+import { CaretRightIcon } from "@phosphor-icons/react";
 import type { InvitePreview, LeagueSummary } from "@picks/shared";
 import { type FormEvent, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
 import { LoadError } from "../components/LoadError";
+import { NotificationsPrompt } from "../components/NotificationsPrompt";
 import { ListSkeleton } from "../components/Skeletons";
 import { Splash } from "../components/Splash";
 import { notifyDone } from "../notify";
@@ -52,11 +53,6 @@ export function LeaguesPage({ playerName }: { playerName?: string }) {
   return (
     <div className={opening ? "grid animate-in gap-6 fade-in duration-300" : "grid gap-6"}>
       <h2 className="text-4xl leading-none font-extrabold">Your leagues</h2>
-      <Link to="/notifications" className={rowLink}>
-        <BellIcon aria-hidden className="size-6 shrink-0 text-primary" />
-        <span className="flex-1 font-medium">Notifications &amp; pick reminders</span>
-        <CaretRightIcon aria-hidden className="size-5" />
-      </Link>
       {leagues.data.length === 0 ? (
         <Card>
           <h3 className="text-2xl">Get ready for your first week</h3>
@@ -83,6 +79,8 @@ export function LeaguesPage({ playerName }: { playerName?: string }) {
           ))}
         </ul>
       )}
+      {/* Below the leagues, which are what the player came for. Gone once answered or put off. */}
+      <NotificationsPrompt />
       <Card>
         <Eyebrow>Start a league</Eyebrow>
         <form onSubmit={create} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">

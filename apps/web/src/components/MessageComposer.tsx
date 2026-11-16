@@ -12,6 +12,7 @@ export function MessageComposer({
   initialTitle = "",
   initialBody = "",
   reply = false,
+  disabled = false,
   quote,
   onCancelQuote,
   onSubmit,
@@ -19,13 +20,16 @@ export function MessageComposer({
   initialTitle?: string;
   initialBody?: string;
   reply?: boolean;
+  /** Set while the screen around the composer is busy (a thread being deleted), so nothing can be posted. */
+  disabled?: boolean;
   quote?: Quote;
   onCancelQuote?: () => void;
   onSubmit: (value: { title: string; body: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initialBody);
-  const [busy, setBusy] = useState(false);
+  const [submittingMessage, setSubmittingMessage] = useState(false);
+  const busy = submittingMessage || disabled;
   const [error, setError] = useState("");
   const replyInput = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -41,7 +45,7 @@ export function MessageComposer({
     box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
   }, [reply, body]);
   const submitting = async () => {
-    setBusy(true);
+    setSubmittingMessage(true);
     setError("");
     try {
       await onSubmit({ title, body });
@@ -50,7 +54,7 @@ export function MessageComposer({
     } catch (err) {
       setError(messageOf(err));
     } finally {
-      setBusy(false);
+      setSubmittingMessage(false);
     }
   };
   if (reply) {
@@ -100,7 +104,7 @@ export function MessageComposer({
             disabled={busy}
           />
           <Button
-            aria-label={busy ? "Posting…" : "Post reply"}
+            aria-label={submittingMessage ? "Posting…" : "Post reply"}
             size="icon"
             className="rounded-full"
             disabled={busy || !body.trim()}
@@ -142,7 +146,9 @@ export function MessageComposer({
         />
       </Field>
       {error && <Notice kind="alert">{error}</Notice>}
-      <Button disabled={busy || !body.trim() || !title.trim()}>{busy ? "Posting…" : "Create thread"}</Button>
+      <Button disabled={busy || !body.trim() || !title.trim()}>
+        {submittingMessage ? "Posting…" : "Create thread"}
+      </Button>
     </form>
   );
 }
