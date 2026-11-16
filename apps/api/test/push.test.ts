@@ -7,6 +7,7 @@ import {
   leagues,
   messageThreads,
   picks,
+  profiles,
   pushDeliveries,
   pushSubscriptions,
   seasons,
@@ -71,6 +72,8 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
   beforeAll(async () => {
     for (const id of users)
       await db.execute(sql`insert into auth.users (id, email) values (${id}, ${`${id}@push.test`})`);
+    // Posting needs a display name. Removed with the users (cascade).
+    await db.insert(profiles).values(users.map((userId, i) => ({ userId, displayName: `Push ${i}` })));
   });
   beforeEach(async () => {
     send.mockReset().mockResolvedValue("sent");
