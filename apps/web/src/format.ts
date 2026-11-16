@@ -2,6 +2,18 @@ import type { Game } from "@picks/shared";
 
 export { seasonYear } from "@picks/shared";
 
+/** The zones offered for showing game days and times. A league already on another zone keeps it as an extra option. */
+export const TIME_ZONES: Record<string, string> = {
+  "America/New_York": "Eastern",
+  "America/Chicago": "Central",
+  "America/Denver": "Mountain",
+  "America/Phoenix": "Arizona",
+  "America/Los_Angeles": "Pacific",
+  "America/Anchorage": "Alaska",
+  "Pacific/Honolulu": "Hawaii",
+};
+export const zoneName = (timeZone: string) => TIME_ZONES[timeZone] ?? timeZone;
+
 /** "Thursday, Nov 12", in the league's time zone. */
 export function kickoffDay(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", {
