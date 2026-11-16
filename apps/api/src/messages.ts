@@ -23,6 +23,7 @@ import {
   fail,
   leagueParam,
   param,
+  query,
   requireAdmin,
   requireDisplayName,
   requireMember,
@@ -130,9 +131,7 @@ export function messageRoutes({
       "/leagues/:leagueId/messages",
       auth,
       leagueParam,
-      zValidator("query", threadListQuerySchema, (result, c) => {
-        if (!result.success) return c.json({ error: "Invalid page." }, 400);
-      }),
+      query(threadListQuerySchema, "Invalid page."),
       async (c) => {
         const { leagueId } = c.req.valid("param");
         const { before, limit } = c.req.valid("query");
