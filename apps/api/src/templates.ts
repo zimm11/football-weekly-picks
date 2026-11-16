@@ -1,5 +1,5 @@
 import type { OutboxMessage } from "@picks/db";
-import { teamName, weekLabel } from "@picks/shared";
+import { teamName, toSingleLine, weekLabel } from "@picks/shared";
 
 /*
  * Notification emails. Every value from a player (names, titles, message text) is escaped. Styles are inline,
@@ -93,7 +93,8 @@ export function newThreadEmail(input: {
   const bodyHtml = `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:${MUTED};">${escapeHtml(authorName)} started a new thread on the ${escapeHtml(leagueName)} message board.</p>
 <blockquote style="margin:0;padding:12px 16px;border-left:3px solid ${BLUE};background:#f5f7fb;font-size:15px;line-height:1.5;color:${NAVY};white-space:pre-line;">${escapeHtml(preview)}</blockquote>`;
   return {
-    subject: `${leagueName}: ${title}`,
+    // Names and titles are single lines by rule; one stored before the rule must still not break a header.
+    subject: toSingleLine(`${leagueName}: ${title}`),
     html: layout({ heading, bodyHtml, links, why, stop }),
     text: `${authorName} started a new thread on the ${leagueName} message board.\n\n${title}\n\n${preview}\n\n${links.action.label}: ${links.action.url}${footerText(links, why, stop)}`,
     listUnsubscribeUrl: links.listUnsubscribeUrl,
@@ -132,7 +133,7 @@ export function pickReminderEmail(input: {
   const bodyHtml = `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:${MUTED};">${escapeHtml(intro)}</p>
 <ul style="margin:0;padding:0 0 0 20px;font-size:15px;line-height:1.7;color:${NAVY};">${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`;
   return {
-    subject: `${leagueName}: ${count} to pick for ${day}`,
+    subject: toSingleLine(`${leagueName}: ${count} to pick for ${day}`),
     html: layout({ heading, bodyHtml, links, why, stop }),
     text: `${intro}\n\n${lines.map((l) => `- ${l}`).join("\n")}\n\n${links.action.label}: ${links.action.url}${footerText(links, why, stop)}`,
     listUnsubscribeUrl: links.listUnsubscribeUrl,

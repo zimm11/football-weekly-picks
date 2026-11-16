@@ -3,12 +3,15 @@ import {
   canonicalTimeZone,
   createGameSchema,
   createLeagueSchema,
+  createThreadSchema,
   createWeekSchema,
   formatLine,
   lineFor,
   MESSAGE_REACTIONS,
   messageReactionSchema,
+  toSingleLine,
   updateLeagueSchema,
+  updateProfileSchema,
 } from "./index";
 
 describe("request schemas", () => {
@@ -17,6 +20,21 @@ describe("request schemas", () => {
       name: "Sunday Crew",
       timeZone: "America/New_York",
     });
+  });
+
+  it("keeps names and titles to a single line", () => {
+    // A line break in a thread title would reach the email subject.
+    for (const title of ["Week 10\r\nBcc: someone@example.com", "Week\n10", "Week\t10", "Week\u202810"]) {
+      expect(createThreadSchema.safeParse({ title, body: "hi" }).success).toBe(false);
+    }
+    expect(createLeagueSchema.safeParse({ name: "Sunday\nCrew" }).success).toBe(false);
+    expect(updateProfileSchema.safeParse({ displayName: "Pat\r\n" }).success).toBe(true);
+    expect(updateProfileSchema.safeParse({ displayName: "Pa\rt" }).success).toBe(false);
+    // Ordinary punctuation, accents and emoji are all fine.
+    expect(createThreadSchema.parse({ title: "  Who's in? 🏈 Señor's picks  ", body: "hi" }).title).toBe(
+      "Who's in? 🏈 Señor's picks",
+    );
+    expect(toSingleLine("Sunday\r\nCrew:\tWeek 10")).toBe("Sunday Crew: Week 10");
   });
 
   it("rejects an unknown time zone", () => {

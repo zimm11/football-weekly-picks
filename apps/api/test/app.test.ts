@@ -12,15 +12,17 @@ import {
   pushSubscriptions,
   weekParticipants,
 } from "@picks/db";
-import type {
-  GameInsights,
-  LeagueDetail,
-  Me,
-  MessageReaction,
-  MessageThread,
-  Standings,
-  ThreadDetail,
-  WeekView,
+import {
+  type GameInsights,
+  type LeagueDetail,
+  MAX_LEAGUE_MEMBERS,
+  MAX_LEAGUES_PER_USER,
+  type Me,
+  type MessageReaction,
+  type MessageThread,
+  type Standings,
+  type ThreadDetail,
+  type WeekView,
 } from "@picks/shared";
 import { and, between, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -181,6 +183,13 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     db,
     verifyToken,
     publicConfig,
+    // This suite starts far more threads in one league than a player may in a day (messages.test.ts covers
+    // that limit).
+    limits: {
+      membersPerLeague: MAX_LEAGUE_MEMBERS,
+      leaguesPerUser: MAX_LEAGUES_PER_USER,
+      threadsPerDay: 1000,
+    },
     nfl: {
       getWeek: async () => {
         providerCalls += 1;
@@ -768,22 +777,25 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       await runJobs();
       expect(await outboxFor(monthly)).toMatchObject({ status: "skipped", lastError: "OVER_BUDGET" });
 
-      // The provider says its own quota is spent: the send is given back, today's budget is closed, and
-      // the email waits for tomorrow without using an attempt.
+      // The provider says its own quota is spent: the send is given back and the email waits for tomorrow
+      // without using an attempt. Our count stays what was really sent, so the month isn't charged for it.
       const before = await usage("2026-11-13");
       mailerError = new EmailSendError("E_DAILY_LIMIT_EXCEEDED", "quota");
       const quota = await post("Quota");
+      const again = await post("Quota again");
       mailerError = undefined;
-      expect(await outboxFor(quota)).toMatchObject({
-        status: "pending",
-        attempts: 0,
-        lastError: "E_DAILY_LIMIT_EXCEEDED",
-        nextAttemptAt: new Date("2026-11-14T00:00:00Z"),
-      });
-      expect(await usage("2026-11-13")).toBe(Math.max(before, limits.daily));
+      for (const id of [quota, again]) {
+        expect(await outboxFor(id)).toMatchObject({
+          status: "pending",
+          attempts: 0,
+          lastError: "E_DAILY_LIMIT_EXCEEDED",
+          nextAttemptAt: new Date("2026-11-14T00:00:00Z"),
+        });
+      }
+      expect(await usage("2026-11-13")).toBe(before);
       expect((await runJobs()).body).toMatchObject({ sent: 0 });
       now = new Date("2026-11-14T00:30:00Z");
-      expect((await runJobs()).body).toMatchObject({ sent: 1 });
+      expect((await runJobs()).body).toMatchObject({ sent: 2 });
     } finally {
       mailerError = undefined;
       limits.daily = 10_000;

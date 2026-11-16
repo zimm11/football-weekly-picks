@@ -8,24 +8,68 @@ import { flushSync } from "react-dom";
 
 /*
  * Scroll positions, per history entry. A new screen starts at the top; going back (or forward) returns to
- * where the player was. Each entry carries a key in `history.state` so its position can be found again.
+ * where the player was. Each entry carries a key in `history.state` so its position can be found again, and
+ * its place in the order of entries (`idx`), so a back or forward step can be measured and undone.
  */
-type EntryState = { key?: string; flash?: Flash } | null;
+type EntryState = { key?: string; idx?: number; flash?: Flash } | null;
 const positions = new Map<string, number>();
 const newKey = () => Math.random().toString(36).slice(2);
 const entryKey = () => (window.history.state as EntryState)?.key;
-if (!entryKey()) window.history.replaceState({ ...(window.history.state ?? {}), key: newKey() }, "");
+const entryIdx = () => (window.history.state as EntryState)?.idx;
+if (!entryKey() || entryIdx() === undefined) {
+  window.history.replaceState(
+    { ...(window.history.state ?? {}), key: entryKey() ?? newKey(), idx: entryIdx() ?? 0 },
+    "",
+  );
+}
 if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
 let currentKey = entryKey();
+let currentIdx = entryIdx() ?? 0;
 /** The position the screen being shown should open at: where it was left, after back or forward; else the top. */
 let pendingScroll = 0;
-let navigating = false;
-window.addEventListener("popstate", () => {
+
+/** Asked before leaving a screen. It calls `leave` if and when the user agrees to go. */
+type LeaveGuard = (leave: () => void) => void;
+/** Every screen part with unsaved work right now, oldest first. Leaving asks the newest; one answer covers all. */
+const leaveGuards = new Set<LeaveGuard>();
+const newestGuard = () => [...leaveGuards].at(-1);
+/** A back or forward step held for an answer is undone with a step the other way: that one changes nothing. */
+let undoingStep = false;
+/** The player agreed to leave, so the step being replayed goes through. */
+let leaveAgreed = false;
+
+// Registered when the module loads, so it runs before any screen's own popstate listener and can keep a held
+// step from them: to the rest of the app, a step the player declined never happened.
+window.addEventListener("popstate", (event) => {
+  // `navigate` announces its own changes with an event of its own making; it has already recorded them.
+  if (!event.isTrusted) return;
+  if (undoingStep) {
+    undoingStep = false;
+    event.stopImmediatePropagation();
+    return;
+  }
+  const idx = entryIdx();
+  const guard = newestGuard();
+  // The browser's back and forward (and the phone's back gesture) have already changed the URL when this
+  // fires. With unsaved work on screen, step back to where the player was, then ask; agreeing replays the
+  // step. An entry this router didn't write (a plain #anchor) has no place to measure, so it goes through.
+  if (guard && !leaveAgreed && idx !== undefined && idx !== currentIdx) {
+    const delta = idx - currentIdx;
+    event.stopImmediatePropagation();
+    undoingStep = true;
+    window.history.go(-delta);
+    guard(() => {
+      leaveGuards.clear();
+      leaveAgreed = true;
+      window.history.go(delta);
+    });
+    return;
+  }
+  leaveAgreed = false;
   if (currentKey) positions.set(currentKey, window.scrollY);
   currentKey = entryKey();
-  // `navigate` announces its own changes with a popstate event too; those open at the top.
-  pendingScroll = navigating || !currentKey ? 0 : (positions.get(currentKey) ?? 0);
-  navigating = false;
+  currentIdx = idx ?? currentIdx;
+  pendingScroll = currentKey ? (positions.get(currentKey) ?? 0) : 0;
 });
 
 /** Where the screen just shown should scroll to. Read once per screen change. */
@@ -46,21 +90,18 @@ export function usePath(): string {
 
 type Flash = { kind: "status" | "alert"; text: string };
 
-/** Asked before leaving a screen. It calls `leave` if and when the user agrees to go. */
-type LeaveGuard = (leave: () => void) => void;
-let leaveGuard: LeaveGuard | undefined;
-
 /**
- * While `active`, in-app navigation is handed to `ask` instead of happening, so a screen with unsaved work
- * can check first. Reloads and tab closes are covered separately by `beforeunload`; the browser's back
- * button is not intercepted.
+ * While `active`, leaving the screen is handed to `ask` instead of happening, so a screen with unsaved work can
+ * check first: in-app navigation, the browser's back and forward buttons, and the phone's back gesture.
+ * Several parts of a screen can each hold a guard (a draft message beside unsaved spreads); saving one leaves
+ * the others in place. Reloads and tab closes are covered separately by `beforeunload`.
  */
 export function useLeaveGuard(active: boolean, ask: LeaveGuard) {
   useEffect(() => {
     if (!active) return;
-    leaveGuard = ask;
+    leaveGuards.add(ask);
     return () => {
-      if (leaveGuard === ask) leaveGuard = undefined;
+      leaveGuards.delete(ask);
     };
   }, [active, ask]);
 }
@@ -68,9 +109,14 @@ export function useLeaveGuard(active: boolean, ask: LeaveGuard) {
 /** Goes to another screen, optionally carrying a one-off message for it to show (e.g. an import warning). */
 export function navigate(to: string, flash?: Flash) {
   const go = () => {
-    leaveGuard = undefined;
-    navigating = true;
-    window.history.pushState({ key: newKey(), ...(flash ? { flash } : {}) }, "", to);
+    leaveGuards.clear();
+    // Recorded here rather than when the screen changes: a cross-fade announces the change a frame later, and
+    // a back step arriving in between must still be measured from the new entry.
+    if (currentKey) positions.set(currentKey, window.scrollY);
+    currentKey = newKey();
+    currentIdx += 1;
+    pendingScroll = 0;
+    window.history.pushState({ key: currentKey, idx: currentIdx, ...(flash ? { flash } : {}) }, "", to);
     withTransition(() => window.dispatchEvent(new PopStateEvent("popstate")));
   };
   requestLeave(go);
@@ -93,7 +139,8 @@ function withTransition(update: () => void) {
 
 /** Also guards view changes (such as switching seasons) that do not change the URL. */
 export function requestLeave(go: () => void) {
-  if (leaveGuard) leaveGuard(go);
+  const guard = newestGuard();
+  if (guard) guard(go);
   else go();
 }
 
@@ -101,7 +148,7 @@ export function requestLeave(go: () => void) {
 export function useFlash(): Flash | undefined {
   const [flash] = useState<Flash | undefined>(() => (window.history.state as EntryState)?.flash);
   useEffect(() => {
-    if (flash) window.history.replaceState({ key: entryKey() }, "");
+    if (flash) window.history.replaceState({ key: entryKey(), idx: entryIdx() }, "");
   }, [flash]);
   return flash;
 }

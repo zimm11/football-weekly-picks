@@ -15,6 +15,7 @@ import {
   pinThreadSchema,
   readThreadSchema,
   replySchema,
+  THREAD_DAILY_LIMIT,
   THREAD_PAGE_SIZE,
   type ThreadDetail,
   type ThreadPage,
@@ -48,6 +49,7 @@ export function messageRoutes({
   verifyToken,
   email,
   push,
+  limits,
   now = () => new Date(),
   background = (task) => void task(),
 }: AppDeps) {
@@ -194,6 +196,24 @@ export function messageRoutes({
       const { title, body: content } = c.req.valid("json");
       let queued = 0;
       const id = await db.transaction(async (tx) => {
+        // One thread at a time per player and league, so two posts at once can't both slip under the limit.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`thread:${leagueId}:${c.var.user.id}`}, 0))`,
+        );
+        const [recent] = await tx
+          .select({ n: count() })
+          .from(messageThreads)
+          .where(
+            and(
+              eq(messageThreads.leagueId, leagueId),
+              eq(messageThreads.authorId, c.var.user.id),
+              // A thread's `created_at` is the database's clock, so the day is measured on it too.
+              sql`${messageThreads.createdAt} > now() - interval '24 hours'`,
+            ),
+          );
+        if ((recent?.n ?? 0) >= (limits?.threadsPerDay ?? THREAD_DAILY_LIMIT)) {
+          fail(429, "You've started a lot of threads here today. Reply to one, or try again tomorrow.");
+        }
         const [t] = await tx
           .insert(messageThreads)
           .values({ leagueId, authorId: c.var.user.id, title })

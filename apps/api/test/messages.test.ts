@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createDb, leagueMembers, leagues, messageReads, messageThreads } from "@picks/db";
-import type { MessageThread, ThreadPage } from "@picks/shared";
+import { createDb, leagueMembers, leagues, messageReads, messageThreads, profiles } from "@picks/db";
+import { type MessageThread, THREAD_DAILY_LIMIT, type ThreadPage } from "@picks/shared";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
@@ -136,5 +136,46 @@ describe.skipIf(!process.env.DATABASE_URL)("thread list pages (requires `pnpm db
     } finally {
       await db.delete(leagues).where(eq(leagues.id, other.id));
     }
+  });
+
+  it("limits how many threads one player can start in a league in a day", async () => {
+    await db.insert(profiles).values({ userId: member, displayName: "Poster" }).onConflictDoNothing();
+    const post = (league = leagueId) =>
+      app.request(`/api/leagues/${league}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${member}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Hello", body: "Anyone there?" }),
+      });
+    for (let i = 0; i < THREAD_DAILY_LIMIT; i++) expect((await post()).status).toBe(201);
+    const refused = await post();
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toEqual({
+      error: "You've started a lot of threads here today. Reply to one, or try again tomorrow.",
+    });
+    expect(await get<MessageThread[]>()).toHaveLength(THREAD_DAILY_LIMIT);
+
+    // The limit is per league: another league's board is unaffected.
+    const [other] = await db.insert(leagues).values({ name: "Other", inviteCode: randomUUID() }).returning();
+    assert(other);
+    try {
+      await db.insert(leagueMembers).values({ leagueId: other.id, userId: member, role: "member" });
+      expect((await post(other.id)).status).toBe(201);
+    } finally {
+      await db.delete(leagues).where(eq(leagues.id, other.id));
+    }
+
+    // And it is a rolling day: once the oldest thread is more than 24 hours old, there is room again.
+    const [oldest] = await db
+      .select({ id: messageThreads.id })
+      .from(messageThreads)
+      .where(eq(messageThreads.leagueId, leagueId))
+      .limit(1);
+    assert(oldest);
+    await db
+      .update(messageThreads)
+      .set({ createdAt: new Date(Date.now() - 25 * 60 * 60_000) })
+      .where(eq(messageThreads.id, oldest.id));
+    expect((await post()).status).toBe(201);
+    await db.delete(profiles).where(eq(profiles.userId, member));
   });
 });

@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { MessageThread } from "./index";
 
+/**
+ * Most threads one player can start in one league in 24 hours. Every new thread emails and notifies the whole
+ * league, so this keeps one busy poster from using up the day's email budget. Replies aren't limited.
+ */
+export const THREAD_DAILY_LIMIT = 5;
+
 /** Threads per page of the message board, not counting pinned announcements (all of which come first). */
 export const THREAD_PAGE_SIZE = 30;
 

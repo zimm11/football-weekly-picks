@@ -272,6 +272,20 @@ test("upcoming picks take priority over unfinished past weeks and season changes
   await expect(page.getByRole("alertdialog")).toBeVisible();
   await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toHaveAttribute("aria-pressed", "true");
+
+  // The browser's back button (a phone's back gesture) asks too, and staying keeps the sheet as it was.
+  const picksUrl = page.url();
+  await page.evaluate("window.history.back()");
+  await expect(page.getByRole("alertdialog")).toContainText("Leave without saving?");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  expect(page.url()).toBe(picksUrl);
+  await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toHaveAttribute("aria-pressed", "true");
+  // So does signing out from the account menu.
+  await page.getByRole("button", { name: "Commish" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toHaveAttribute("aria-pressed", "true");
+
   await page.getByRole("button", { name: "Use season" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Leave", exact: true }).click();
   await expect(page.getByRole("heading", { name: "No week is open" })).toBeVisible();

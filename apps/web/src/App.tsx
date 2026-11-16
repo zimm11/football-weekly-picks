@@ -34,7 +34,7 @@ import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { useNow } from "./pages/useNow";
 import { WeekPage } from "./pages/WeekPage";
 import { disablePush, onPushSubscriptionChange, reconcilePushAccount } from "./push";
-import { Link, matchRoute, navigate, takeScrollPosition, usePath } from "./router";
+import { Link, matchRoute, navigate, requestLeave, takeScrollPosition, usePath } from "./router";
 
 /**
  * Scrolls to `top` once the page is tall enough to: after going back, the screen may still be loading.
@@ -319,14 +319,16 @@ function SignedIn({
     }
   }
 
-  const signOut = async () => {
-    try {
-      await disablePush();
-      await (await getSupabase()).auth.signOut();
-    } catch (err) {
-      notifyError(messageOf(err));
-    }
-  };
+  // Signing out and the name form both replace the screen, so unsaved work on it gets its say first.
+  const signOut = () =>
+    requestLeave(async () => {
+      try {
+        await disablePush();
+        await (await getSupabase()).auth.signOut();
+      } catch (err) {
+        notifyError(messageOf(err));
+      }
+    });
 
   async function savePassword(password: string) {
     const { error } = await (await getSupabase()).auth.updateUser({ password });
@@ -348,7 +350,9 @@ function SignedIn({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {me?.displayName && (
-          <DropdownMenuItem onSelect={() => setEditingName(true)}>Change your name</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => requestLeave(() => setEditingName(true))}>
+            Change your name
+          </DropdownMenuItem>
         )}
         {/* Notifications and the home-screen app live in Settings too, so they need no items of their own. */}
         <DropdownMenuItem onSelect={() => navigate("/account")}>Settings</DropdownMenuItem>

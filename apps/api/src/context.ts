@@ -40,8 +40,8 @@ export type AppDeps = {
   now?: () => Date;
   /** Notification email. Absent means the API queues and sends none. */
   email?: EmailDeps;
-  /** Membership caps; injected so tests can use small numbers. Defaults to the shared limits. */
-  limits?: { membersPerLeague: number; leaguesPerUser: number };
+  /** Membership and posting caps; injected so tests can use their own numbers. Defaults to the shared limits. */
+  limits?: { membersPerLeague: number; leaguesPerUser: number; threadsPerDay?: number };
   /** Web Push transport. Without one (no VAPID keys), nothing is queued or sent and devices can't subscribe. */
   push?: PushSender;
   /**

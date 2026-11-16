@@ -243,16 +243,6 @@ async function releaseSend(db: Db, now: Date) {
 }
 
 /** The provider says its quota is used up: spend the rest of today's budget so no drain asks again today. */
-async function exhaustToday(db: Db, limits: EmailDeps["limits"], now: Date) {
-  await db
-    .insert(emailUsage)
-    .values({ day: utcDay(now), sent: limits.daily })
-    .onConflictDoUpdate({
-      target: emailUsage.day,
-      set: { sent: sql`greatest(${emailUsage.sent}, ${limits.daily})` },
-    });
-}
-
 export type DrainResult = {
   sent: number;
   failed: number;
@@ -465,9 +455,11 @@ export async function drainOutbox(db: Db, email: EmailDeps, now: Date): Promise<
         logError("email_send", error);
         if (error instanceof EmailSendError && error.notSent) await releaseSend(db, now);
         if (error instanceof EmailSendError && error.quota) {
-          // The provider's own quota is spent (e.g. Auth's emails used the headroom). Stop asking until tomorrow.
+          // The provider's own quota is spent (e.g. Auth's emails used the headroom). Everything due now waits
+          // for tomorrow. Our own count stays what was really sent (the slot was given back above): closing the
+          // day by writing the daily limit into it would charge up to a full day against the monthly budget
+          // each time. An email that comes due later today asks the provider once more and waits in turn.
           outOfBudget = true;
-          await exhaustToday(db, email.limits, now);
           await deferToTomorrow(db, row.id, now, error.code);
           result.deferred++;
           continue;

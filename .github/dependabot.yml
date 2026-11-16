@@ -11,6 +11,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+  # Actions are pinned to full commit SHAs (a tag can be moved to different code; a SHA can't), with the
+  # version in a comment. Dependabot reads that comment and updates both.
   - package-ecosystem: github-actions
     directory: /
     schedule:

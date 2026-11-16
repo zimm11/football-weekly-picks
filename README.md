@@ -296,7 +296,8 @@ Active league members can react to any message or reply, once per emoji per play
 own selections are visible to members. Reactions do not bump threads or create unread indicators.
 Only admins can permanently delete threads, including all replies and reactions, using the thread’s **⋯** menu and a confirmation. Read markers and queued notifications are removed too.
 Only admins can pin or unpin threads as announcements; pinned threads appear first without changing
-unread status. The board loads the newest 30 threads, with **Load older threads** for the rest. Quoted replies can reference only messages in the same thread and show the original
+unread status. The board loads the newest 30 threads, with **Load older threads** for the rest. A player can start five
+threads a day in a league; replies aren't limited. Quoted replies can reference only messages in the same thread and show the original
 author and text with a link back. You can remove a quote before posting without losing your reply.
 
 ### Scoring
@@ -582,8 +583,8 @@ against runaway sending, well above what the leagues use; a month at the cap wou
 the included 3,000. Over budget, emails wait in the outbox until the next UTC day, and
 ones that expire meanwhile (a reminder after its game day's first kickoff) are skipped with
 `last_error = 'OVER_BUDGET'`. Cloudflare also sets a daily quota of its own that starts low on new accounts
-and grows with use; if it refuses a send with `E_DAILY_LIMIT_EXCEEDED`, the API stops for the rest of the
-day. The log shows `email_budget_reached` or the error code when either happens.
+and grows with use; if it refuses a send with `E_DAILY_LIMIT_EXCEEDED`, what is due waits for the next UTC
+day, and nothing is counted against the caps above. The log shows `email_budget_reached` or the error code when either happens.
 
 One-time setup:
 

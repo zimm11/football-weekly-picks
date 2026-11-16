@@ -22,8 +22,27 @@ export * from "./time";
 
 // ---------- Requests ----------
 
+/** Line breaks, tabs and the other control characters, plus Unicode's own line and paragraph separators. */
+const CONTROL_CHARACTERS = /[\p{Cc}\u2028\u2029]/u;
+
+/**
+ * A name or title: one line of text. These end up in email subjects, notification titles and table cells, so
+ * a line break in one is never wanted, and in a subject it would be a way to forge headers.
+ */
+const singleLine = (max: number, empty: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, empty)
+    .max(max)
+    .refine((value) => !CONTROL_CHARACTERS.test(value), "Use a single line of text.");
+
+/** Collapses anything `singleLine` would refuse into spaces, for text stored before that rule. */
+export const toSingleLine = (text: string) =>
+  text.replace(new RegExp(`${CONTROL_CHARACTERS.source}+`, "gu"), " ").trim();
+
 export const updateProfileSchema = z.object({
-  displayName: z.string().trim().min(1, "Enter a name").max(40),
+  displayName: singleLine(40, "Enter a name"),
 });
 
 /** Most active players a league can have, admins included. */
@@ -54,13 +73,13 @@ const timeZoneSchema = z
   });
 
 export const createLeagueSchema = z.object({
-  name: z.string().trim().min(1, "Enter a league name").max(80),
+  name: singleLine(80, "Enter a league name"),
   timeZone: timeZoneSchema.default("America/New_York"),
 });
 
 export const updateLeagueSchema = z
   .object({
-    name: z.string().trim().min(1, "Enter a league name").max(80).optional(),
+    name: singleLine(80, "Enter a league name").optional(),
     timeZone: timeZoneSchema.optional(),
   })
   .refine((v) => v.name !== undefined || v.timeZone !== undefined, "Nothing to change");
@@ -252,7 +271,7 @@ export function lineFor(side: Side, spread: number): number {
 }
 
 export const createThreadSchema = z.object({
-  title: z.string().trim().min(1, "Enter a title").max(120),
+  title: singleLine(120, "Enter a title"),
   body: z.string().trim().min(1, "Enter a message").max(5000),
 });
 export const replySchema = createThreadSchema.pick({ body: true }).extend({
