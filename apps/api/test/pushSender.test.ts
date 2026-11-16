@@ -1,7 +1,15 @@
+import type { Db } from "@picks/db";
 import { describe, expect, it, vi } from "vitest";
 import { loadEnv, loadWorkerEnv } from "../src/env";
-import { webPushSender } from "../src/pushSender";
-import { base64UrlDecode, base64UrlEncode, encryptPushPayload, vapidAuthorization } from "../src/webPush";
+import { runPushJobs } from "../src/pushQueue";
+import { type PushSender, permanentPushCode, webPushSender } from "../src/pushSender";
+import {
+  base64UrlDecode,
+  base64UrlEncode,
+  encryptPushPayload,
+  vapidAuthorization,
+  vapidKeysMatch,
+} from "../src/webPush";
 
 /** A P-256 key pair in Web Push's raw base64url form, as `pnpm vapid-keys` prints it. */
 async function rawKeyPair() {
@@ -156,6 +164,84 @@ describe("push transport", () => {
     expect(await (await sender(offline)).send(target, payload, 90)).toBe("retry");
     const broken = { ...target, p256dh: "not-a-key" };
     expect(await (await sender(offline)).send(broken, payload, 90)).toBe("failed");
+  });
+});
+
+describe("push configuration and failure logging", () => {
+  const subject = "mailto:test@example.com";
+  const now = new Date("2026-11-15T12:00:00Z");
+
+  it("accepts a matching VAPID pair and refuses a mismatched or malformed one", async () => {
+    const [a, b] = await Promise.all([rawKeyPair(), rawKeyPair()]);
+    expect(await vapidKeysMatch({ ...a, subject }, now)).toBe(true);
+    expect(await vapidKeysMatch({ publicKey: a.publicKey, privateKey: b.privateKey, subject }, now)).toBe(
+      false,
+    );
+    expect(await vapidKeysMatch({ publicKey: "BAAA", privateKey: a.privateKey, subject }, now)).toBe(false);
+  });
+
+  it("reports a mismatched pair once, by code, and stays not ready", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [a, b] = await Promise.all([rawKeyPair(), rawKeyPair()]);
+    const good = webPushSender({ ...a, subject }, vi.fn<typeof fetch>());
+    expect(await good.ready?.()).toBe(true);
+    expect(log).not.toHaveBeenCalled();
+    const bad = webPushSender(
+      { publicKey: a.publicKey, privateKey: b.privateKey, subject },
+      vi.fn<typeof fetch>(),
+    );
+    expect(await Promise.all([bad.ready?.(), bad.ready?.()])).toEqual([false, false]);
+    expect(await bad.ready?.()).toBe(false);
+    expect(log).toHaveBeenCalledOnce();
+    const record = JSON.parse(log.mock.calls[0]?.[0]);
+    expect(record).toMatchObject({ operation: "push_config", code: "VAPID_KEY_MISMATCH" });
+    expect(JSON.stringify(record)).not.toContain(b.privateKey);
+    log.mockRestore();
+  });
+
+  it("logs a fixed code for each class of permanent failure, never the endpoint or response", async () => {
+    expect([400, 401, 403, 413, 422].map(permanentPushCode)).toEqual([
+      "PUSH_BAD_REQUEST",
+      "PUSH_UNAUTHORIZED",
+      "PUSH_UNAUTHORIZED",
+      "PUSH_PAYLOAD_TOO_LARGE",
+      "PUSH_REJECTED",
+    ]);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const target = { endpoint: "https://web.push.apple.com/secret-device", ...(await subscription()) };
+    const keys = { ...(await rawKeyPair()), subject };
+    for (const status of [403, 503]) {
+      const fetch = vi.fn(async () => new Response("private-endpoint-response", { status }));
+      await webPushSender(keys, fetch).send(target, payload, 90);
+    }
+    // Only the permanent one is logged; the retry is counted by the job instead.
+    expect(log).toHaveBeenCalledOnce();
+    const line = String(log.mock.calls[0]?.[0]);
+    expect(JSON.parse(line)).toMatchObject({ operation: "push_delivery", code: "PUSH_UNAUTHORIZED" });
+    expect(line).not.toContain("secret-device");
+    expect(line).not.toContain("private-endpoint-response");
+    log.mockRestore();
+  });
+});
+
+describe("scheduled push job", () => {
+  it("still runs the send step when queueing reminders fails, and leaves the queue alone when not ready", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Every database call fails, so queueing does; a sender that isn't ready never touches the database.
+    const db = new Proxy({} as Db, {
+      get: () => () => {
+        throw Object.assign(new Error("down"), { code: "ECONNREFUSED" });
+      },
+    });
+    const send = vi.fn<PushSender["send"]>();
+    const result = await runPushJobs(db, { publicKey: "k", ready: async () => false, send }, new Date());
+    expect(result).toEqual({ queued: 0, sent: 0, skipped: 0, retrying: 0, failed: 0 });
+    expect(send).not.toHaveBeenCalled();
+    expect(JSON.parse(log.mock.calls[0]?.[0])).toMatchObject({
+      operation: "push_queue",
+      code: "ECONNREFUSED",
+    });
+    log.mockRestore();
   });
 });
 

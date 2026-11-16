@@ -235,6 +235,111 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
       0,
     );
   });
+  it("sends each notification exactly once when drains overlap", async () => {
+    // More devices than the per-account cap the route enforces, so insert them directly.
+    const devices = await db
+      .insert(pushSubscriptions)
+      .values(
+        Array.from({ length: 30 }, () => ({
+          userId: player,
+          endpoint: `https://web.push.apple.com/${randomUUID()}`,
+          ...keys,
+        })),
+      )
+      .returning({ id: pushSubscriptions.id });
+    await queueThreadPush(db, leagueId, threadId, author, at);
+    send.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return "sent";
+    });
+    await Promise.all([drainPush(db, push, at), drainPush(db, push, at), drainPush(db, push, at)]);
+    expect(send).toHaveBeenCalledTimes(devices.length);
+    expect(new Set(send.mock.calls.map(([device]) => device.endpoint)).size).toBe(devices.length);
+    const rows = await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    expect(rows.every((r) => r.status === "sent" && r.attempts === 1)).toBe(true);
+  });
+  it("retries a delivery whose sender died mid-send once its lease runs out", async () => {
+    await device();
+    await queueThreadPush(db, leagueId, threadId, author, at);
+    send.mockRejectedValueOnce(new Error("isolate cut off"));
+    await expect(drainPush(db, push, at)).rejects.toThrow();
+    // Leased: no other run takes it while the lease lasts...
+    await drainPush(db, push, new Date(at.getTime() + 60_000));
+    expect(send).toHaveBeenCalledOnce();
+    // ...and the next run after it sends it.
+    expect((await drainPush(db, push, new Date(at.getTime() + 5 * 60_000))).sent).toBe(1);
+    const [row] = await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    expect(row).toMatchObject({ status: "sent", attempts: 2 });
+  });
+  it("forgets a device after three permanent failures in a row", async () => {
+    const d = await device();
+    const more = await db
+      .insert(messageThreads)
+      .values([
+        { leagueId, authorId: author, title: "Two" },
+        { leagueId, authorId: author, title: "Three" },
+      ])
+      .returning({ id: messageThreads.id });
+    send.mockResolvedValue("failed");
+    for (const [i, id] of [threadId, ...more.map((t) => t.id)].entries()) {
+      // Queued a second apart, so "in a row" has an order.
+      await queueThreadPush(db, leagueId, id, author, new Date(at.getTime() + i * 1000));
+      await drainPush(db, push, new Date(at.getTime() + i * 1000));
+      const left = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, d.id));
+      expect(left).toHaveLength(i < 2 ? 1 : 0);
+    }
+  });
+  it("keeps a device whose failures are broken up by a success", async () => {
+    const d = await device();
+    const more = await db
+      .insert(messageThreads)
+      .values([
+        { leagueId, authorId: author, title: "Two" },
+        { leagueId, authorId: author, title: "Three" },
+      ])
+      .returning({ id: messageThreads.id });
+    send.mockResolvedValueOnce("failed").mockResolvedValueOnce("sent").mockResolvedValueOnce("failed");
+    for (const [i, id] of [threadId, ...more.map((t) => t.id)].entries()) {
+      await queueThreadPush(db, leagueId, id, author, new Date(at.getTime() + i * 1000));
+      await drainPush(db, push, new Date(at.getTime() + i * 1000));
+    }
+    expect(await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, d.id))).toHaveLength(1);
+  });
+  it("leaves everything queued while the sender isn't ready (mismatched VAPID keys)", async () => {
+    await device();
+    await queueThreadPush(db, leagueId, threadId, author, at);
+    expect(await drainPush(db, { ...push, ready: async () => false }, at)).toEqual({
+      sent: 0,
+      skipped: 0,
+      retrying: 0,
+      failed: 0,
+    });
+    expect(send).not.toHaveBeenCalled();
+    const [row] = await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    expect(row).toMatchObject({ status: "pending", attempts: 0 });
+  });
+  it("drops a queued reminder for a player who has left the league", async () => {
+    await device();
+    expect(await queuePickPush(db, at)).toBe(1);
+    await db
+      .update(leagueMembers)
+      .set({ removedAt: at })
+      .where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, player)));
+    expect((await drainPush(db, push, at)).skipped).toBe(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("queues one reminder per device in a single pass, and not for a game with both scores in", async () => {
+    await device();
+    await device();
+    expect(await queuePickPush(db, at)).toBe(2);
+    await db.delete(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    // Only one score typed so far: the game hasn't been played, so it still needs a pick.
+    await db.update(games).set({ homeScore: 3 }).where(eq(games.id, gameId));
+    expect(await queuePickPush(db, at)).toBe(2);
+    await db.delete(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    await db.update(games).set({ homeScore: 3, awayScore: 0 }).where(eq(games.id, gameId));
+    expect(await queuePickPush(db, at)).toBe(0);
+  });
   it("stops permanent failures and honors preference changes on pending notifications", async () => {
     const d = await device();
     await queueThreadPush(db, leagueId, threadId, author, at);
