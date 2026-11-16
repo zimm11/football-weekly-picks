@@ -12,7 +12,9 @@ export const WEEK_PHASE_LABEL = {
 export type WeekPhase = keyof typeof WEEK_PHASE_LABEL;
 
 type PhaseGame = { kickoff: Date | string; homeScore: number | null; awayScore: number | null };
-const hasResult = (game: PhaseGame) => game.homeScore !== null && game.awayScore !== null;
+/** A game counts as played only once both scores are in; until then it locks only at kickoff. */
+export const hasResult = (game: { homeScore: number | null; awayScore: number | null }) =>
+  game.homeScore !== null && game.awayScore !== null;
 
 /** Display phases never reveal picks or finalize a week automatically. */
 export function weekPhase(status: WeekStatus, games: PhaseGame[], now: Date): WeekPhase {
