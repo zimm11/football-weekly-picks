@@ -5,6 +5,7 @@ import {
   PaperPlaneRightIcon,
   PlusIcon,
   PushPinIcon,
+  TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import type { MessageReaction, MessageThread, MessageQuote as Quote, ThreadDetail } from "@picks/shared";
@@ -12,7 +13,7 @@ import { cn } from "cn";
 import { useEffect, useRef, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
 import { Avatar } from "../components/Avatar";
-import { useUnsavedGuard } from "../components/ConfirmDialog";
+import { useConfirm, useUnsavedGuard } from "../components/ConfirmDialog";
 import { TAB_BAR_OFFSET } from "../components/LeagueNav";
 import { MessageQuote } from "../components/MessageQuote";
 import { MessageReactions } from "../components/MessageReactions";
@@ -37,6 +38,7 @@ export function MessageComposer({
   initialTitle = "",
   initialBody = "",
   reply = false,
+  disabled = false,
   quote,
   onCancelQuote,
   onSubmit,
@@ -44,13 +46,15 @@ export function MessageComposer({
   initialTitle?: string;
   initialBody?: string;
   reply?: boolean;
+  disabled?: boolean;
   quote?: Quote;
   onCancelQuote?: () => void;
   onSubmit: (value: { title: string; body: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initialBody);
-  const [busy, setBusy] = useState(false);
+  const [submittingMessage, setSubmittingMessage] = useState(false);
+  const busy = submittingMessage || disabled;
   const [error, setError] = useState("");
   const replyInput = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -66,7 +70,7 @@ export function MessageComposer({
     box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
   }, [reply, body]);
   const submitting = async () => {
-    setBusy(true);
+    setSubmittingMessage(true);
     setError("");
     try {
       await onSubmit({ title, body });
@@ -75,7 +79,7 @@ export function MessageComposer({
     } catch (err) {
       setError(messageOf(err));
     } finally {
-      setBusy(false);
+      setSubmittingMessage(false);
     }
   };
   if (reply) {
@@ -125,7 +129,7 @@ export function MessageComposer({
             disabled={busy}
           />
           <Button
-            aria-label={busy ? "Posting…" : "Post reply"}
+            aria-label={submittingMessage ? "Posting…" : "Post reply"}
             size="icon"
             className="rounded-full"
             disabled={busy || !body.trim()}
@@ -167,7 +171,9 @@ export function MessageComposer({
         />
       </Field>
       {error && <Notice kind="alert">{error}</Notice>}
-      <Button disabled={busy || !body.trim() || !title.trim()}>{busy ? "Posting…" : "Create thread"}</Button>
+      <Button disabled={busy || !body.trim() || !title.trim()}>
+        {submittingMessage ? "Posting…" : "Create thread"}
+      </Button>
     </form>
   );
 }
@@ -269,11 +275,18 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
   const now = useNow();
   const thread = useLoad(() => unwrap<ThreadDetail>(endpoint.$get({ param })), threadId);
   const [pinning, setPinning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const [quote, setQuote] = useState<Quote>();
   const [replyBusy, setReplyBusy] = useState(false);
   const [readError, setReadError] = useState("");
   const version = thread.data?.version;
   const { setData } = thread;
+  // Unmount the reply composer first so its unsaved guard clears before leaving a deleted thread.
+  useEffect(() => {
+    if (deleted) navigate(`/leagues/${leagueId}/messages`);
+  }, [deleted, leagueId]);
   useEffect(() => {
     if (!version) return;
     const markRead = () => {
@@ -328,8 +341,32 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
     }
   }
 
+  async function deleteThread() {
+    if (!thread.data || deleting || replyBusy) return;
+    if (
+      !(await confirm({
+        title: `Delete “${thread.data.title}”?`,
+        detail:
+          "This permanently deletes the thread, all replies and reactions, and any unsent reply. This can't be undone.",
+        action: "Delete thread",
+      }))
+    )
+      return;
+    setDeleting(true);
+    try {
+      await unwrap(endpoint.$delete({ param }));
+      setDeleted(true);
+      notifyDone("Thread deleted.");
+      window.dispatchEvent(new Event("messages-changed"));
+    } catch (err) {
+      notifyError(messageOf(err));
+      setDeleting(false);
+    }
+  }
+
   return (
     <section className="grid gap-3">
+      {confirmDialog}
       <Link
         className="flex min-h-11 w-fit items-center gap-1 text-sm font-medium text-muted-foreground no-underline hover:text-foreground"
         to={`/leagues/${leagueId}/messages`}
@@ -351,24 +388,32 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               )}
               <h3 className="text-2xl break-words">{thread.data.title}</h3>
             </div>
-            {thread.data.canPin && (
+            {(thread.data.canPin || thread.data.canDelete) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    aria-label="Thread options"
+                    size={deleting ? "default" : "icon"}
+                    aria-label={deleting ? "Deleting…" : `Options for ${thread.data.title}`}
                     className="-mt-1 rounded-full text-muted-foreground hover:text-foreground"
-                    disabled={pinning}
+                    disabled={pinning || deleting || replyBusy}
                   >
-                    <DotsThreeIcon aria-hidden weight="bold" className="size-6" />
+                    {deleting ? "Deleting…" : <DotsThreeIcon aria-hidden weight="bold" className="size-6" />}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={togglePin}>
-                    <PushPinIcon aria-hidden />
-                    {thread.data.pinned ? "Unpin announcement" : "Pin announcement"}
-                  </DropdownMenuItem>
+                  {thread.data.canPin && (
+                    <DropdownMenuItem onSelect={togglePin}>
+                      <PushPinIcon aria-hidden />
+                      {thread.data.pinned ? "Unpin announcement" : "Pin announcement"}
+                    </DropdownMenuItem>
+                  )}
+                  {thread.data.canDelete && (
+                    <DropdownMenuItem variant="destructive" onSelect={deleteThread}>
+                      <TrashIcon aria-hidden />
+                      Delete thread
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -415,7 +460,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
                   variant="ghost"
                   className="ml-auto gap-1.5 px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
                   aria-label={`Quote message ${p.position} by ${p.authorName}`}
-                  disabled={replyBusy}
+                  disabled={replyBusy || deleting}
                   onClick={() => setQuote({ id: p.id, authorName: p.authorName, body: p.body })}
                 >
                   <ArrowBendUpLeftIcon aria-hidden className="size-4" />
@@ -431,25 +476,28 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
               TAB_BAR_OFFSET,
             )}
           >
-            <MessageComposer
-              reply
-              quote={quote}
-              onCancelQuote={() => setQuote(undefined)}
-              onSubmit={async (json) => {
-                setReplyBusy(true);
-                try {
-                  await unwrap(
-                    endpoint.replies.$post({ param, json: { body: json.body, quotedPostId: quote?.id } }),
-                  );
-                  setQuote(undefined);
-                  notifyDone("Reply posted.");
-                  thread.reload();
-                  window.dispatchEvent(new Event("messages-changed"));
-                } finally {
-                  setReplyBusy(false);
-                }
-              }}
-            />
+            {!deleted && (
+              <MessageComposer
+                reply
+                disabled={deleting}
+                quote={quote}
+                onCancelQuote={() => setQuote(undefined)}
+                onSubmit={async (json) => {
+                  setReplyBusy(true);
+                  try {
+                    await unwrap(
+                      endpoint.replies.$post({ param, json: { body: json.body, quotedPostId: quote?.id } }),
+                    );
+                    setQuote(undefined);
+                    notifyDone("Reply posted.");
+                    thread.reload();
+                    window.dispatchEvent(new Event("messages-changed"));
+                  } finally {
+                    setReplyBusy(false);
+                  }
+                }}
+              />
+            )}
           </div>
         </>
       ) : (

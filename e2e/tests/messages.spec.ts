@@ -92,7 +92,7 @@ test("admins pin announcements and members quote replies", async ({ page, browse
   await page.getByLabel("Thread title").fill("Weekly reminder");
   await page.getByLabel("Message", { exact: true }).fill("Remember your Monday POW.");
   await page.getByRole("button", { name: "Create thread", exact: true }).click();
-  await page.getByRole("button", { name: "Thread options" }).click();
+  await page.getByRole("button", { name: "Options for Weekly reminder" }).click();
   await page.getByRole("menuitem", { name: "Pin announcement" }).click();
   await expect(page.getByText("Pinned announcement")).toBeVisible();
   await page.getByRole("link", { name: "Message board" }).click();
@@ -116,7 +116,7 @@ test("admins pin announcements and members quote replies", async ({ page, browse
     await player.getByRole("link", { name: /Messages/ }).click();
     await player.getByRole("link", { name: /Weekly reminder/ }).click();
     await expect(player.getByText("Pinned announcement", { exact: true })).toBeVisible();
-    await expect(player.getByRole("button", { name: "Thread options" })).toHaveCount(0);
+    await expect(player.getByRole("button", { name: "Options for Weekly reminder" })).toHaveCount(0);
     await player.getByRole("button", { name: "Quote message 1 by Commish", exact: true }).click();
     const preview = player.getByRole("region", { name: "Reply quote preview" });
     await expect(preview).toContainText("Remember your Monday POW.");
@@ -141,9 +141,66 @@ test("admins pin announcements and members quote replies", async ({ page, browse
     await context.close();
   }
   await page.getByRole("link", { name: /Weekly reminder/ }).click();
-  await page.getByRole("button", { name: "Thread options" }).click();
+  await page.getByRole("button", { name: "Options for Weekly reminder" }).click();
   await page.getByRole("menuitem", { name: "Unpin announcement" }).click();
   await expect(page.getByText("Pinned announcement")).toHaveCount(0);
   await page.reload();
   await expect(page.getByText("Pinned announcement", { exact: true })).toHaveCount(0);
+});
+
+test("admins confirm thread deletion, keep drafts on failure, and return to the board", async ({
+  page,
+  signedIn,
+}) => {
+  await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
+  await page.getByLabel("League name").fill("Moderated league");
+  await page.getByRole("button", { name: "Create league" }).click();
+  await page.getByRole("link", { name: "Messages", exact: true }).click();
+  await page.getByRole("link", { name: "New thread" }).click();
+  await page.getByLabel("Thread title").fill("Old discussion");
+  await page.getByLabel("Message", { exact: true }).fill("An old conversation.");
+  await page.getByRole("button", { name: "Create thread", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Old discussion" })).toBeVisible();
+  const threadUrl = page.url();
+  const reply = page.getByRole("textbox", { name: "Reply", exact: true });
+  await reply.fill("A posted reply.");
+  await page.getByRole("button", { name: "Post reply", exact: true }).click();
+  await expect(reply).toHaveValue("");
+  await expect(page.getByText("A posted reply.", { exact: true })).toBeVisible();
+  await reply.fill("An unsent reply.");
+  const options = page.getByRole("button", { name: "Options for Old discussion", exact: true });
+  const dialog = page.getByRole("alertdialog");
+  await options.click();
+  await page.getByRole("menuitem", { name: "Delete thread", exact: true }).click();
+  await expect(dialog).toContainText("This can't be undone.");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(reply).toHaveValue("An unsent reply.");
+  await expect(page).toHaveURL(threadUrl);
+
+  const endpoint = `**/api${new URL(threadUrl).pathname}`;
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 503, json: { error: "Please try deleting again." } });
+    } else await route.continue();
+  });
+  await options.click();
+  await page.getByRole("menuitem", { name: "Delete thread", exact: true }).click();
+  await dialog.getByRole("button", { name: "Delete thread", exact: true }).click();
+  await expect(page.getByText("Please try deleting again.", { exact: true })).toBeVisible();
+  await expect(reply).toHaveValue("An unsent reply.");
+  await expect(options).toBeEnabled();
+  await page.unroute(endpoint);
+
+  await options.click();
+  await page.getByRole("menuitem", { name: "Delete thread", exact: true }).click();
+  await dialog.getByRole("button", { name: "Delete thread", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Message board", exact: true })).toBeVisible();
+  await expect(page.getByText("Thread deleted.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Old discussion/ })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("No threads yet. Start the conversation.")).toBeVisible();
+  await page.goto(threadUrl);
+  await expect(page.getByRole("alert")).toContainText("Thread not found.");
+  await expect(page.getByRole("textbox", { name: "Reply", exact: true })).toHaveCount(0);
 });
