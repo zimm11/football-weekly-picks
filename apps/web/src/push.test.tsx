@@ -30,6 +30,17 @@ describe("shared-browser push subscriptions", () => {
     await disablePush();
     expect(lookup).not.toHaveBeenCalled();
   });
+  it("never touches the service worker API in an iPhone browser tab, where push can't work", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+    );
+    const getRegistration = vi.spyOn(navigator.serviceWorker, "getRegistration");
+    const lookup = vi.fn(async () => ({ device: null }));
+    await reconcilePushAccount(lookup);
+    await disablePush();
+    expect(getRegistration).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+  });
   it("does not silently ignore a failed unsubscribe during an account switch", async () => {
     const { unsubscribe } = browserSubscription();
     unsubscribe.mockResolvedValue(false);

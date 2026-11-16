@@ -46,12 +46,13 @@ export async function savePush(subscription: PushSubscription, preferences: Push
 }
 
 /**
- * This browser's push subscription, if it has one. Some browsers expose service workers but refuse to use
- * them (private windows, blocked site data); they can't hold a subscription, so that reads as none rather
- * than as an error that would block signing in or out.
+ * This browser's push subscription, if it has one. Where push can't work (an iPhone browser tab, a browser
+ * without push) there can't be one, so the service worker API isn't touched at all: every sign-in and sign-out
+ * asks. Some browsers expose service workers but refuse to use them (private windows, blocked site data); that
+ * reads as none too, rather than as an error that would block signing in or out.
  */
 async function currentSubscription() {
-  if (!("serviceWorker" in navigator)) return null;
+  if (pushSupport() !== "supported") return null;
   try {
     const registration = await navigator.serviceWorker.getRegistration("/");
     return (await registration?.pushManager?.getSubscription()) ?? null;
