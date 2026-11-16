@@ -63,6 +63,10 @@ export function HomeScreenInstructions({ platform = "other" }: { platform?: Home
         time. An internet connection is required.
       </p>
       <p className="m-0 text-sm text-muted-foreground">
+        Want pick reminders on your phone? In the app, open Notifications from the account menu and tap Enable
+        notifications.
+      </p>
+      <p className="m-0 text-sm text-muted-foreground">
         Can't find the option? If you opened a link inside another app, open this site in Safari or Chrome
         first.
         {platform === "other" && " On a computer, bookmark the site or use your browser's install option."}
