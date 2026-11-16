@@ -210,7 +210,8 @@ This local setting is not applied to production.
    weeks open with **Manage week**. With **Import games and spreads from ESPN** checked, creation
    fetches the slate from ESPN and opens the draft's management screen. Imports need internet access.
 3. Review kickoffs, spreads, point values, and the tiebreaker game. Add or remove games as needed and
-   press **Save changes** after edits. A draft is visible only to admins. Every game needs a spread
+   press **Save changes** after edits. Kickoffs you type are in the league's time zone, and a game whose
+   kickoff moves takes the new slot's points unless you set them by hand. A draft is visible only to admins. Every game needs a spread
    before you can press **Open week for picks**. After the week opens, the app offers to post a league
    message announcing it; you can edit the draft or skip it.
 4. Follow **Make your own picks**, or open **Picks**. Select teams, mark one POW, enter a guess for the
@@ -290,7 +291,7 @@ and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the week
 Active league members can react to any message or reply, once per emoji per player. Counts and your
 own selections are visible to members. Reactions do not bump threads or create unread indicators.
 Only admins can pin or unpin threads as announcements; pinned threads appear first without changing
-unread status. Quoted replies can reference only messages in the same thread and show the original
+unread status. The board loads the newest 30 threads, with **Load older threads** for the rest. Quoted replies can reference only messages in the same thread and show the original
 author and text with a link back. You can remove a quote before posting without losing your reply.
 
 ### Scoring
@@ -323,7 +324,7 @@ holding it kicks off. After that it stays on that game for the week.
   or removed.
 - **At kickoff**, the game locks: no new picks or changes are accepted, and it can no longer become the
   POW. A POW already on it cannot be moved or removed. A recorded result locks the game regardless of
-  the clock.
+  the clock. A change the player hadn't saved on a game that locks is undone, and the save bar says so.
 - **The tiebreaker guess** follows its game's lock: it can be entered or changed until kickoff. A saved
   guess cannot be removed.
 - **The tiebreaker game** is the admin's explicit choice, otherwise the last Monday game, otherwise the
@@ -349,8 +350,9 @@ Each finalized week names its winner and hands out these, all worked out from th
 The stored week lifecycle is `draft → open → final`; only an admin finalizes a week. The interface derives
 additional phases such as **Games underway** and **Awaiting finalization** from kickoffs and scores.
 Picks stay private until finalization, including from admins. Removing a member, or a member leaving,
-preserves their history; weekly participation uses membership dates rather than applying today's member
-list to past weeks.
+preserves their history. Finalizing a week records who it is scored for (everyone in the league at its last
+kickoff, plus anyone who picked), so leaving or rejoining later never changes a closed week; finalizing again
+after a reopen only adds players. Weeks closed before that record existed use membership dates instead.
 
 ## Architecture and repository layout
 

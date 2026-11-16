@@ -136,7 +136,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               ],
               [
                 "At kickoff",
-                "No new picks or changes on that game. A game also locks as soon as the admin records a result, regardless of the time.",
+                "No new picks or changes on that game. A game also locks as soon as the admin records a result, regardless of the time. A change you hadn't saved yet is undone, and the save bar tells you which.",
               ],
               [
                 "Once your POW's game kicks off",
@@ -230,7 +230,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Talk it over in Messages",
                 detail:
-                  "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can pin a thread as an announcement to keep it at the top of the board. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
+                  "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
               },
               {
                 title: "Get reminders",
@@ -240,7 +240,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Manage your account",
                 detail:
-                  "Tap your name in the header to change your name or password, or to sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings.",
+                  "Tap your name in the header to change your name or password, or to sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them.",
               },
             ]}
           />
@@ -280,7 +280,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Review the slate, then open picks",
                 detail:
-                  "Check kickoffs, spreads, and point values. Add or remove games, choose the tiebreaker game if needed, and press Save changes after edits. When the slate is ready, press Open week for picks. Players can now find it on their Picks tab, and you're offered a league message to announce it.",
+                  "Check kickoffs, spreads, and point values. Kickoffs you type are in the league's time zone, and a game moved to a new slot takes that slot's points unless you set them yourself. Add or remove games, choose the tiebreaker game if needed, and press Save changes after edits. When the slate is ready, press Open week for picks. Players can now find it on their Picks tab, and you're offered a league message to announce it.",
               },
               {
                 title: "Make your picks and check submissions",
