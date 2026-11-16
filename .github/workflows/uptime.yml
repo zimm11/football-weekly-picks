@@ -1,0 +1,64 @@
+name: Uptime
+
+# Every 15 minutes, check that the live API answers and reaches the database (scripts/check-live.mjs, which
+# retries for a minute so one blip doesn't alert). A failed scheduled or manual run opens an issue labeled
+# `uptime` (once per outage), which GitHub emails to watchers; the next passing run closes it.
+# Cloudflare Notifications cover Worker errors, DDoS and certificates; the $10 budget alert covers spend
+# (README, "Monitoring and recovery"). GitHub pauses scheduled workflows after 60 days without repository
+# activity; re-enable this one from the Actions tab if that happens.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  ALERT_LABEL: uptime
+  APP_URL: ${{ vars.APP_URL }}
+  GH_REPO: ${{ github.repository }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts
+      - name: Check the live API
+        run: node scripts/check-live.mjs
+
+      - name: Open or update the alert issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body="The live health check at \`$APP_URL/api/health\` failed: $RUN_URL
+
+          Check Workers Logs and the Cloudflare dashboard (an error 1103 means the Workers spend limit was reached). README, \"Monitoring and recovery\", has the steps."
+          open=$(gh issue list --label "$ALERT_LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            echo "Issue #$open is already open; not commenting every 15 minutes."
+          else
+            gh label create "$ALERT_LABEL" --color B60205 --force --description "The live app failed its health check"
+            gh issue create --title "POW Pick'em is down" --label "$ALERT_LABEL" --body "$body"
+          fi
+
+      - name: Close the alert issue once the app is healthy again
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label "$ALERT_LABEL" --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "The live health check passes again: $RUN_URL"
+          done

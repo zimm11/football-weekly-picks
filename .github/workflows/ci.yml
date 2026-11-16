@@ -11,10 +11,7 @@ concurrency:
 permissions:
   contents: read
 
-# Browser coverage restored after the Ubuntu mirror DNS outage was resolved.
-# https://github.com/actions/runner-images/issues/15296
 env:
-  SKIP_BROWSER_TESTS: "false"
   WRANGLER_SEND_METRICS: "false"
 
 jobs:
@@ -34,7 +31,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 26
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -60,7 +57,6 @@ jobs:
           fi
 
       - name: Install Chromium for component tests
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm --filter @picks/web exec playwright install --with-deps chromium
 
       - name: Unit + script tests
@@ -69,12 +65,7 @@ jobs:
           node --test scripts/*.test.mjs
 
       - name: Component tests
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm --filter @picks/web test
-
-      - name: Browser coverage temporarily suspended
-        if: ${{ env.SKIP_BROWSER_TESTS == 'true' }}
-        run: echo "::warning::Component and E2E browser tests are temporarily skipped during the Ubuntu mirror DNS outage."
 
       # The web build becomes the Worker's static assets, so it goes first.
       - name: Build web app and bundle the Worker
@@ -89,7 +80,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 26
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -114,18 +105,16 @@ jobs:
         run: pnpm --filter @picks/api test
 
       - name: Install Playwright browsers
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm playwright:install
 
       # Against the production build in the Workers runtime (`pnpm worker:dev`), not the Node dev servers.
       - name: E2E tests
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm test:e2e
         env:
           E2E_TARGET: worker
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() && env.SKIP_BROWSER_TESTS != 'true' }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

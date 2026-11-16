@@ -1,10 +1,15 @@
 // The whole app is one Cloudflare Worker: Static Assets serve the React SPA (apps/web/dist) from the edge,
 // and /api/* runs the Hono API in src/worker.ts. One origin, so no proxy and no CORS.
-// Deploys go through .github/workflows/deploy.yml; see README "Deploying".
+// Deploys go through .github/workflows/deploy.yml; see README "Deployment".
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pow-pickem",
   "main": "src/worker.ts",
+  // Only the custom domain www.pow-pickem.com (attached in the dashboard) serves the app. The workers.dev and
+  // per-version preview URLs would skip the zone's rate-limit rule and keep old versions reachable, so both are off.
+  // There are deliberately no `routes` here: Wrangler would then take over the dashboard's custom domain.
+  "workers_dev": false,
+  "preview_urls": false,
   "compatibility_date": "2026-11-15",
   // postgres.js, node:crypto, node:async_hooks and Buffer.
   "compatibility_flags": ["nodejs_compat"],
@@ -25,7 +30,9 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      // `wrangler hyperdrive create` (README, "Deploying"). Not a secret: it only works inside this account.
+      // `wrangler hyperdrive create` (README, "Initial configuration"), with query caching off: the API reads its own
+      // writes and checks membership on every request, so a cached row would be stale. Not a secret: it only works
+      // inside this account.
       "id": "1420fcc7f52241b7a4839d1a2d6e28c0"
     }
   ],

@@ -6,3 +6,5 @@ allowBuilds:
   esbuild: true
   # Wrangler's local runtime: its install script checks that the platform binary matches.
   workerd: true
+# Refuse to install on a Node older than package.json `engines` allows (CI and .nvmrc use 26).
+engineStrict: true

@@ -34,8 +34,12 @@ const vars = [
   "OPERATOR_USER_IDS",
   "UNSUBSCRIBE_SECRET",
   "INBOX_URL",
+  "EMAIL_FROM",
   "EMAIL_DAILY_LIMIT",
   "EMAIL_MONTHLY_LIMIT",
+  "VAPID_PUBLIC_KEY",
+  "VAPID_PRIVATE_KEY",
+  "VAPID_SUBJECT",
 ]
   .filter((key) => process.env[key] !== undefined)
   .map((key) => `${key}=${JSON.stringify(process.env[key])}`);

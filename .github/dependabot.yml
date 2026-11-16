@@ -1,0 +1,21 @@
+# Dependency update PRs. Security updates are on in the repo settings too, so a vulnerable package gets a PR
+# as soon as an advisory lands; these scheduled runs keep everything else current in a few grouped PRs.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    groups:
+      actions:
+        patterns: ["*"]
