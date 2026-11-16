@@ -1,4 +1,3 @@
-import { zValidator } from "@hono/zod-validator";
 import { feedback, leagueMembers, leagues, messagePosts, picks, profiles, seasons, weeks } from "@picks/db";
 import {
   FEEDBACK_DAILY_LIMIT,
@@ -19,16 +18,14 @@ import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
-import { type AppDeps, body, fail, isOperator } from "./context";
+import { type AppDeps, body, fail, isOperator, param, query } from "./context";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How many weeks the week-by-week table goes back, the current one included. */
 const WEEKS_SHOWN = 8;
 const RECENT_ROWS = 25;
 
-const feedbackParam = zValidator("param", z.object({ feedbackId: z.uuid() }), (result, c) => {
-  if (!result.success) return c.json({ error: "Not found" }, 404);
-});
+const feedbackParam = param(z.object({ feedbackId: z.uuid() }));
 
 /** Monday 00:00 UTC of the week `date` falls in, matching Postgres `date_trunc('week', ...)`. */
 function weekStart(date: Date): Date {
@@ -262,7 +259,7 @@ export function operatorRoutes(deps: AppDeps) {
       return c.json({ ok: true }, 201);
     })
     .get("/operator/overview", auth, operator, async (c) => c.json(await overview()))
-    .get("/operator/feedback", auth, operator, zValidator("query", feedbackQuerySchema), async (c) =>
+    .get("/operator/feedback", auth, operator, query(feedbackQuerySchema), async (c) =>
       c.json(await listFeedback(c.req.valid("query").before)),
     )
     .put(

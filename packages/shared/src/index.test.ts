@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { createGameSchema, createLeagueSchema, createWeekSchema, formatLine, lineFor } from "./index";
+import {
+  canonicalTimeZone,
+  createGameSchema,
+  createLeagueSchema,
+  createWeekSchema,
+  formatLine,
+  lineFor,
+  MESSAGE_REACTIONS,
+  messageReactionSchema,
+  updateLeagueSchema,
+} from "./index";
 
 describe("request schemas", () => {
   it("trims the league name and defaults the time zone to Eastern", () => {
@@ -11,6 +21,32 @@ describe("request schemas", () => {
 
   it("rejects an unknown time zone", () => {
     expect(createLeagueSchema.safeParse({ name: "x", timeZone: "Mars/Olympus" }).success).toBe(false);
+  });
+
+  it("stores time zones in their canonical spelling", () => {
+    expect(createLeagueSchema.parse({ name: "x", timeZone: "america/new_york" }).timeZone).toBe(
+      "America/New_York",
+    );
+    expect(updateLeagueSchema.parse({ timeZone: "US/Eastern" }).timeZone).toBe("America/New_York");
+  });
+
+  it("accepts only geographic Area/Location zones and UTC", () => {
+    expect(canonicalTimeZone("America/Indiana/Indianapolis")).not.toBeNull();
+    expect(canonicalTimeZone("Pacific/Honolulu")).toBe("Pacific/Honolulu");
+    expect(canonicalTimeZone("UTC")).toBe("UTC");
+    for (const timeZone of ["EST5EDT", "+05:30", "-0800", "Etc/GMT+5", "Mars/Olympus", ""]) {
+      expect(canonicalTimeZone(timeZone), timeZone).toBeNull();
+    }
+    expect(canonicalTimeZone(`America/${"X".repeat(60)}`)).toBeNull();
+    expect(createLeagueSchema.safeParse({ name: "x", timeZone: "+05:30" }).success).toBe(false);
+    expect(updateLeagueSchema.safeParse({ timeZone: "a".repeat(65) }).success).toBe(false);
+  });
+
+  it("accepts exactly the offered reactions", () => {
+    for (const { emoji } of MESSAGE_REACTIONS) {
+      expect(messageReactionSchema.safeParse({ emoji, active: true }).success).toBe(true);
+    }
+    expect(messageReactionSchema.safeParse({ emoji: "💩", active: true }).success).toBe(false);
   });
 
   it("allows only regular-season weeks", () => {

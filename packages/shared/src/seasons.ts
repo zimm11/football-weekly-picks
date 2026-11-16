@@ -1,5 +1,5 @@
 import type { WeekStatus, WeekSummary } from "./index";
-import { isLocked } from "./rules";
+import { hasResult, isLocked } from "./rules";
 import { NFL_TIME_ZONE, zonedParts } from "./time";
 
 export const WEEK_PHASE_LABEL = {
@@ -12,9 +12,6 @@ export const WEEK_PHASE_LABEL = {
 export type WeekPhase = keyof typeof WEEK_PHASE_LABEL;
 
 type PhaseGame = { kickoff: Date | string; homeScore: number | null; awayScore: number | null };
-/** A game counts as played only once both scores are in; until then it locks only at kickoff. */
-export const hasResult = (game: { homeScore: number | null; awayScore: number | null }) =>
-  game.homeScore !== null && game.awayScore !== null;
 
 /** Display phases never reveal picks or finalize a week automatically. */
 export function weekPhase(status: WeekStatus, games: PhaseGame[], now: Date): WeekPhase {
@@ -76,7 +73,6 @@ export function currentWeek(weeks: WeekSummary[]): WeekSummary | undefined {
     .sort((a, b) => a.year - b.year || a.number - b.number);
   return (
     open.find((week) => week.myMissingPickCount > 0) ??
-    open.find((week) => week.myAvailablePickCount > 0) ??
     open.find((week) => week.availablePickCount > 0) ??
     open.at(-1)
   );

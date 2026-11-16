@@ -1,4 +1,12 @@
-import { createDb, emailOutbox, emailUsage, leagueMembers, leagues, profiles } from "@picks/db";
+import {
+  createDb,
+  emailOutbox,
+  emailUsage,
+  leagueMembers,
+  leagues,
+  profiles,
+  weekParticipants,
+} from "@picks/db";
 import type {
   GameInsights,
   LeagueDetail,
@@ -47,6 +55,54 @@ describe("without a database", () => {
   it("reports the database as down when it is unreachable", async () => {
     const res = await app.request("/api/health");
     expect(res.status).toBe(503);
+  });
+
+  it("sends security headers and no-store on every response, errors included", async () => {
+    for (const res of [
+      await app.request("/api/config"),
+      await app.request("/api/me"),
+      await app.request("/api/nothing-here"),
+    ]) {
+      expect(res.headers.get("Strict-Transport-Security")).toBe("max-age=15552000");
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+      expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+      expect(res.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+    }
+  });
+
+  it("answers unknown paths with a JSON 404", async () => {
+    const res = await app.request("/api/nothing-here");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("refuses an oversized body before reading it", async () => {
+    const res = await app.request("/api/me", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${ADMIN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName: "x".repeat(70 * 1024) }),
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "That request is too large." });
+  });
+
+  it("answers bad params and queries in the API's { error } shape", async () => {
+    const get = (path: string) =>
+      app.request(`/api${path}`, { headers: { Authorization: `Bearer ${ADMIN}` } });
+    const badMember = await app.request(`/api/leagues/${ADMIN}/members/not-a-uuid`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${ADMIN}` },
+    });
+    expect(badMember.status).toBe(404);
+    expect(await badMember.json()).toEqual({ error: "Not found" });
+    const badYear = await get(`/leagues/${ADMIN}/standings?year=soon`);
+    expect(badYear.status).toBe(400);
+    expect(await badYear.json()).toEqual({ error: "Choose a season year" });
+    const badThread = await get(`/leagues/${ADMIN}/messages/nope`);
+    expect(badThread.status).toBe(404);
+    expect(await badThread.json()).toEqual({ error: "Not found" });
   });
 });
 
@@ -215,6 +271,11 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     });
     await call(PLAYER, "PUT", "/me", { displayName: "Pat" });
     expect((await call(ADMIN, "PUT", "/me", { displayName: "" })).status).toBe(400);
+
+    // A name comes before anything else, so nobody shows up in a league as "Player".
+    const nameless = await call(OUTSIDER, "POST", "/leagues", { name: "No name yet" });
+    expect(nameless).toEqual({ status: 409, body: { error: "Choose a display name first." } });
+    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer" });
   });
 
   it("creates a league with its creator as admin", async () => {
@@ -289,7 +350,9 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       // An existing membership keeps its original timestamp, even when the league is full.
       expect((await on(PLAYER, "POST", `/invites/${code}/join`)).status).toBe(200);
       expect(await membership()).toMatchObject({ joinedAt: WEDNESDAY });
-      expect((await on(OUTSIDER, "POST", `/invites/${code}/join`)).status).toBe(409);
+      const full = await on(OUTSIDER, "POST", `/invites/${code}/join`);
+      expect(full.status).toBe(409);
+      expect(errorOf(full)).toMatch(/full/);
       expect((await on(PLAYER, "DELETE", `/leagues/${id}/members/${PLAYER}`)).status).toBe(200);
       expect(await membership()).toMatchObject({ removedAt: SUNDAY_7AM });
       clock = MON;
@@ -516,7 +579,10 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       newThreads: true,
       pickReminders: true,
     });
+    // A player without a profile has no settings to change.
+    await db.delete(profiles).where(eq(profiles.userId, OUTSIDER));
     expect((await call(OUTSIDER, "PUT", "/me/notifications", { newThreads: true })).status).toBe(409);
+    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer" });
     const fromPage = await app.request(`/api/unsubscribe?token=${encodeURIComponent(token)}`, {
       method: "POST",
     });
@@ -757,6 +823,18 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(ADMIN, "POST", `/leagues/${leagueId}/weeks`, { year: 2026, number: 10 })).status).toBe(
       409,
     );
+
+    // A game flexed into Sunday night by the schedule takes the new slot's points, and moves back with it.
+    const original = provided;
+    const pointsOf = (v: WeekView) => v.games.find((g) => g.id === game.sun)?.points;
+    provided = original.map((g) =>
+      g.externalId === "t2" ? { ...g, kickoff: new Date("2026-11-16T01:20:00Z") } : g,
+    );
+    expect(pointsOf((await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/import`)).body)).toBe(2);
+    provided = original;
+    expect(pointsOf((await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/import`)).body)).toBe(1);
+    // Importing twice adds nothing.
+    expect((await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body.games).toHaveLength(3);
   });
 
   it("keeps a draft week hidden from members", async () => {
@@ -796,6 +874,17 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(added.status).toBe(201);
     const extra = added.body.games.find((g) => g.homeTeam === "DAL");
     expect(extra).toMatchObject({ points: 1, spread: 3 });
+
+    // Moving the kickoff to another slot moves a default value with it; one the admin set by hand stays.
+    const pointsAfter = async (change: object) =>
+      (await call<WeekView>(ADMIN, "PATCH", `/games/${extra?.id}`, change)).body.games.find(
+        (g) => g.id === extra?.id,
+      )?.points;
+    expect(await pointsAfter({ kickoff: "2026-11-16T01:20:00Z" })).toBe(2); // Sunday night
+    expect(await pointsAfter({ kickoff: "2026-11-15T21:25:00Z" })).toBe(1);
+    expect(await pointsAfter({ points: 4 })).toBe(4);
+    expect(await pointsAfter({ kickoff: "2026-11-16T01:20:00Z" })).toBe(4);
+    expect(await pointsAfter({ kickoff: "2026-11-15T21:25:00Z", points: 2 })).toBe(2);
 
     const removed = await call<WeekView>(ADMIN, "DELETE", `/games/${extra?.id}`);
     expect(removed.body.games).toHaveLength(3);
@@ -1215,18 +1304,125 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       winners: ["Pat"],
     });
 
-    // Had they been removed before the week finished, they would not be in it.
+    // The week recorded its players when it closed, so even rewriting the membership history changes nothing.
     await db
       .update(leagueMembers)
       .set({ removedAt: new Date("2026-11-14T00:00:00Z") })
       .where(membership(PLAYER));
+    expect(await names()).toMatchObject({ week: ["Pat", "Commish"], winners: ["Pat"] });
+
+    // A week closed before players were recorded is worked out from the history instead: removed before the
+    // week finished, Pat would not be in it.
+    const recorded = await db.select().from(weekParticipants).where(eq(weekParticipants.weekId, weekId));
+    expect(recorded.map((r) => r.userId).sort()).toEqual([ADMIN, PLAYER].sort());
+    await db.delete(weekParticipants).where(eq(weekParticipants.weekId, weekId));
     expect(await names()).toMatchObject({ week: ["Commish"], winners: ["Commish"] });
 
-    // Rejoining through the invite link restores access and the weeks they picked in.
+    // Rejoining through the invite link restores access, and there the weeks they picked in.
     expect((await call(PLAYER, "POST", `/invites/${inviteCode}/join`)).status).toBe(200);
     expect((await call(PLAYER, "GET", `/leagues/${leagueId}`)).status).toBe(200);
     expect(await names()).toMatchObject({ week: ["Pat", "Commish"], winners: ["Pat"] });
+    await db.insert(weekParticipants).values(recorded);
     await call(ADMIN, "DELETE", `/leagues/${leagueId}/members/${OUTSIDER}`);
+  });
+
+  it("keeps a closed week's players through leaving and rejoining, and a second close only adds", async () => {
+    const before = now;
+    now = WEDNESDAY;
+    const created = await call<{ id: string }>(ADMIN, "POST", "/leagues", { name: "Recorded weeks" });
+    const id = created.body.id;
+    createdLeagues.push(id);
+    const code = (await call<LeagueDetail>(ADMIN, "GET", `/leagues/${id}`)).body.inviteCode;
+    await call(PLAYER, "POST", `/invites/${code}/join`);
+    const week = await call<{ id: string }>(ADMIN, "POST", `/leagues/${id}/weeks`, {
+      year: 2026,
+      number: 1,
+      importGames: false,
+    });
+    const recordedWeek = week.body.id;
+    const addGame = async (homeTeam: string, awayTeam: string, kickoff: Date, spread: number) =>
+      (
+        await call<WeekView>(ADMIN, "POST", `/weeks/${recordedWeek}/games`, {
+          homeTeam,
+          awayTeam,
+          kickoff: kickoff.toISOString(),
+          spread,
+        })
+      ).body.games.find((g) => g.homeTeam === homeTeam)?.id ?? "";
+    const pickHome = (user: string, gameId: string) =>
+      call(user, "PUT", `/weeks/${recordedWeek}/picks`, {
+        picks: [{ gameId, side: "home" }],
+        powGameId: null,
+        tiebreakerTotal: null,
+      });
+    const results = async () => {
+      const view = (await call<WeekView>(ADMIN, "GET", `/weeks/${recordedWeek}`)).body;
+      const standings = (await call<Standings>(ADMIN, "GET", `/leagues/${id}/standings?year=2026`)).body;
+      return {
+        week: view.results?.entries.map((e) => [e.displayName, e.points, e.removed]),
+        lowPointLosers: standings.weeks[0]?.lowPointLosers,
+      };
+    };
+
+    // Commish picks the one game (1 point, covered); Pat, in the league all along, picks nothing and is the LPL.
+    const sunday = await addGame("PHI", "DAL", SUN, -3);
+    await call(ADMIN, "POST", `/weeks/${recordedWeek}/open`);
+    expect((await pickHome(ADMIN, sunday)).status).toBe(200);
+    now = new Date("2026-11-16T12:00:00Z");
+    await call(ADMIN, "PATCH", `/games/${sunday}`, { homeScore: 24, awayScore: 20 });
+    await call(ADMIN, "POST", `/weeks/${recordedWeek}/finalize`);
+    const closed = {
+      week: [
+        ["Commish", 1, false],
+        ["Pat", 0, false],
+      ],
+      lowPointLosers: ["Pat"],
+    };
+    expect(await results()).toEqual(closed);
+
+    // Pat leaves and rejoins. The new join date is after the week, but the week still has them, still last.
+    expect((await call(PLAYER, "DELETE", `/leagues/${id}/members/${PLAYER}`)).status).toBe(200);
+    expect((await call(PLAYER, "POST", `/invites/${code}/join`)).status).toBe(200);
+    expect(await results()).toEqual(closed);
+
+    // Reopened for a game added late: a newcomer picks it, and Pat leaves before it kicks off. Closing again
+    // adds the newcomer and keeps Pat, who would drop out if the week were worked out afresh.
+    await call(ADMIN, "POST", `/weeks/${recordedWeek}/reopen`);
+    await call(OUTSIDER, "POST", `/invites/${code}/join`);
+    const thursday = await addGame("NYG", "WSH", new Date("2026-11-20T01:15:00Z"), 1);
+    expect((await pickHome(OUTSIDER, thursday)).status).toBe(200);
+    await call(PLAYER, "DELETE", `/leagues/${id}/members/${PLAYER}`);
+    now = new Date("2026-11-21T12:00:00Z");
+    await call(ADMIN, "PATCH", `/games/${thursday}`, { homeScore: 20, awayScore: 10 });
+    expect((await call(ADMIN, "POST", `/weeks/${recordedWeek}/finalize`)).status).toBe(200);
+    expect(await results()).toEqual({
+      week: [
+        ["Newcomer", 3, false],
+        ["Commish", 1, false],
+        ["Pat", 0, true],
+      ],
+      lowPointLosers: ["Pat"],
+    });
+
+    // Posting needs a display name too.
+    const thread = await call<{ id: string }>(ADMIN, "POST", `/leagues/${id}/messages`, {
+      title: "Week 1",
+      body: "Closed again.",
+    });
+    await settle();
+    await db.delete(profiles).where(eq(profiles.userId, OUTSIDER));
+    const base = `/leagues/${id}/messages`;
+    for (const [path, json] of [
+      [base, { title: "Hi", body: "Hello" }],
+      [`${base}/${thread.body.id}/replies`, { body: "Hello" }],
+    ] as const) {
+      expect(await call(OUTSIDER, "POST", path, json)).toEqual({
+        status: 409,
+        body: { error: "Choose a display name first." },
+      });
+    }
+    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer" });
+    now = before;
   });
 
   it("makes the Monday game the tiebreaker however the slate was built, unless the admin chooses", async () => {

@@ -136,6 +136,18 @@ export function defaultTiebreakerGame<G extends { id: string; kickoff: Date }>(g
 
 // ---------- Scoring ----------
 
+type Scores = { homeScore: number | null; awayScore: number | null };
+
+/** A game with both final scores entered. Such a game is closed to picks, whatever the clock says. */
+export function hasResult<G extends Scores>(game: G): game is G & { homeScore: number; awayScore: number } {
+  return game.homeScore !== null && game.awayScore !== null;
+}
+
+/** The tiebreaker game's combined final score, which the guesses are measured against. Null until it has one. */
+export function tiebreakerTotal(game: Scores | null | undefined): number | null {
+  return game && hasResult(game) ? game.homeScore + game.awayScore : null;
+}
+
 export type ScoredGame = {
   id: string;
   kickoff: Date;
@@ -147,7 +159,7 @@ export type ScoredGame = {
 
 /** Which side beat the spread. `null` until the game has a final score. */
 export function coveringSide(game: ScoredGame): Side | "push" | null {
-  if (game.homeScore === null || game.awayScore === null) return null;
+  if (!hasResult(game)) return null;
   const margin = game.homeScore + (game.spread ?? 0) - game.awayScore;
   if (margin === 0) return "push";
   return margin > 0 ? "home" : "away";
@@ -189,11 +201,7 @@ export function scoreWeek(input: {
   const { games, picks, guesses, userIds, tiebreakerGameId } = input;
   const gameById = new Map(games.map((g) => [g.id, g]));
   const guessByUser = new Map(guesses.map((g) => [g.userId, g.total]));
-  const tiebreakerGame = tiebreakerGameId ? gameById.get(tiebreakerGameId) : undefined;
-  const actualTotal =
-    tiebreakerGame && tiebreakerGame.homeScore !== null && tiebreakerGame.awayScore !== null
-      ? tiebreakerGame.homeScore + tiebreakerGame.awayScore
-      : null;
+  const actualTotal = tiebreakerTotal(tiebreakerGameId ? gameById.get(tiebreakerGameId) : undefined);
 
   const entries = userIds.map((userId): WeekEntry => {
     const mine = picks.filter((p) => p.userId === userId && gameById.has(p.gameId));

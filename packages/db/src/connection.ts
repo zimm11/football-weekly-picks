@@ -3,6 +3,12 @@ import type { Sql } from "postgres";
 /** Parse without ever attaching the credential-bearing input to an error. */
 export function parseDatabaseUrl(value: string): URL {
   if (/\s/.test(value)) throw new Error("Database URL contains a line break, tab or space.");
+  // The URL parser and postgres.js disagree on where the host is in these, so a URL that looks like a loopback
+  // one (and skips TLS) could connect somewhere else: `u:p@localhost#@remote`, or a second `@` in the password.
+  if (value.includes("#")) throw new Error("Database URL can't contain '#'. Percent-encode it as %23.");
+  if (value.split("@").length > 2) {
+    throw new Error("Database URL can't contain more than one '@'. Percent-encode it as %40.");
+  }
   let url: URL;
   try {
     url = new URL(value);
@@ -12,6 +18,8 @@ export function parseDatabaseUrl(value: string): URL {
   if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname) {
     throw new Error("Database URL must be a valid PostgreSQL URL.");
   }
+  // postgres.js reads `host1,host2` as several hosts, which the loopback and Supabase checks don't expect.
+  if (url.host.includes(",")) throw new Error("Database URL must name a single host.");
   // URL routing overrides must not turn a loopback TLS exemption into a remote connection.
   if (["host", "hostaddr", "port"].some((key) => url.searchParams.has(key))) {
     throw new Error("Put the database host and port in the URL authority, not query parameters.");

@@ -3,7 +3,7 @@ import type { SeasonEntry, Side, WeekEntry } from "./rules";
 import type { WeekPhase } from "./seasons";
 import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
 import { TEAM_ABBRS } from "./teams";
-import { isValidTimeZone } from "./time";
+import { canonicalTimeZone, MAX_TIME_ZONE_LENGTH } from "./time";
 
 export * from "./awards";
 export * from "./insights";
@@ -42,15 +42,26 @@ export type NotificationSettings = { newThreads: boolean; pickReminders: boolean
 export const unsubscribeSchema = z.object({ token: z.string().min(1).max(512) });
 export type UnsubscribeResult = { kind: "new_thread" | "pick_reminder" };
 
+/** A time zone, stored in its canonical spelling (see `canonicalTimeZone`). */
+const timeZoneSchema = z
+  .string()
+  .max(MAX_TIME_ZONE_LENGTH, "Unknown time zone")
+  .transform((timeZone, ctx) => {
+    const canonical = canonicalTimeZone(timeZone);
+    if (canonical) return canonical;
+    ctx.addIssue({ code: "custom", message: "Unknown time zone" });
+    return z.NEVER;
+  });
+
 export const createLeagueSchema = z.object({
   name: z.string().trim().min(1, "Enter a league name").max(80),
-  timeZone: z.string().refine(isValidTimeZone, "Unknown time zone").default("America/New_York"),
+  timeZone: timeZoneSchema.default("America/New_York"),
 });
 
 export const updateLeagueSchema = z
   .object({
     name: z.string().trim().min(1, "Enter a league name").max(80).optional(),
-    timeZone: z.string().refine(isValidTimeZone, "Unknown time zone").optional(),
+    timeZone: timeZoneSchema.optional(),
   })
   .refine((v) => v.name !== undefined || v.timeZone !== undefined, "Nothing to change");
 
@@ -258,8 +269,9 @@ export const MESSAGE_REACTIONS = [
   { emoji: "🙏", label: "Thanks" },
   { emoji: "🏈", label: "Football" },
 ] as const;
+type MessageReactionEmoji = (typeof MESSAGE_REACTIONS)[number]["emoji"];
 export const messageReactionSchema = z.object({
-  emoji: z.enum(["👍", "😂", "🔥", "🎉", "😮", "🙏", "🏈"]),
+  emoji: z.enum(MESSAGE_REACTIONS.map((r) => r.emoji) as [MessageReactionEmoji, ...MessageReactionEmoji[]]),
   active: z.boolean(),
 });
 export type MessageEmoji = z.infer<typeof messageReactionSchema>["emoji"];
@@ -294,4 +306,3 @@ export type ThreadDetail = {
 };
 
 export * from "./push";
-export * from "./reminders";

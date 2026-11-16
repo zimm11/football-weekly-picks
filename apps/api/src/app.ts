@@ -7,7 +7,10 @@ import {
 } from "@picks/shared";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
+import { secureHeaders } from "hono/secure-headers";
 import { type AuthVariables, requireAuth } from "./auth";
 import { type AppDeps, body, fail, isOperator } from "./context";
 import { leagueRoutes } from "./leagues";
@@ -19,6 +22,32 @@ import { unsubscribeRoutes } from "./unsubscribe";
 import { weekRoutes } from "./weeks";
 
 export type { AppDeps } from "./context";
+
+/** Largest request body accepted. The biggest real one, a 5,000-character message, is well under it. */
+export const MAX_BODY_BYTES = 64 * 1024;
+
+/**
+ * Headers on every API response. The API only answers JSON, so nothing may frame it, run it as script or load it
+ * cross-site. HSTS is six months for this host only: no `includeSubDomains`, no preload.
+ */
+const apiSecurityHeaders = secureHeaders({
+  contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+  strictTransportSecurity: "max-age=15552000",
+  xFrameOptions: "DENY",
+  referrerPolicy: "no-referrer",
+});
+
+/** Responses carry players' own data, so nothing caches them unless a route says otherwise. */
+const noStoreByDefault = createMiddleware(async (c, next) => {
+  await next();
+  if (!c.res.headers.has("Cache-Control")) c.header("Cache-Control", "no-store");
+});
+
+/** Refuses oversized bodies before they are read, so a huge post can't eat the request's CPU budget. */
+const requestBodyLimit = bodyLimit({
+  maxSize: MAX_BODY_BYTES,
+  onError: (c) => c.json({ error: "That request is too large." }, 413),
+});
 
 const notificationsOf = (profile?: typeof profiles.$inferSelect): NotificationSettings => ({
   newThreads: profile?.emailNewThreads ?? true,
@@ -83,7 +112,13 @@ export function createApp(deps: AppDeps) {
     .route("/", unsubscribeRoutes(deps))
     .route("/", pushRoutes(deps));
 
-  const app = new Hono<{ Variables: AuthVariables }>().use(requestLogger).route("/api", api);
+  const app = new Hono<{ Variables: AuthVariables }>()
+    .use(requestLogger)
+    .use(apiSecurityHeaders)
+    .use(noStoreByDefault)
+    .use(requestBodyLimit)
+    .route("/api", api);
+  app.notFound((c) => c.json({ error: "Not found" }, 404));
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     logError("request", err, c.get("requestId"));
