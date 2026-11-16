@@ -25,12 +25,6 @@ export type EmailDeps = {
   unsubscribeSecret: string;
   /** The most emails to hand the provider per UTC day and calendar month (see `EMAIL_DAILY_LIMIT`). */
   limits: { daily: number; monthly: number };
-  /**
-   * Runs work after a response has been sent (by default, in the background with errors logged). The Worker
-   * hands it to the request's `waitUntil`, so the request's database connection stays open until it finishes;
-   * tests replace it so they can wait for the work.
-   */
-  background?: (task: () => Promise<unknown>) => void;
 };
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -42,11 +36,6 @@ const BATCH = 20;
 const CLAIM_MS = 10 * 60_000;
 const RETAIN_MS = 30 * 24 * 60 * 60_000;
 const THREAD_EMAIL_TTL_MS = 24 * 60 * 60_000;
-
-export function runInBackground(email: EmailDeps, task: () => Promise<unknown>) {
-  if (email.background) return email.background(task);
-  void task().catch((error) => logError("email_jobs", error));
-}
 
 function links(email: EmailDeps, userId: string, kind: EmailKind, action: { label: string; path: string }) {
   const token = encodeURIComponent(unsubscribeToken(email.unsubscribeSecret, userId, kind));

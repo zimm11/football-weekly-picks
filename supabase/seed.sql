@@ -17,6 +17,8 @@
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
 -- Browser users find Add to home screen in the account menu; on a phone the first save of picks offers it once.
 -- The public How to play guide has separate install instructions; none of it shows in the home-screen app.
+-- Notifications are opt-in per device: new threads and 7pm league-time reminders for missing picks.
+-- No push subscriptions are seeded; VAPID is unset locally, so devices can't subscribe.
 -- Later weeks are deliberately absent: create them in the app so the import from ESPN gets exercised.
 
 -- ---------- Accounts ----------

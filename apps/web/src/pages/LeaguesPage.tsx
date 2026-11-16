@@ -1,4 +1,4 @@
-import { CaretRightIcon } from "@phosphor-icons/react";
+import { BellIcon, CaretRightIcon } from "@phosphor-icons/react";
 import type { InvitePreview, LeagueSummary } from "@picks/shared";
 import { type FormEvent, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +51,11 @@ export function LeaguesPage({ playerName }: { playerName?: string }) {
   return (
     <div className={opening ? "grid animate-in gap-6 fade-in duration-300" : "grid gap-6"}>
       <h2 className="text-4xl leading-none font-extrabold">Your leagues</h2>
+      <Link to="/notifications" className={rowLink}>
+        <BellIcon aria-hidden className="size-6 shrink-0 text-primary" />
+        <span className="flex-1 font-medium">Notifications &amp; pick reminders</span>
+        <CaretRightIcon aria-hidden className="size-5" />
+      </Link>
       {leagues.data.length === 0 ? (
         <Card>
           <h3 className="text-2xl">Get ready for your first week</h3>

@@ -1,5 +1,5 @@
 // Cloudflare Worker entrypoint (production). Static Assets serve the web app; only /api/* reaches the fetch
-// handler (wrangler.jsonc). The Cron Trigger calls the scheduled handler, which runs the email job. Local
+// handler (wrangler.jsonc). The Cron Trigger calls the scheduled handler, which runs the email and push jobs. Local
 // development and tests use the Node entrypoint, src/index.ts.
 
 import { env } from "cloudflare:workers";
@@ -10,9 +10,11 @@ import { supabaseTokenVerifier } from "./auth";
 import { cloudflareMailer, mailpitMailer } from "./email";
 import { loadWorkerEnv } from "./env";
 import { liveInsights } from "./insights";
-import { logEmailJobs, logError } from "./logging";
+import { runScheduledJobs } from "./jobs";
+import { logError } from "./logging";
 import { espnProvider } from "./nfl";
-import { type EmailDeps, runEmailJobs } from "./outbox";
+import type { EmailDeps } from "./outbox";
+import { webPushSender } from "./pushSender";
 
 /** One request's (or one scheduled run's) database connection, and the work it handed to `background`. */
 type Scope = { db: Db; tasks: Promise<unknown>[] };
@@ -33,15 +35,15 @@ const db = new Proxy({} as Db, {
 });
 
 /**
- * Work that should outlive the response (sending a new thread's emails). A Worker cancels anything still
+ * Work that should outlive the response (a new thread's emails and notifications). A Worker cancels anything still
  * running once the response is sent unless it is passed to `waitUntil`, and the request's connection closes
  * then too, so `withConnection` waits for these tasks before closing it. A task belongs to the request that
- * started it; no other request ever awaits it.
+ * started it; no other request ever awaits it. Tasks log their own errors.
  */
 function background(task: () => Promise<unknown>) {
   const current = scope.getStore();
   if (!current) throw new Error("Background work must start while handling a request");
-  current.tasks.push(task().catch((error) => logError("email_jobs", error)));
+  current.tasks.push(task());
 }
 
 /**
@@ -62,8 +64,16 @@ function build() {
           appUrl: config.APP_URL,
           unsubscribeSecret: config.UNSUBSCRIBE_SECRET,
           limits: { daily: config.EMAIL_DAILY_LIMIT, monthly: config.EMAIL_MONTHLY_LIMIT },
-          background,
         }
+      : undefined;
+  // Push is on once all three VAPID secrets are set (README, "Push notifications").
+  const push =
+    config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY && config.VAPID_SUBJECT
+      ? webPushSender({
+          publicKey: config.VAPID_PUBLIC_KEY,
+          privateKey: config.VAPID_PRIVATE_KEY,
+          subject: config.VAPID_SUBJECT,
+        })
       : undefined;
   const app = createApp({
     db,
@@ -72,13 +82,15 @@ function build() {
     insights: liveInsights(),
     operatorUserIds: config.OPERATOR_USER_IDS,
     email,
+    push,
+    background,
     publicConfig: {
       supabaseUrl: config.SUPABASE_URL,
       supabasePublishableKey: config.SUPABASE_PUBLISHABLE_KEY,
     },
   });
   // `pnpm worker:dev` sets NODE_ENV=development; deployed Workers always run with wrangler.jsonc's "production".
-  return { app, email, production: config.NODE_ENV !== "development" };
+  return { app, email, push, production: config.NODE_ENV !== "development" };
 }
 
 let worker: ReturnType<typeof build> | undefined;
@@ -112,16 +124,11 @@ export default {
     return withConnection(env, ctx, production, async () => app.fetch(request, env, ctx));
   },
 
-  /** The Cron Trigger (wrangler.jsonc): queue due pick reminders, then send what's waiting in the outbox. */
+  /** The Cron Trigger (wrangler.jsonc): queue due pick reminders, then send what's waiting, by email and push. */
   async scheduled(_controller, env, ctx) {
-    if (!worker?.email) return;
-    const { email, production } = worker;
-    try {
-      const result = await withConnection(env, ctx, production, () => runEmailJobs(db, email, new Date()));
-      logEmailJobs(result);
-    } catch (error) {
-      // Logged through the safe logger, not rethrown: the runtime would print the raw error.
-      logError("email_jobs", error);
-    }
+    if (!worker || (!worker.email && !worker.push)) return;
+    const { email, push, production } = worker;
+    // Each job logs its own failures through the safe logger, so nothing raw reaches the runtime's log.
+    await withConnection(env, ctx, production, () => runScheduledJobs(db, { email, push }, new Date()));
   },
 } satisfies ExportedHandler<Env>;

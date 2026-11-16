@@ -9,7 +9,7 @@ import {
   verifyUnsubscribeToken,
 } from "../src/email";
 import { loadEnv, loadWorkerEnv } from "../src/env";
-import { knownErrorCode, logEmailJobs, logError } from "../src/logging";
+import { knownErrorCode, logError, logJobRun } from "../src/logging";
 import { escapeHtml, excerpt } from "../src/templates";
 
 const message = {
@@ -154,9 +154,9 @@ describe("email logging", () => {
 
   it("summarizes a job run by its counts, and stays quiet when it did nothing", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    logEmailJobs({ queued: 0, sent: 0, failed: 0 });
+    logJobRun("email_jobs", { queued: 0, sent: 0, failed: 0 });
     expect(log).not.toHaveBeenCalled();
-    logEmailJobs({ queued: 2, sent: 2, failed: 0 });
+    logJobRun("email_jobs", { queued: 2, sent: 2, failed: 0 });
     expect(JSON.parse(log.mock.calls[0]?.[0])).toEqual({
       event: "email_jobs",
       queued: 2,

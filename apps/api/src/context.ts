@@ -8,6 +8,7 @@ import type { VerifyToken } from "./auth";
 import type { InsightsProvider } from "./insights";
 import type { NflProvider } from "./nfl";
 import type { EmailDeps } from "./outbox";
+import type { PushSender } from "./pushSender";
 
 export type PublicConfig = {
   supabaseUrl: string;
@@ -31,6 +32,14 @@ export type AppDeps = {
   email?: EmailDeps;
   /** Membership caps; injected so tests can use small numbers. Defaults to the shared limits. */
   limits?: { membersPerLeague: number; leaguesPerUser: number };
+  /** Web Push transport. Without one (no VAPID keys), nothing is queued or sent and devices can't subscribe. */
+  push?: PushSender;
+  /**
+   * Runs work after the response is sent: a new thread's emails and notifications. By default it just starts the
+   * task. The Worker hands it to the request's `waitUntil` and keeps the request's database connection open until
+   * it finishes; tests replace it so they can wait for the work. Tasks catch and log their own errors.
+   */
+  background?: (task: () => Promise<unknown>) => void;
   /** Accounts that run the app (`OPERATOR_USER_IDS`): they can read feedback and app-wide counts. */
   operatorUserIds?: readonly string[];
 };
@@ -39,7 +48,7 @@ export type AppDeps = {
 export const isOperator = (deps: Pick<AppDeps, "operatorUserIds">, userId: string) =>
   deps.operatorUserIds?.includes(userId) ?? false;
 
-type Status = 400 | 403 | 404 | 409 | 429 | 502;
+type Status = 400 | 403 | 404 | 409 | 429 | 502 | 503;
 
 export function fail(status: Status, message: string): never {
   throw new HTTPException(status, { message });

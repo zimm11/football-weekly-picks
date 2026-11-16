@@ -14,6 +14,7 @@ import { leagueRoutes } from "./leagues";
 import { logError, requestLogger } from "./logging";
 import { messageRoutes } from "./messages";
 import { operatorRoutes } from "./operator";
+import { pushRoutes } from "./push";
 import { unsubscribeRoutes } from "./unsubscribe";
 import { weekRoutes } from "./weeks";
 
@@ -79,7 +80,8 @@ export function createApp(deps: AppDeps) {
     .route("/", weekRoutes(deps))
     .route("/", messageRoutes(deps))
     .route("/", operatorRoutes(deps))
-    .route("/", unsubscribeRoutes(deps));
+    .route("/", unsubscribeRoutes(deps))
+    .route("/", pushRoutes(deps));
 
   const app = new Hono<{ Variables: AuthVariables }>().use(requestLogger).route("/api", api);
   app.onError((err, c) => {

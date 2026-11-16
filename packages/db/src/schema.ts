@@ -331,3 +331,53 @@ export const emailUsage = pgTable("email_usage", {
   /** Sends reserved that day. A send the provider refused is given back. */
   sent: integer().notNull().default(0),
 }).enableRLS();
+
+/** A browser/device explicitly opted into push for one player. Endpoints and keys are private capabilities. */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: userRef(),
+    /** Only supported HTTPS browser push services; never returned to other players or logged. */
+    endpoint: text().notNull().unique(),
+    p256dh: text().notNull(),
+    auth: text().notNull(),
+    /** Preferences apply to this device, independently of the player's other devices. */
+    newThreads: boolean().notNull().default(true),
+    pickReminders: boolean().notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [index("push_subscriptions_user_idx").on(t.userId)],
+).enableRLS();
+
+/** Durable per-device delivery queue. Unique event keys prevent repeated cron calls from queuing twice. */
+export const pushDeliveries = pgTable(
+  "push_deliveries",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    subscriptionId: uuid()
+      .notNull()
+      .references(() => pushSubscriptions.id, { onDelete: "cascade" }),
+    leagueId: uuid()
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    threadId: uuid().references(() => messageThreads.id, { onDelete: "cascade" }),
+    weekId: uuid().references(() => weeks.id, { onDelete: "cascade" }),
+    kind: text({ enum: ["new_thread", "pick_reminder"] }).notNull(),
+    /** Thread id or week id + local game date, scoped to subscription by the unique index. */
+    eventKey: text().notNull(),
+    /** Game ids are rechecked for missing picks immediately before a reminder is sent. */
+    gameIds: text().array().notNull().default(sql`'{}'::text[]`),
+    status: text({ enum: ["pending", "sent", "skipped", "failed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer().notNull().default(0),
+    nextAttemptAt: createdAt(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("push_delivery_event_key").on(t.subscriptionId, t.kind, t.eventKey),
+    index("push_delivery_due_idx").on(t.status, t.nextAttemptAt),
+  ],
+).enableRLS();

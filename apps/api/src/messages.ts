@@ -16,11 +16,20 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
 import { type AppDeps, body, fail, leagueParam, requireAdmin, requireMember } from "./context";
-import { drainOutbox, queueThreadEmails, runInBackground } from "./outbox";
+import { logError } from "./logging";
+import { drainOutbox, queueThreadEmails } from "./outbox";
+import { drainPush, queueThreadPush } from "./pushQueue";
 
 const threadParam = zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
 
-export function messageRoutes({ db, verifyToken, email, now = () => new Date() }: AppDeps) {
+export function messageRoutes({
+  db,
+  verifyToken,
+  email,
+  push,
+  now = () => new Date(),
+  background = (task) => void task(),
+}: AppDeps) {
   const auth = requireAuth(verifyToken);
   async function thread(leagueId: string, threadId: string, userId: string) {
     const { role } = await requireMember(db, leagueId, userId);
@@ -113,10 +122,14 @@ export function messageRoutes({ db, verifyToken, email, now = () => new Date() }
             now: now(),
           });
         }
+        if (push) await queueThreadPush(tx, leagueId, t.id, c.var.user.id, now());
         return t.id;
       });
       // Sent after the thread is committed, so a slow or failing provider never holds up posting.
-      if (email && queued) runInBackground(email, () => drainOutbox(db, email, now()));
+      if (email && queued) {
+        background(() => drainOutbox(db, email, now()).catch((err) => logError("email_jobs", err)));
+      }
+      if (push) background(() => drainPush(db, push, now()).catch((err) => logError("push_delivery", err)));
       return c.json({ id }, 201);
     })
     .get("/leagues/:leagueId/messages/:threadId", auth, threadParam, async (c) => {
