@@ -1,9 +1,11 @@
 import type { FeedbackPage, FeedbackStatus, OperatorOverview } from "@picks/shared";
 import { useState } from "react";
 import { api, messageOf, unwrap } from "../api";
+import { LoadError } from "../components/LoadError";
 import { OperatorDashboard } from "../components/OperatorDashboard";
+import { StandingsSkeleton } from "../components/Skeletons";
 import { Button } from "../components/ui/button";
-import { Notice } from "../components/ui/card";
+import { useAction } from "../lib/useAction";
 import { notifyDone, notifyError } from "../notify";
 import { useLoad } from "./useLoad";
 
@@ -12,8 +14,9 @@ export function OperatorPage() {
   const overview = useLoad(() => unwrap<OperatorOverview>(api.operator.overview.$get()), "overview");
   const feedback = useLoad(() => unwrap<FeedbackPage>(api.operator.feedback.$get({ query: {} })), "feedback");
   const [savingId, setSavingId] = useState<string>();
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const { busy, run } = useAction<"refresh" | "more">();
+  const refreshing = busy === "refresh";
+  const loadingMore = busy === "more";
 
   async function setStatus(id: string, status: FeedbackStatus) {
     setSavingId(id);
@@ -36,40 +39,33 @@ export function OperatorPage() {
     }
   }
 
-  async function refresh() {
-    setRefreshing(true);
-    try {
+  function refresh() {
+    run("refresh", async () => {
       const [nextOverview, nextFeedback] = await Promise.all([
         unwrap<OperatorOverview>(api.operator.overview.$get()),
         unwrap<FeedbackPage>(api.operator.feedback.$get({ query: {} })),
       ]);
       overview.setData(nextOverview);
       feedback.setData(nextFeedback);
-    } catch (err) {
-      notifyError(messageOf(err));
-    } finally {
-      setRefreshing(false);
-    }
+    });
   }
 
-  async function loadMore() {
-    if (!feedback.data?.nextCursor) return;
-    setLoadingMore(true);
-    try {
-      const next = await unwrap<FeedbackPage>(
-        api.operator.feedback.$get({ query: { before: feedback.data.nextCursor } }),
-      );
+  function loadMore() {
+    const before = feedback.data?.nextCursor;
+    if (!before) return;
+    run("more", async () => {
+      const next = await unwrap<FeedbackPage>(api.operator.feedback.$get({ query: { before } }));
       feedback.setData(
         (page) => page && { items: [...page.items, ...next.items], nextCursor: next.nextCursor },
       );
-    } catch (err) {
-      notifyError(messageOf(err));
-    } finally {
-      setLoadingMore(false);
-    }
+    });
   }
 
   const error = overview.data && feedback.data ? undefined : (overview.error ?? feedback.error);
+  const retry = () => {
+    if (overview.error) overview.reload();
+    if (feedback.error) feedback.reload();
+  };
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -78,8 +74,8 @@ export function OperatorPage() {
           {refreshing ? "Refreshing…" : "Refresh"}
         </Button>
       </div>
-      {error && <Notice kind="alert">{error}</Notice>}
-      {!error && !(overview.data && feedback.data) && <p className="text-muted-foreground">Loading…</p>}
+      {error && <LoadError message={error} onRetry={retry} />}
+      {!error && !(overview.data && feedback.data) && <StandingsSkeleton label="Loading app numbers" />}
       {overview.data && feedback.data && (
         <>
           <p className="m-0 text-muted-foreground">

@@ -28,6 +28,13 @@ describe("SeasonWeeks", () => {
     expect(onCreate).toHaveBeenCalledWith(10, false);
   });
 
+  it("says Creating… only for its own request, and waits while another one runs", async () => {
+    const screen = await render(<SeasonWeeks year={2026} weeks={[week(9)]} busy onCreate={vi.fn()} />);
+    await expect.element(screen.getByRole("button", { name: "Create week" })).toBeDisabled();
+    await screen.rerender(<SeasonWeeks year={2026} weeks={[week(9)]} busy creating onCreate={vi.fn()} />);
+    await expect.element(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+  });
+
   it("opens existing weeks instead of offering duplicate creation", async () => {
     const screen = await render(
       <SeasonWeeks year={2026} weeks={[week(9)]} busy={false} onCreate={vi.fn()} />,

@@ -19,12 +19,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Field, Input, NativeSelect } from "@/components/ui/input";
-import { api, messageOf, unwrap } from "../api";
+import { api, unwrap } from "../api";
 import { Avatar } from "../components/Avatar";
 import { useConfirm } from "../components/ConfirmDialog";
 import { SeasonWeeks } from "../components/SeasonWeeks";
 import { TIME_ZONES, zoneName } from "../format";
-import { notifyDone, notifyError } from "../notify";
+import { useAction } from "../lib/useAction";
+import { notifyError } from "../notify";
 import { navigate } from "../router";
 
 /** Who is in the league, and for the admin: weeks, the invite link, and settings. */
@@ -43,7 +44,7 @@ export function LeagueTabPanel({
   const adminCount = league.members.filter((member) => member.role === "admin").length;
   // The last admin has to hand the league to someone else before leaving it.
   const soleAdmin = isAdmin && adminCount === 1;
-  const [busy, setBusy] = useState(false);
+  const { busy, run } = useAction<"create" | "settings" | "invite" | "remove" | "leave" | "role">();
   const [changingRole, setChangingRole] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirm, confirmDialog] = useConfirm();
@@ -53,43 +54,36 @@ export function LeagueTabPanel({
   const canShare = typeof navigator.share === "function";
 
   /** Runs a change to the league, then reloads it. */
-  async function change(request: () => Promise<{ ok: boolean; json(): Promise<unknown> }>, done: string) {
-    setBusy(true);
-    try {
-      await unwrap(request());
-      notifyDone(done);
-      onChanged();
-    } catch (err) {
-      notifyError(messageOf(err));
-    }
-    setBusy(false);
+  function change(
+    action: "settings" | "invite" | "remove" | "role",
+    request: () => Promise<{ ok: boolean; json(): Promise<unknown> }>,
+    done: string,
+  ) {
+    return run(
+      action,
+      async () => {
+        await unwrap(request());
+        onChanged();
+      },
+      done,
+    );
   }
 
   async function createWeek(number: number, importGames: boolean) {
     // Importing the schedule can take a few seconds, so the button says what is happening.
-    setBusy(true);
-    try {
+    await run("create", async () => {
       const { id, importError } = await unwrap<{ id: string; importError: string | null }>(
-        api.leagues[":leagueId"].weeks.$post({
-          param,
-          json: {
-            year,
-            number,
-            importGames,
-          },
-        }),
+        api.leagues[":leagueId"].weeks.$post({ param, json: { year, number, importGames } }),
       );
       navigate(`/weeks/${id}/manage`, importError ? { kind: "alert", text: importError } : undefined);
-    } catch (err) {
-      notifyError(messageOf(err));
-      setBusy(false);
-    }
+    });
   }
 
   function saveSettings(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     change(
+      "settings",
       () =>
         api.leagues[":leagueId"].$patch({
           param,
@@ -107,7 +101,7 @@ export function LeagueTabPanel({
     });
     if (!ok) return;
     setCopied(false);
-    change(() => api.leagues[":leagueId"].invite.$post({ param }), "New invite link created.");
+    change("invite", () => api.leagues[":leagueId"].invite.$post({ param }), "New invite link created.");
   }
 
   async function remove(member: LeagueDetail["members"][number]) {
@@ -118,6 +112,7 @@ export function LeagueTabPanel({
     });
     if (!ok) return;
     change(
+      "remove",
       () =>
         api.leagues[":leagueId"].members[":userId"].$delete({ param: { ...param, userId: member.userId } }),
       `${member.displayName} removed.`,
@@ -132,15 +127,14 @@ export function LeagueTabPanel({
       action: "Leave league",
     });
     if (!ok) return;
-    setBusy(true);
-    try {
-      await unwrap(api.leagues[":leagueId"].members[":userId"].$delete({ param: { ...param, userId } }));
-      notifyDone(`You left ${league.name}.`);
-      navigate("/");
-    } catch (err) {
-      notifyError(messageOf(err));
-      setBusy(false);
-    }
+    await run(
+      "leave",
+      async () => {
+        await unwrap(api.leagues[":leagueId"].members[":userId"].$delete({ param: { ...param, userId } }));
+        navigate("/");
+      },
+      `You left ${league.name}.`,
+    );
   }
 
   async function changeRole(member: LeagueDetail["members"][number]) {
@@ -159,6 +153,7 @@ export function LeagueTabPanel({
     if (!ok) return;
     setChangingRole(member.userId);
     await change(
+      "role",
       () =>
         api.leagues[":leagueId"].members[":userId"].$patch({
           param: { ...param, userId: member.userId },
@@ -172,7 +167,15 @@ export function LeagueTabPanel({
   return (
     <div className="grid gap-4">
       {confirmDialog}
-      {isAdmin && <SeasonWeeks year={year} weeks={league.weeks} busy={busy} onCreate={createWeek} />}
+      {isAdmin && (
+        <SeasonWeeks
+          year={year}
+          weeks={league.weeks}
+          busy={!!busy}
+          creating={busy === "create"}
+          onCreate={createWeek}
+        />
+      )}
 
       {isAdmin && (
         <Card aria-label="Invite">
@@ -251,7 +254,7 @@ export function LeagueTabPanel({
                         size="icon"
                         aria-label={`Options for ${member.displayName}`}
                         className="rounded-full text-muted-foreground hover:text-foreground"
-                        disabled={busy}
+                        disabled={!!busy}
                       >
                         <DotsThreeIcon aria-hidden weight="bold" className="size-6" />
                       </Button>
@@ -313,8 +316,8 @@ export function LeagueTabPanel({
                 ))}
               </NativeSelect>
             </Field>
-            <Button type="submit" variant="secondary" disabled={busy}>
-              Save settings
+            <Button type="submit" variant="secondary" disabled={!!busy}>
+              {busy === "settings" ? "Saving…" : "Save settings"}
             </Button>
           </form>
         </Card>
@@ -331,10 +334,10 @@ export function LeagueTabPanel({
           type="button"
           variant="destructive"
           className="justify-self-start"
-          disabled={busy || soleAdmin}
+          disabled={!!busy || soleAdmin}
           onClick={leave}
         >
-          Leave league
+          {busy === "leave" ? "Leaving…" : "Leave league"}
         </Button>
       </Card>
     </div>

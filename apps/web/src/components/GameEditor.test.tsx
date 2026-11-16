@@ -1,7 +1,7 @@
 import type { Game } from "@picks/shared";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
-import { GameEditor } from "./GameEditor";
+import { GameEditor, kickoffFromInput } from "./GameEditor";
 
 const game: Game = {
   id: "g1",
@@ -32,6 +32,64 @@ function editor(games: Game[], onSave = vi.fn(), now = afterKickoff) {
     />
   );
 }
+
+describe("kickoffFromInput", () => {
+  it("reads the typed time on the league's clock, whatever the device's zone", () => {
+    expect(kickoffFromInput("2026-11-15T13:00", "America/New_York")?.toISOString()).toBe(
+      "2026-11-15T18:00:00.000Z",
+    );
+    expect(kickoffFromInput("2026-11-15T10:25", "America/Los_Angeles")?.toISOString()).toBe(
+      "2026-11-15T18:25:00.000Z",
+    );
+    // Daylight time, before the November change.
+    expect(kickoffFromInput("2026-09-13T13:00", "America/New_York")?.toISOString()).toBe(
+      "2026-09-13T17:00:00.000Z",
+    );
+    expect(kickoffFromInput("", "America/New_York")).toBeNull();
+  });
+});
+
+describe("Add a game", () => {
+  async function addGame(onAdd: (game: unknown) => Promise<boolean>) {
+    const screen = await render(
+      <GameEditor
+        games={[game]}
+        status="draft"
+        tiebreakerGameId="g1"
+        timeZone="America/Chicago"
+        now={afterKickoff}
+        onSave={vi.fn()}
+        onRemove={vi.fn()}
+        onAdd={onAdd}
+        onSetTiebreaker={vi.fn()}
+      />,
+    );
+    const form = screen.getByRole("form", { name: "Add a game" });
+    await form.getByRole("combobox", { name: /^Away team/ }).selectOptions("BUF");
+    await form.getByRole("combobox", { name: /^Home team/ }).selectOptions("MIA");
+    await form.getByLabelText("Kickoff (Central time)").fill("2026-11-15T12:00");
+    await form.getByLabelText("Home spread").fill("-3");
+    await form.getByRole("button", { name: "Add game" }).click();
+    return form;
+  }
+
+  it("sends the kickoff in the league's time zone and clears the form once the game is added", async () => {
+    const onAdd = vi.fn(async () => true);
+    const form = await addGame(onAdd);
+    expect(onAdd).toHaveBeenCalledWith({
+      awayTeam: "BUF",
+      homeTeam: "MIA",
+      kickoff: "2026-11-15T18:00:00.000Z",
+      spread: -3,
+    });
+    await expect.element(form.getByLabelText("Home spread")).toHaveValue(null);
+  });
+
+  it("keeps what was typed when adding fails", async () => {
+    const form = await addGame(vi.fn(async () => false));
+    await expect.element(form.getByLabelText("Home spread")).toHaveValue(-3);
+  });
+});
 
 describe("GameEditor", () => {
   it("saves every edited field in one go", async () => {

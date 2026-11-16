@@ -4,22 +4,35 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
-import { api, messageOf, unwrap } from "../api";
+import { api, unwrap } from "../api";
 import { Avatar } from "../components/Avatar";
 import { useConfirm } from "../components/ConfirmDialog";
 import { GameEditor, type GameUpdate } from "../components/GameEditor";
 import { LeagueLayout } from "../components/LeagueNav";
+import { LoadError } from "../components/LoadError";
 import { MessageComposer } from "../components/MessageComposer";
 import { LeagueSkeleton } from "../components/Skeletons";
 import { WeekResultsTable } from "../components/WeekResultsTable";
 import { rememberSeason } from "../lib/seasonSelection";
-import { notifyDone, notifyError } from "../notify";
+import { useAction } from "../lib/useAction";
+import { notifyDone } from "../notify";
 import { Link, useFlash } from "../router";
 import { useLoad } from "./useLoad";
 import { useNow } from "./useNow";
 import { WeekHeading } from "./WeekPage";
 
 type ApiCall = () => Promise<{ ok: boolean; json(): Promise<unknown> }>;
+/** The admin's actions on this screen, so each button can say what it is doing while it runs. */
+type WeekAction =
+  | "open"
+  | "import"
+  | "finalize"
+  | "results"
+  | "reopen"
+  | "save"
+  | "add"
+  | "remove"
+  | "tiebreaker";
 
 /** The admin's screen for a week: set it up, open it, enter results, close it. Picks are made on the week page. */
 export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: string }) {
@@ -33,14 +46,16 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
   const flash = useFlash();
   const [importWarning, setImportWarning] = useState(flash?.kind === "alert" ? flash.text : "");
   const [announcement, setAnnouncement] = useState<{ title: string; body: string }>();
-  const [busy, setBusy] = useState(false);
+  const { busy, run } = useAction<WeekAction>();
   const [confirm, confirmDialog] = useConfirm();
 
-  /** Runs admin actions in order; each answers with the updated week. Stops at the first failure. */
-  async function act(calls: ApiCall[], done = "", announce = false) {
-    setBusy(true);
-    setImportWarning("");
-    try {
+  /**
+   * Runs admin actions in order; each answers with the updated week. Stops at the first failure. Resolves to
+   * whether every call succeeded.
+   */
+  function act(action: WeekAction, calls: ApiCall[], done = "", announce = false) {
+    return run(action, async () => {
+      setImportWarning("");
       let updated = week.data;
       for (const call of calls) {
         updated = await unwrap<WeekView>(call());
@@ -73,13 +88,10 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
           body: done,
         });
       }
-    } catch (err) {
-      notifyError(messageOf(err));
-    }
-    setBusy(false);
+    });
   }
 
-  if (week.error) return <Notice kind="alert">{week.error}</Notice>;
+  if (week.error && !week.data) return <LoadError message={week.error} onRetry={week.reload} />;
   const view = week.data;
   if (!view) return <LeagueSkeleton />;
   if (view.role !== "admin") {
@@ -96,6 +108,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
   const missingScores = view.games.filter((g) => g.homeScore === null).length;
   const saveGames = (updates: GameUpdate[]) =>
     act(
+      "save",
       updates.map(
         ({ gameId, changes }) =>
           () =>
@@ -112,7 +125,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
         detail: "Kickoffs and spreads you changed by hand will be replaced.",
         action: "Refresh",
       }));
-    if (ok) act([() => api.weeks[":weekId"].import.$post({ param })], "Schedule imported.");
+    if (ok) act("import", [() => api.weeks[":weekId"].import.$post({ param })], "Schedule imported.");
   }
 
   async function closeWeek() {
@@ -122,7 +135,12 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
       action: "Finalize week",
     });
     if (ok)
-      act([() => api.weeks[":weekId"].finalize.$post({ param })], "Week finalized. Results are in.", true);
+      act(
+        "finalize",
+        [() => api.weeks[":weekId"].finalize.$post({ param })],
+        "Week finalized. Results are in.",
+        true,
+      );
   }
 
   async function removeGame(current: WeekView, gameId: string) {
@@ -132,7 +150,7 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
         current.status === "open" ? "Picks already made on it are deleted." : "You can add it back later.",
       action: "Remove game",
     });
-    if (ok) act([() => api.games[":gameId"].$delete({ param: { gameId } })], "Game removed.");
+    if (ok) act("remove", [() => api.games[":gameId"].$delete({ param: { gameId } })], "Game removed.");
   }
 
   return (
@@ -232,15 +250,24 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
             <div className="grid gap-2 sm:flex">
               <Button
                 type="button"
-                disabled={busy || view.games.length === 0}
+                disabled={!!busy || view.games.length === 0}
                 onClick={() =>
-                  act([() => api.weeks[":weekId"].open.$post({ param })], "Week opened for picks.", true)
+                  act(
+                    "open",
+                    [() => api.weeks[":weekId"].open.$post({ param })],
+                    "Week opened for picks.",
+                    true,
+                  )
                 }
               >
-                {busy ? "Opening…" : "Open week for picks"}
+                {busy === "open" ? "Opening…" : "Open week for picks"}
               </Button>
-              <Button type="button" variant="outline" disabled={busy} onClick={() => importSchedule(view)}>
-                {view.games.length ? "Refresh from ESPN" : "Import from ESPN"}
+              <Button type="button" variant="outline" disabled={!!busy} onClick={() => importSchedule(view)}>
+                {busy === "import"
+                  ? "Importing…"
+                  : view.games.length
+                    ? "Refresh from ESPN"
+                    : "Import from ESPN"}
               </Button>
             </div>
           </>
@@ -260,18 +287,20 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
             <div className="grid gap-2 sm:flex">
               <Button
                 type="button"
-                disabled={busy || missingScores > 0 || view.games.length === 0}
+                disabled={!!busy || missingScores > 0 || view.games.length === 0}
                 onClick={closeWeek}
               >
-                {busy ? "Finalizing…" : "Finalize week"}
+                {busy === "finalize" ? "Finalizing…" : "Finalize week"}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy}
-                onClick={() => act([() => api.weeks[":weekId"].results.$post({ param })], "Results updated.")}
+                disabled={!!busy}
+                onClick={() =>
+                  act("results", [() => api.weeks[":weekId"].results.$post({ param })], "Results updated.")
+                }
               >
-                Pull results from ESPN
+                {busy === "results" ? "Pulling…" : "Pull results from ESPN"}
               </Button>
             </div>
           </>
@@ -287,10 +316,12 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy}
-                onClick={() => act([() => api.weeks[":weekId"].reopen.$post({ param })], "Week reopened.")}
+                disabled={!!busy}
+                onClick={() =>
+                  act("reopen", [() => api.weeks[":weekId"].reopen.$post({ param })], "Week reopened.")
+                }
               >
-                Reopen week
+                {busy === "reopen" ? "Reopening…" : "Reopen week"}
               </Button>
             </div>
           </>
@@ -357,11 +388,15 @@ export function ManageWeekPage({ weekId, userId }: { weekId: string; userId: str
             timeZone={view.timeZone}
             now={now}
             onSave={saveGames}
-            busy={busy}
+            busy={!!busy}
+            pending={busy === "save" || busy === "add" ? busy : undefined}
             onRemove={(gameId) => removeGame(view, gameId)}
-            onAdd={(json) => act([() => api.weeks[":weekId"].games.$post({ param, json })], "Game added.")}
+            onAdd={(json) =>
+              act("add", [() => api.weeks[":weekId"].games.$post({ param, json })], "Game added.")
+            }
             onSetTiebreaker={(tiebreakerGameId) =>
               act(
+                "tiebreaker",
                 [() => api.weeks[":weekId"].$patch({ param, json: { tiebreakerGameId } })],
                 "Tiebreaker game changed.",
               )
