@@ -190,15 +190,15 @@ Its feedback inbox supports **Mark done**, **Reopen**, and loading older reports
 stored picks and messages: it does not measure visits, sessions, or time spent. Private pick choices
 and league message bodies are never included.
 
-Operator access is separate from league admin access. On the **API service**, set `OPERATOR_USER_IDS`
-to your Supabase Auth user UUID (or a comma-separated list). Find it under **Authentication → Users**
-in your Supabase dashboard. Restart/redeploy the API, then reload the app. An empty or unset value
-grants nobody access; players cannot grant themselves access through their profile or league role.
-To revoke access, remove the UUID and restart/redeploy the API.
+Operator access is separate from league admin access. Set the Worker secret `OPERATOR_USER_IDS` to your
+Supabase Auth user UUID (or a comma-separated list): `pnpm exec wrangler secret put OPERATOR_USER_IDS` from
+`apps/api`. Find the UUID under **Authentication → Users** in your Supabase dashboard. A secret change takes
+effect within seconds, without a deploy; reload the app. An empty or unset value grants nobody access, and
+everyone else gets a 404 on the operator routes; players cannot grant themselves access through their profile
+or league role. To revoke access, put the secret again without that UUID.
 
 For local development, `pnpm env:local` makes the seeded `admin@example.com` account an operator.
-This local setting is not applied to production. The feedback migration must be deployed before the
-new API, using the normal migration and deployment workflow.
+This local setting is not applied to production.
 
 ### Walking through a week
 
@@ -408,7 +408,8 @@ Run workspace commands from the repository root:
 | Command              | Purpose                                                                            |
 | -------------------- | ---------------------------------------------------------------------------------- |
 | `pnpm dev`           | Start web and API development servers                                              |
-| `pnpm build`         | Build web assets to `apps/web/dist` and the API bundle to `apps/api/dist/index.js` |
+| `pnpm worker:dev`    | Run the production build in the Workers runtime against local Supabase             |
+| `pnpm build`         | Build web assets to `apps/web/dist` and a dry-run Worker bundle to `apps/api/dist` |
 | `pnpm lint`          | Check formatting and lint rules with Biome                                         |
 | `pnpm format`        | Apply Biome formatting and fixes                                                   |
 | `pnpm typecheck`     | Type-check workspace packages                                                      |
@@ -496,7 +497,7 @@ The app is one [Cloudflare Worker](https://developers.cloudflare.com/workers/), 
 | Static Assets              | Serves `apps/web/dist` from Cloudflare's edge, falls back to `index.html` for SPA routes; never sleeps |
 | `src/worker.ts`            | Runs the Hono API for `/api/*` only, placed in AWS us-east-1 beside the Supabase project               |
 | Hyperdrive                 | Pools database connections and verifies Supabase's certificate (`verify-full` with the Supabase CA)    |
-| `apps/web/public/_headers` | Caches hashed files under `/assets/` forever                                                           |
+| `apps/web/public/_headers` | Caches hashed files under `/assets/` forever; sets the site's security headers (CSP, HSTS, framing)    |
 
 Workers start in milliseconds, so there is no cold-start wait. The app runs on **Workers Paid** ($5 a month),
 which email requires: on the free plan Cloudflare Email Sending can only send to your own verified addresses
@@ -506,7 +507,10 @@ CPU each (time waiting on the database or ESPN doesn't count), so the app stays 
 usage. `wrangler.jsonc` caps each invocation at 2 s of CPU to stop a runaway loop; Workers Logs show each
 request's CPU time. A rate limiting rule on the zone (dashboard, Security → Security rules) blocks an IP for
 10 s once it sends more than 50 requests to `/api/*` in 10 s, before the Worker runs, so a flood from one
-source can't run up the bill or trip the account's spend limit.
+source can't run up the bill or trip the account's spend limit. That rule only guards the custom domain, so
+`wrangler.jsonc` turns off the Worker's `workers.dev` and preview URLs (`workers_dev`, `preview_urls`): the app
+is reachable only at `www.pow-pickem.com`. The zone forces HTTPS (Always Use HTTPS, minimum TLS 1.2), and the
+apex `pow-pickem.com` redirects to `www`.
 
 `pnpm worker:dev` runs the same Worker locally against local Supabase. Day-to-day development stays on
 `pnpm dev` (Node), which `src/index.ts` serves.
@@ -520,8 +524,11 @@ Run these once from `apps/api` (`pnpm exec wrangler login` first):
    `pnpm exec wrangler cert upload certificate-authority --ca-cert prod-ca-2021.crt --name supabase-root-2021`.
 2. Create the Hyperdrive config with the Supabase **direct** connection string (Hyperdrive does its own
    pooling), and put the printed id in `wrangler.jsonc`:
-   `pnpm exec wrangler hyperdrive create pow-pickem-db --connection-string="$(pbpaste)" --ca-certificate-id <id> --sslmode verify-full`.
-   If the direct host isn't reachable over IPv4, use the **session pooler** string instead.
+   `pnpm exec wrangler hyperdrive create pow-pickem-db --connection-string="$(pbpaste)" --ca-certificate-id <id> --sslmode verify-full --caching-disabled`.
+   If the direct host isn't reachable over IPv4, use the **session pooler** string instead. Keep query
+   caching off: Hyperdrive's cache isn't cleared by writes, so membership checks and reads after a save
+   would be up to a minute stale. If the database password changes, update the config with
+   `pnpm exec wrangler hyperdrive update <id> --origin-password` as well as `SUPABASE_DB_URL`.
 3. Set the Worker's secrets: `pnpm exec wrangler secret put SUPABASE_URL`, then `SUPABASE_PUBLISHABLE_KEY` and,
    optionally, `OPERATOR_USER_IDS`.
 4. Add the domain to Cloudflare and point the registrar's nameservers at it, then attach `www.pow-pickem.com`
@@ -605,11 +612,13 @@ yet. Nothing is sent to a device that hasn't opted in.
 One-time setup, from `apps/api`:
 
 ```sh
-node ../../scripts/vapid-keys.mjs > /tmp/vapid.json   # keep this pair; a new one orphans every device
-node -p 'require("/tmp/vapid.json").publicKey'  | pnpm exec wrangler secret put VAPID_PUBLIC_KEY
-node -p 'require("/tmp/vapid.json").privateKey' | pnpm exec wrangler secret put VAPID_PRIVATE_KEY
-echo "mailto:<a contact address>"               | pnpm exec wrangler secret put VAPID_SUBJECT
-rm /tmp/vapid.json
+umask 077; keys="$(mktemp)"                  # readable only by you, removed below
+node ../../scripts/vapid-keys.mjs > "$keys"  # keep this pair; a new one orphans every device
+key() { node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$keys','utf8'))['$1'])"; }
+key publicKey  | pnpm exec wrangler secret put VAPID_PUBLIC_KEY
+key privateKey | pnpm exec wrangler secret put VAPID_PRIVATE_KEY
+echo "mailto:<a contact address>" | pnpm exec wrangler secret put VAPID_SUBJECT
+rm "$keys"
 ```
 
 The same Cron Trigger as email (`*/5 * * * *`) queues due reminders and sends up to 100 pending deliveries
@@ -640,7 +649,45 @@ database connectivity and returns HTTP 503 if that check fails. A failed live ch
 applied in production.
 
 The Node entrypoint (`src/index.ts`) still listens on `PORT` with a `DATABASE_URL`, so the API can move to
-a container host again; only `wrangler.jsonc`, `src/worker.ts` and the deploy job are Cloudflare-specific.
+another host; only `wrangler.jsonc`, `src/worker.ts` and the deploy job are Cloudflare-specific.
+
+### Monitoring and recovery
+
+What alerts you:
+
+| Signal                                    | Where                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| The live API or database stops answering  | [`uptime.yml`](.github/workflows/uptime.yml) checks `/api/health` every 15 minutes and opens an `uptime` issue |
+| Worker errors and exceptions              | Cloudflare Notifications, "POW Pick'em: Worker issues" (Workers Observability real-time issues) |
+| HTTP DDoS mitigations, certificate events | Cloudflare Notifications, "POW Pick'em: HTTP DDoS" and "POW Pick'em: certificate"         |
+| Spend reaching $10 (then error 1103)      | Cloudflare's budget alert; the Workers spend limit blocks `/api/*` and the cron at $10     |
+| ESPN or Kalshi changing shape             | [`contract.yml`](.github/workflows/contract.yml) opens a `feed-contract` issue             |
+| Vulnerable dependencies                   | Dependabot alerts and security-update PRs ([`dependabot.yml`](.github/dependabot.yml))     |
+
+Cloudflare Notifications email the account address; manage them under **Manage account → Notifications**.
+
+When something breaks:
+
+- **A bad deploy.** `pnpm --filter @picks/api exec wrangler rollback` from the repo root returns to the
+  previous Worker version within seconds. It does **not** undo migrations, which is why they must stay
+  compatible with the previous code (expand, then contract). Undo a migration with a new one.
+- **Error 1103 on `/api/*`.** The Workers spend limit was reached. Check Workers Logs and the zone's
+  analytics for the source, block it, then raise or reset the limit under **Billing**.
+- **A bad migration or deleted data.** The Supabase project is on the Free plan, which keeps **no backups**
+  and no point-in-time recovery. Before a risky migration, take a dump yourself (it holds every player's
+  data; keep it off the repo and delete it when done):
+  `pg_dump "$(pbpaste)" --no-owner --format=custom --file=pow-$(date +%F).dump`, using the session pooler
+  URL; `pg_restore --clean --no-owner -d <url> pow-<date>.dump` puts it back.
+
+Rotating credentials:
+
+| Credential                          | Rotate by                                                                                      |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Database password                   | Reset it in Supabase, then `wrangler hyperdrive update <id> --origin-password` and the `SUPABASE_DB_URL` secret |
+| `CLOUDFLARE_API_TOKEN`              | Roll it in the Cloudflare dashboard and replace the GitHub secret                              |
+| `UNSUBSCRIBE_SECRET`                | `wrangler secret put`; links in emails already sent stop working                               |
+| VAPID key pair                      | Don't, unless it leaked: every subscribed device must turn notifications on again              |
+| Supabase SMTP token                 | Roll the Cloudflare Email Sending SMTP credential and update Supabase Auth → SMTP settings      |
 
 ## Credentials and diagnostics
 
