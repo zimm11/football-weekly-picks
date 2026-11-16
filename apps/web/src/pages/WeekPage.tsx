@@ -3,9 +3,11 @@ import { WEEK_PHASE_LABEL, weekLabel, weekPhase } from "@picks/shared";
 import { type ReactNode, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, Notice } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { api, messageOf, unwrap } from "../api";
+import { now as clockNow } from "../clock";
 import { LeagueLayout } from "../components/LeagueNav";
+import { LoadError } from "../components/LoadError";
 import { PickSheet } from "../components/PickSheet";
 import { LeagueSkeleton, WeekSkeleton } from "../components/Skeletons";
 import { WeekAwards } from "../components/WeekAwards";
@@ -13,6 +15,7 @@ import { WeekResultsTable } from "../components/WeekResultsTable";
 import { GameBreakdown, WeekSummary } from "../components/WeekSummary";
 import { offerHomeScreen } from "../lib/homeScreen";
 import { rememberSeason } from "../lib/seasonSelection";
+import { usePolling } from "../lib/usePolling";
 import { Link } from "../router";
 import { useLoad } from "./useLoad";
 import { useNow } from "./useNow";
@@ -126,6 +129,7 @@ export function WeekBody({
             tiebreakerTotal={view.myTiebreakerTotal}
             timeZone={view.timeZone}
             now={now}
+            clock={clockNow}
             onSave={savePicks}
             loadInsights={(gameId) =>
               unwrap<GameInsights>(api.games[":gameId"].insights.$get({ param: { gameId } }))
@@ -171,17 +175,7 @@ function useResultsRefresh(view: WeekView | undefined, reload: () => void) {
   const now = useNow();
   const live =
     view?.status === "open" && view.games.some((g) => g.homeScore === null && new Date(g.kickoff) <= now);
-  useEffect(() => {
-    if (!live) return;
-    const visible = () => document.visibilityState === "visible";
-    const timer = setInterval(() => visible() && reload(), RESULTS_REFRESH_MS);
-    const onVisible = () => visible() && reload();
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [live, reload]);
+  usePolling(reload, RESULTS_REFRESH_MS, live);
 }
 
 const loadWeek = (weekId: string) => unwrap<WeekView>(api.weeks[":weekId"].$get({ param: { weekId } }));
@@ -191,7 +185,7 @@ export function WeekLoader({ weekId, userId }: { weekId: string; userId: string 
   const week = useLoad(() => loadWeek(weekId), weekId);
   useResultsRefresh(week.data, week.reload);
   // A refresh that fails leaves the sheet as it was; only a first load that fails has nothing to show.
-  if (week.error && !week.data) return <Notice kind="alert">{week.error}</Notice>;
+  if (week.error && !week.data) return <LoadError message={week.error} onRetry={week.reload} />;
   if (!week.data) return <WeekSkeleton />;
   return <WeekBody view={week.data} userId={userId} onChange={week.setData} yearShown />;
 }
@@ -200,7 +194,7 @@ export function WeekLoader({ weekId, userId }: { weekId: string; userId: string 
 export function WeekPage({ weekId, userId }: { weekId: string; userId: string }) {
   const week = useLoad(() => loadWeek(weekId), weekId);
   useResultsRefresh(week.data, week.reload);
-  if (week.error && !week.data) return <Notice kind="alert">{week.error}</Notice>;
+  if (week.error && !week.data) return <LoadError message={week.error} onRetry={week.reload} />;
   const view = week.data;
   if (!view) return <LeagueSkeleton />;
   return (

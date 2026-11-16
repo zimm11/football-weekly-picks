@@ -11,11 +11,15 @@ export function SeasonWeeks({
   year,
   weeks,
   busy,
+  creating = false,
   onCreate,
 }: {
   year: number;
   weeks: WeekSummary[];
+  /** Something on the screen is being saved, so nothing here can start. */
   busy: boolean;
+  /** This form's week is being created. */
+  creating?: boolean;
   onCreate: (number: number, importGames: boolean) => Promise<void>;
 }) {
   const next = nextWeekNumber(weeks, MAX_WEEK);
@@ -70,7 +74,7 @@ export function SeasonWeeks({
             </Link>
           ) : (
             <Button type="submit" disabled={busy}>
-              {busy ? "Creating…" : "Create week"}
+              {creating ? "Creating…" : "Create week"}
             </Button>
           )}
         </div>

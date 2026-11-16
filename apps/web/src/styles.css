@@ -39,6 +39,7 @@
   --color-pow-foreground: var(--pow-foreground);
   --color-win: var(--win);
   --color-raised: var(--raised);
+  --color-avatar-foreground: var(--avatar-foreground);
   /* Soft, rounded surfaces: controls at md, cards at xl, sheets at 2xl. */
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -96,6 +97,7 @@
   --avatar-6: #b45309;
   --avatar-7: #be185d;
   --avatar-8: #4d7c0f;
+  --avatar-foreground: #ffffff;
   /* Toasts float above the phone's tab bar and a pinned save bar; on wider screens only the save bar. */
   --toast-bottom: calc(9.5rem + env(safe-area-inset-bottom, 0px));
 }

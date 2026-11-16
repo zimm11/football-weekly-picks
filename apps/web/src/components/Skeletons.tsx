@@ -141,10 +141,10 @@ function StandingsShapes() {
   );
 }
 
-/** Stat tiles over a table. */
-export function StandingsSkeleton() {
+/** Stat tiles over a table: standings, and the operator's numbers. */
+export function StandingsSkeleton({ label = "Loading standings" }: { label?: string }) {
   return (
-    <Loading label="Loading standings">
+    <Loading label={label}>
       <StandingsShapes />
     </Loading>
   );

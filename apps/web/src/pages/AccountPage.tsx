@@ -1,8 +1,9 @@
 import type { Me, NotificationSettings } from "@picks/shared";
 import { useState } from "react";
 import { EmailChangeForm, NotificationSettingsForm } from "@/components/AccountForms";
+import { LoadError } from "@/components/LoadError";
 import { SettingsSkeleton } from "@/components/Skeletons";
-import { Card, Eyebrow, Notice } from "@/components/ui/card";
+import { Card, Eyebrow } from "@/components/ui/card";
 import { api, getSupabase, messageOf, unwrap } from "../api";
 import { useUnsavedGuard } from "../components/ConfirmDialog";
 import { notifyDone, notifyError } from "../notify";
@@ -42,7 +43,7 @@ export function AccountPage({ email }: { email?: string }) {
         <Eyebrow id="notifications-heading" className="m-0">
           Notification emails
         </Eyebrow>
-        {settings.error && <Notice kind="alert">{settings.error}</Notice>}
+        {settings.error && <LoadError message={settings.error} onRetry={settings.reload} />}
         {settings.data ? (
           <NotificationSettingsForm settings={settings.data} onChange={changeNotifications} />
         ) : (

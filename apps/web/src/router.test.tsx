@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
-import { matchRoute, navigate, useLeaveGuard } from "./router";
+import { Link, matchRoute, navigate, useLeaveGuard } from "./router";
 
 let allowLeave: (() => void) | undefined;
 const ask = (leave: () => void) => {
@@ -27,6 +27,33 @@ describe("useLeaveGuard", () => {
     navigate("/leagues/abc/standings");
     expect(window.location.pathname).toBe("/leagues/abc/standings");
     window.history.replaceState(null, "", start);
+  });
+});
+
+describe("Link", () => {
+  it("runs its own onClick before routing, without reloading the page", async () => {
+    const start = window.location.pathname;
+    const onClick = vi.fn();
+    const screen = await render(
+      <Link to="/weeks/w1" onClick={onClick}>
+        See everyone's picks
+      </Link>,
+    );
+    await screen.getByRole("link", { name: "See everyone's picks" }).click();
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(window.location.pathname).toBe("/weeks/w1");
+    window.history.replaceState(null, "", start);
+  });
+
+  it("stays put when its onClick prevents the default", async () => {
+    const start = window.location.pathname;
+    const screen = await render(
+      <Link to="/weeks/w2" onClick={(e) => e.preventDefault()}>
+        Stay
+      </Link>,
+    );
+    await screen.getByRole("link", { name: "Stay" }).click();
+    expect(window.location.pathname).toBe(start);
   });
 });
 

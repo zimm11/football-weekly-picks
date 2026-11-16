@@ -28,6 +28,26 @@ describe("SignInForm", () => {
     await expect.element(screen.getByRole("alert")).toHaveTextContent("Invalid login credentials");
   });
 
+  it("shows the confirm-your-email news as a status, not an error", async () => {
+    const { screen } = await fillAndSubmit(
+      "Create account",
+      vi.fn().mockResolvedValue({ status: "Check your email to confirm your account, then sign in." }),
+    );
+    await expect
+      .element(screen.getByRole("status"))
+      .toHaveTextContent("Check your email to confirm your account, then sign in.");
+    await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says which button is working while it waits", async () => {
+    const { screen } = await fillAndSubmit(
+      "Create account",
+      vi.fn(() => new Promise(() => {})),
+    );
+    await expect.element(screen.getByRole("button", { name: "Creating account…" })).toBeDisabled();
+    await expect.element(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
+  });
+
   it("requests a reset link for the email already typed", async () => {
     const onResetRequest = vi.fn().mockResolvedValue(undefined);
     const screen = await render(<SignInForm onSubmit={vi.fn()} onResetRequest={onResetRequest} />);

@@ -2,18 +2,24 @@ import {
   ArrowBendUpLeftIcon,
   CaretLeftIcon,
   DotsThreeIcon,
-  PaperPlaneRightIcon,
   PlusIcon,
   PushPinIcon,
-  XIcon,
 } from "@phosphor-icons/react";
-import type { MessageReaction, MessageThread, MessageQuote as Quote, ThreadDetail } from "@picks/shared";
+import {
+  type MessageReaction,
+  type MessageThread,
+  type MessageQuote as Quote,
+  THREAD_PAGE_SIZE,
+  type ThreadDetail,
+  type ThreadPage as ThreadListPage,
+} from "@picks/shared";
 import { cn } from "cn";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
 import { Avatar } from "../components/Avatar";
-import { useUnsavedGuard } from "../components/ConfirmDialog";
 import { TAB_BAR_OFFSET } from "../components/LeagueNav";
+import { LoadError } from "../components/LoadError";
+import { MessageComposer } from "../components/MessageComposer";
 import { MessageQuote } from "../components/MessageQuote";
 import { MessageReactions } from "../components/MessageReactions";
 import { ListSkeleton } from "../components/Skeletons";
@@ -26,168 +32,30 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import { Field, fieldClass, Input } from "../components/ui/input";
 import { relativeTime } from "../format";
-import { notifyDone, notifyError } from "../notify";
+import { announceMessagesChanged, MESSAGES_REFRESH_MS, setUnreadThreads } from "../lib/unread";
+import { useAction } from "../lib/useAction";
+import { usePolling } from "../lib/usePolling";
+import { notifyDone } from "../notify";
 import { Link, navigate } from "../router";
 import { useLoad } from "./useLoad";
 import { useNow } from "./useNow";
 
-export function MessageComposer({
-  initialTitle = "",
-  initialBody = "",
-  reply = false,
-  quote,
-  onCancelQuote,
-  onSubmit,
-}: {
-  initialTitle?: string;
-  initialBody?: string;
-  reply?: boolean;
-  quote?: Quote;
-  onCancelQuote?: () => void;
-  onSubmit: (value: { title: string; body: string }) => Promise<void>;
-}) {
-  const [title, setTitle] = useState(initialTitle);
-  const [body, setBody] = useState(initialBody);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const replyInput = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (quote?.id) replyInput.current?.focus();
-  }, [quote?.id]);
-  const guard = useUnsavedGuard(!!(title || body || quote), "message edits");
-  // The reply box starts one line tall and grows with what is typed, up to a few lines.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `body` is what changes the height to measure.
-  useEffect(() => {
-    const box = replyInput.current;
-    if (!reply || !box) return;
-    box.style.height = "auto";
-    box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
-  }, [reply, body]);
-  const submitting = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      await onSubmit({ title, body });
-      setTitle("");
-      setBody("");
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  if (reply) {
-    return (
-      <form
-        className="grid gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submitting();
-        }}
-      >
-        {guard}
-        {quote && (
-          <section
-            aria-label="Reply quote preview"
-            className="flex items-center gap-2 rounded-lg bg-raised py-1 pr-1 pl-3 text-sm"
-          >
-            <ArrowBendUpLeftIcon aria-hidden className="size-4 shrink-0 text-primary" />
-            <p className="m-0 min-w-0 flex-1 truncate">
-              <span className="font-semibold">{quote.authorName} wrote:</span>{" "}
-              <span className="text-muted-foreground">{quote.body}</span>
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Remove quote"
-              className="size-9 rounded-full"
-              disabled={busy}
-              onClick={onCancelQuote}
-            >
-              <XIcon aria-hidden className="size-4" />
-            </Button>
-          </section>
-        )}
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={replyInput}
-            aria-label="Reply"
-            placeholder="Write a reply…"
-            rows={1}
-            className={`${fieldClass} min-h-11 resize-none rounded-2xl py-2.5`}
-            required
-            maxLength={5000}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={busy}
-          />
-          <Button
-            aria-label={busy ? "Posting…" : "Post reply"}
-            size="icon"
-            className="rounded-full"
-            disabled={busy || !body.trim()}
-          >
-            <PaperPlaneRightIcon aria-hidden weight="fill" />
-          </Button>
-        </div>
-        {error && <Notice kind="alert">{error}</Notice>}
-      </form>
-    );
-  }
-  return (
-    <form
-      className="grid gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        submitting();
-      }}
-    >
-      {guard}
-      <Field label="Thread title">
-        <Input
-          required
-          maxLength={120}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={busy}
-        />
-      </Field>
-      <Field label="Message">
-        <textarea
-          aria-label="Message"
-          className={`${fieldClass} min-h-32 py-3`}
-          required
-          maxLength={5000}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          disabled={busy}
-        />
-      </Field>
-      {error && <Notice kind="alert">{error}</Notice>}
-      <Button disabled={busy || !body.trim() || !title.trim()}>{busy ? "Posting…" : "Create thread"}</Button>
-    </form>
+const loadThreads = (leagueId: string, before?: string) =>
+  unwrap<ThreadListPage>(
+    api.leagues[":leagueId"].messages.$get({
+      param: { leagueId },
+      query: before ? { limit: String(THREAD_PAGE_SIZE), before } : { limit: String(THREAD_PAGE_SIZE) },
+    }),
   );
-}
 
 export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadId?: string }) {
   const base = `/leagues/${leagueId}/messages`;
-  const now = useNow();
   const [createdId, setCreatedId] = useState<string>();
   // Navigate after the composer has cleared its unsaved guard.
   useEffect(() => {
     if (createdId) navigate(`${base}/${createdId}`);
   }, [createdId, base]);
-  const list = useLoad(
-    () => unwrap<MessageThread[]>(api.leagues[":leagueId"].messages.$get({ param: { leagueId } })),
-    leagueId,
-  );
-  useEffect(() => {
-    const timer = setInterval(list.reload, 30000);
-    return () => clearInterval(timer);
-  }, [list.reload]);
   if (threadId && threadId !== "new")
     return <ThreadPage key={threadId} leagueId={leagueId} threadId={threadId} />;
   if (threadId === "new")
@@ -207,12 +75,48 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
               api.leagues[":leagueId"].messages.$post({ param: { leagueId }, json }),
             );
             notifyDone("Thread created.");
-            window.dispatchEvent(new Event("messages-changed"));
+            announceMessagesChanged();
             setCreatedId(result.id);
           }}
         />
       </Card>
     );
+  return <Board leagueId={leagueId} />;
+}
+
+/**
+ * The thread list. The newest page (with every pinned announcement) is fetched again every 30 seconds while
+ * it is on screen, and it reports the unread count for the Messages tab. Older pages load on request and stay
+ * below it; a thread bumped since shows once, at its new place.
+ */
+function Board({ leagueId }: { leagueId: string }) {
+  const base = `/leagues/${leagueId}/messages`;
+  const now = useNow();
+  const list = useLoad(() => loadThreads(leagueId), leagueId);
+  usePolling(list.reload, MESSAGES_REFRESH_MS);
+  const unreadCount = list.data?.unreadCount;
+  useEffect(() => {
+    if (unreadCount !== undefined) setUnreadThreads(leagueId, unreadCount);
+  }, [leagueId, unreadCount]);
+  const [older, setOlder] = useState<{ threads: MessageThread[]; nextCursor: string | null }>();
+  const { busy, run } = useAction<"older">();
+
+  const first = list.data?.threads ?? [];
+  const shown = new Set(first.map((t) => t.id));
+  const threads = [...first, ...(older?.threads ?? []).filter((t) => !shown.has(t.id))];
+  const cursor = older ? older.nextCursor : list.data?.nextCursor;
+
+  function loadOlder() {
+    if (!cursor) return;
+    run("older", async () => {
+      const page = await loadThreads(leagueId, cursor);
+      setOlder((prev) => ({
+        threads: [...(prev?.threads ?? []), ...page.threads],
+        nextCursor: page.nextCursor,
+      }));
+    });
+  }
+
   return (
     <section className="grid gap-3">
       <div className="flex items-center justify-between">
@@ -222,12 +126,12 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
           New thread
         </Link>
       </div>
-      {list.error && <Notice kind="alert">{list.error}</Notice>}
+      {list.error && !list.data && <LoadError message={list.error} onRetry={list.reload} />}
       {!list.data && !list.error && <ListSkeleton label="Loading messages" rows={3} />}
-      {list.data?.length === 0 && <Card>No threads yet. Start the conversation.</Card>}
-      {!!list.data?.length && (
+      {list.data && threads.length === 0 && <Card>No threads yet. Start the conversation.</Card>}
+      {threads.length > 0 && (
         <ul className="m-0 grid list-none divide-y divide-border overflow-hidden rounded-xl bg-card p-0">
-          {list.data.map((t) => (
+          {threads.map((t) => (
             <li key={t.id}>
               <Link
                 to={`${base}/${t.id}`}
@@ -259,6 +163,11 @@ export function MessagesPage({ leagueId, threadId }: { leagueId: string; threadI
           ))}
         </ul>
       )}
+      {cursor && (
+        <Button type="button" variant="secondary" disabled={!!busy} onClick={loadOlder}>
+          {busy ? "Loading…" : "Load older threads"}
+        </Button>
+      )}
     </section>
   );
 }
@@ -268,7 +177,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
   const endpoint = api.leagues[":leagueId"].messages[":threadId"];
   const now = useNow();
   const thread = useLoad(() => unwrap<ThreadDetail>(endpoint.$get({ param })), threadId);
-  const [pinning, setPinning] = useState(false);
+  const { busy: pinning, run } = useAction<"pin">();
   const [quote, setQuote] = useState<Quote>();
   const [replyBusy, setReplyBusy] = useState(false);
   const [readError, setReadError] = useState("");
@@ -286,7 +195,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
       ).then(
         () => {
           setReadError("");
-          window.dispatchEvent(new Event("messages-changed"));
+          announceMessagesChanged();
         },
         (err) => setReadError(messageOf(err)),
       );
@@ -297,35 +206,24 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
   }, [version, leagueId, threadId]);
   // New replies arrive on their own: every 30 seconds while the thread is on screen, and on returning to it.
   // A failed refresh is left alone; the next one tries again.
-  useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState !== "visible") return;
-      unwrap<ThreadDetail>(
-        api.leagues[":leagueId"].messages[":threadId"].$get({ param: { leagueId, threadId } }),
-      ).then(setData, () => {});
-    };
-    const timer = setInterval(refresh, 30_000);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [leagueId, threadId, setData]);
+  usePolling(() => {
+    unwrap<ThreadDetail>(
+      api.leagues[":leagueId"].messages[":threadId"].$get({ param: { leagueId, threadId } }),
+    ).then(setData, () => {});
+  }, MESSAGES_REFRESH_MS);
 
-  async function togglePin() {
-    if (!thread.data) return;
-    setPinning(true);
-    try {
-      const result = await unwrap<{ pinned: boolean }>(
-        endpoint.pin.$put({ param, json: { pinned: !thread.data.pinned } }),
-      );
-      thread.setData((current) => current && { ...current, pinned: result.pinned });
-      notifyDone(result.pinned ? "Announcement pinned." : "Announcement unpinned.");
-    } catch (err) {
-      notifyError(messageOf(err));
-    } finally {
-      setPinning(false);
-    }
+  function togglePin() {
+    const current = thread.data;
+    if (!current) return;
+    const pinned = !current.pinned;
+    run(
+      "pin",
+      async () => {
+        const result = await unwrap<{ pinned: boolean }>(endpoint.pin.$put({ param, json: { pinned } }));
+        thread.setData((data) => data && { ...data, pinned: result.pinned });
+      },
+      pinned ? "Announcement pinned." : "Announcement unpinned.",
+    );
   }
 
   return (
@@ -337,7 +235,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
         <CaretLeftIcon aria-hidden weight="bold" className="size-3.5" />
         Message board
       </Link>
-      {thread.error && <Notice kind="alert">{thread.error}</Notice>}
+      {thread.error && !thread.data && <LoadError message={thread.error} onRetry={thread.reload} />}
       {readError && <Notice kind="alert">Could not mark this thread read: {readError}</Notice>}
       {thread.data ? (
         <>
@@ -359,7 +257,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
                     size="icon"
                     aria-label="Thread options"
                     className="-mt-1 rounded-full text-muted-foreground hover:text-foreground"
-                    disabled={pinning}
+                    disabled={!!pinning}
                   >
                     <DotsThreeIcon aria-hidden weight="bold" className="size-6" />
                   </Button>
@@ -444,7 +342,7 @@ function ThreadPage({ leagueId, threadId }: { leagueId: string; threadId: string
                   setQuote(undefined);
                   notifyDone("Reply posted.");
                   thread.reload();
-                  window.dispatchEvent(new Event("messages-changed"));
+                  announceMessagesChanged();
                 } finally {
                   setReplyBusy(false);
                 }

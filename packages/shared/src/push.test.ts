@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { isPushEndpoint, pushSubscriptionSchema } from "./push";
 
 describe("push subscription validation", () => {
+  it("takes an optional replaced endpoint, from a known provider only", () => {
+    const value = {
+      endpoint: "https://web.push.apple.com/new",
+      keys: { p256dh: `B${"a".repeat(86)}`, auth: "a".repeat(22) },
+      newThreads: true,
+      pickReminders: true,
+    };
+    expect(pushSubscriptionSchema.safeParse(value).success).toBe(true);
+    expect(
+      pushSubscriptionSchema.safeParse({ ...value, oldEndpoint: "https://web.push.apple.com/old" }).success,
+    ).toBe(true);
+    expect(pushSubscriptionSchema.safeParse({ ...value, oldEndpoint: "https://evil.test/old" }).success).toBe(
+      false,
+    );
+  });
   it("accepts the browser push providers", () => {
     for (const host of [
       "fcm.googleapis.com",

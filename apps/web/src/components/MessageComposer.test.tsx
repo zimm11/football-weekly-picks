@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
-import { MessageComposer } from "../pages/MessagesPage";
+import { MessageComposer } from "./MessageComposer";
 
 const original = { id: "original", authorName: "Pat", body: "The Eagles will cover." };
 

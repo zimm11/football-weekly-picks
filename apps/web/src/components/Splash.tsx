@@ -1,4 +1,35 @@
+import { ArrowsClockwiseIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
+import { Button } from "./ui/button";
+
+/**
+ * In place of the splash when the app couldn't start (offline, or the API didn't answer): what happened, and
+ * a way to try again without reloading.
+ */
+export function StartError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-chrome px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <div className="grid max-w-sm justify-items-center gap-5 text-center">
+        <span aria-hidden className="font-display text-7xl leading-[0.8] font-extrabold text-foreground">
+          POW
+        </span>
+        <div className="grid gap-2">
+          <h1 className="flex items-center justify-center gap-2 text-3xl">
+            <WarningCircleIcon aria-hidden weight="fill" className="size-7 shrink-0 text-destructive" />
+            Can't open POW Pick'em
+          </h1>
+          <p role="alert" className="m-0 text-muted-foreground">
+            {message}
+          </p>
+        </div>
+        <Button type="button" onClick={onRetry}>
+          <ArrowsClockwiseIcon aria-hidden />
+          Try again
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 /** Length of one pass of the light along the bar; matches `--animate-splash-sweep` in styles.css. */
 const SWEEP_MS = 1600;

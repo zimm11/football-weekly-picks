@@ -22,7 +22,7 @@ import {
   teamName,
 } from "@picks/shared";
 import { cn } from "cn";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/card";
@@ -56,6 +56,8 @@ type Props = {
   timeZone: string;
   /** Passed in (not read from the clock) so the lock states are testable. */
   now: Date;
+  /** Reads the time at the moment of saving, when `now` (refreshed every half minute) may be behind. */
+  clock?: () => Date;
   /** Resolves to an error message, or undefined on success. */
   onSave: (submission: SubmitPicks) => Promise<string | undefined>;
   /** Fetches a game's stats, news and market prices. Each card offers them when this is given. */
@@ -69,6 +71,7 @@ export function PickSheet({
   tiebreakerTotal,
   timeZone,
   now,
+  clock,
   onSave,
   loadInsights,
 }: Props) {
@@ -84,8 +87,9 @@ export function PickSheet({
   const [matchupGame, setMatchupGame] = useState<Game | null>(null);
 
   // A game locks at kickoff; one with a result is locked whatever the clock says.
-  const locked = (game: Game) =>
-    isLocked({ kickoff: new Date(game.kickoff), final: game.homeScore !== null }, now);
+  const lockedAt = (game: Game, at: Date) =>
+    isLocked({ kickoff: new Date(game.kickoff), final: game.homeScore !== null }, at);
+  const locked = (game: Game) => lockedAt(game, now);
   const savedPowGame = games.find((g) => g.id === savedPow);
   // Once the game holding the POW has kicked off, the POW can't move.
   const powFrozen = !!savedPowGame && locked(savedPowGame);
@@ -102,16 +106,75 @@ export function PickSheet({
     setPow((prev) => (prev === game.id ? null : game.id));
   }
 
+  /**
+   * Puts back what is saved wherever the clock has closed an unsaved change: a pick on a game that has kicked
+   * off (or has a result), a POW moved onto or off a game that has, a tiebreaker guess after its game locked.
+   * Picks for a game no longer on the slate are dropped too. Says which changes were undone, if any.
+   */
+  function undoLockedChanges(at: Date) {
+    const slate = new Map(games.map((g) => [g.id, g]));
+    const undone: string[] = [];
+    const nextSides: Record<string, Side> = {};
+    for (const [gameId, side] of Object.entries(sides)) {
+      const game = slate.get(gameId);
+      if (!game) continue;
+      const savedSide = saved.get(gameId);
+      if (side !== savedSide && lockedAt(game, at)) {
+        if (savedSide) nextSides[gameId] = savedSide;
+        undone.push(matchup(game));
+      } else {
+        nextSides[gameId] = side;
+      }
+    }
+    let nextPow = pow && slate.has(pow) ? pow : null;
+    if (nextPow !== savedPow) {
+      const from = savedPow ? slate.get(savedPow) : undefined;
+      const to = nextPow ? slate.get(nextPow) : undefined;
+      if ((from && lockedAt(from, at)) || (to && (lockedAt(to, at) || !nextSides[to.id]))) {
+        nextPow = savedPow && slate.has(savedPow) ? savedPow : null;
+        undone.push("your POW");
+      }
+    }
+    const savedTotal = tiebreakerTotal === null ? "" : String(tiebreakerTotal);
+    let nextTotal = total;
+    if (total.trim() !== savedTotal && tiebreakerGame && lockedAt(tiebreakerGame, at)) {
+      nextTotal = savedTotal;
+      undone.push("your tiebreaker guess");
+    }
+    const changed =
+      Object.keys(nextSides).length !== Object.keys(sides).length ||
+      Object.entries(nextSides).some(([gameId, side]) => sides[gameId] !== side) ||
+      nextPow !== pow ||
+      nextTotal !== total;
+    if (changed) {
+      setSides(nextSides);
+      setPow(nextPow);
+      setTotal(nextTotal);
+    }
+    return { sides: nextSides, pow: nextPow, total: nextTotal, undone: [...new Set(undone)] };
+  }
+
+  // A change the player hasn't saved is undone as soon as its game locks, so it can't hold up the rest.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the clock or the slate moves on.
+  useEffect(() => {
+    const { undone } = undoLockedChanges(now);
+    if (undone.length) setMessage({ kind: "error", text: lockedMessage(undone) });
+  }, [now, games]);
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setPending(true);
+    const current = undoLockedChanges(clock?.() ?? now);
     const error = await onSave({
-      picks: Object.entries(sides).map(([gameId, side]) => ({ gameId, side })),
-      powGameId: pow,
-      tiebreakerTotal: total.trim() === "" ? null : Number(total),
+      picks: Object.entries(current.sides).map(([gameId, side]) => ({ gameId, side })),
+      powGameId: current.pow,
+      tiebreakerTotal: current.total.trim() === "" ? null : Number(current.total),
     });
     setPending(false);
-    setMessage(error ? { kind: "error", text: error } : { kind: "saved", text: "Picks saved." });
+    if (error) setMessage({ kind: "error", text: error });
+    else if (current.undone.length)
+      setMessage({ kind: "saved", text: `Picks saved. ${lockedMessage(current.undone)}` });
+    else setMessage({ kind: "saved", text: "Picks saved." });
   }
 
   const days: { day: string; games: Game[] }[] = [];
@@ -349,6 +412,15 @@ export function PickSheet({
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "Your change to KC at ATL didn't save: it locked first." */
+function lockedMessage(undone: string[]): string {
+  const list =
+    undone.length === 1 ? undone[0] : `${undone.slice(0, -1).join(", ")} and ${undone[undone.length - 1]}`;
+  return undone.length === 1
+    ? `Your change to ${list} didn't save: it locked first.`
+    : `Your changes to ${list} didn't save: they locked first.`;
+}
 
 /**
  * The answer to "do I still need to do anything this week?", at the top of the sheet. It counts saved

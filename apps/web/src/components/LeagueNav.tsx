@@ -6,10 +6,9 @@ import {
   TrophyIcon,
   UsersThreeIcon,
 } from "@phosphor-icons/react";
-import type { MessageThread } from "@picks/shared";
 import { cn } from "cn";
-import { type ReactNode, useEffect, useState } from "react";
-import { api, unwrap } from "../api";
+import type { ReactNode } from "react";
+import { useUnreadThreads } from "../lib/unread";
 import { Link } from "../router";
 
 export type LeagueTab = "picks" | "results" | "standings" | "league" | "messages";
@@ -26,26 +25,17 @@ const TABS = [
 export const TAB_BAR_OFFSET = "bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] md:bottom-0";
 
 /** The five places inside a league: a bar along the bottom of a phone, a row under the league name on wider screens. */
-export function LeagueNav({ leagueId, active }: { leagueId: string; active: LeagueTab }) {
-  const [unread, setUnread] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    const refresh = () =>
-      unwrap<MessageThread[]>(api.leagues[":leagueId"].messages.$get({ param: { leagueId } })).then(
-        (rows) => {
-          if (alive) setUnread(rows.filter((t) => t.unread).length);
-        },
-        () => {},
-      );
-    refresh();
-    const timer = setInterval(refresh, 30000);
-    window.addEventListener("messages-changed", refresh);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-      window.removeEventListener("messages-changed", refresh);
-    };
-  }, [leagueId]);
+export function LeagueNav({
+  leagueId,
+  active,
+  boardShown = false,
+}: {
+  leagueId: string;
+  active: LeagueTab;
+  /** The message board is on screen and reports the unread count itself, so the tab needn't fetch it. */
+  boardShown?: boolean;
+}) {
+  const unread = useUnreadThreads(leagueId, !boardShown);
   return (
     <nav
       aria-label="League"
@@ -89,6 +79,7 @@ export function LeagueLayout({
   active,
   seasonSelector,
   seasonPanel,
+  boardShown,
   children,
 }: {
   leagueId: string;
@@ -96,6 +87,8 @@ export function LeagueLayout({
   active: LeagueTab;
   seasonSelector?: ReactNode;
   seasonPanel?: ReactNode;
+  /** The message board's thread list is on screen (see `LeagueNav`). */
+  boardShown?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -105,7 +98,7 @@ export function LeagueLayout({
           <div className="grid min-w-0 flex-1">
             <Link
               to="/"
-              className="flex w-fit items-center gap-1 py-1 text-sm font-medium text-muted-foreground no-underline hover:text-foreground"
+              className="flex min-h-11 w-fit items-center gap-1 text-sm font-medium text-muted-foreground no-underline hover:text-foreground"
             >
               <CaretLeftIcon aria-hidden weight="bold" className="size-3.5" />
               All leagues
@@ -116,7 +109,7 @@ export function LeagueLayout({
         </div>
         {seasonPanel}
       </div>
-      <LeagueNav leagueId={leagueId} active={active} />
+      <LeagueNav leagueId={leagueId} active={active} boardShown={boardShown} />
       {children}
     </div>
   );
