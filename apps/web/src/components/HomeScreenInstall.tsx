@@ -63,7 +63,7 @@ export function HomeScreenInstructions({ platform = "other" }: { platform?: Home
         time. An internet connection is required.
       </p>
       <p className="m-0 text-sm text-muted-foreground">
-        Want pick reminders on your phone? In the app, open Notifications from the account menu and tap Enable
+        Want pick reminders on your phone? In the app, open Settings from the account menu and tap Enable
         notifications.
       </p>
       <p className="m-0 text-sm text-muted-foreground">
@@ -126,7 +126,7 @@ function useStandalone() {
 }
 
 /**
- * The signed-in app's home-screen help: `open` backs the account menu item (hidden once installed),
+ * The signed-in app's home-screen help: `open` backs the Home screen app card in Settings (hidden once installed),
  * and on a phone the first save of picks in this browser opens the sheet once on its own.
  */
 export function useHomeScreenHelp() {

@@ -28,7 +28,6 @@ import { LandingPage } from "./pages/LandingPage";
 import { LeaguePage } from "./pages/LeaguePage";
 import { JoinPage, LeaguesPage } from "./pages/LeaguesPage";
 import { ManageWeekPage } from "./pages/ManageWeekPage";
-import { NotificationsPage } from "./pages/NotificationsPage";
 import { OperatorPage } from "./pages/OperatorPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { useNow } from "./pages/useNow";
@@ -284,8 +283,8 @@ function SignedIn({
         {me?.displayName && (
           <DropdownMenuItem onSelect={() => setEditingName(true)}>Change your name</DropdownMenuItem>
         )}
-        <DropdownMenuItem onSelect={() => navigate("/account")}>Account settings</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate("/notifications")}>Notifications</DropdownMenuItem>
+        {/* Notifications and the home-screen app live in Settings too, so they need no items of their own. */}
+        <DropdownMenuItem onSelect={() => navigate("/account")}>Settings</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/reset-password")}>Change password</DropdownMenuItem>
         {me?.displayName && route.page !== "feedback" && (
           // Carries the screen they were on, so a bug report says where it happened.
@@ -294,9 +293,6 @@ function SignedIn({
           >
             Send feedback
           </DropdownMenuItem>
-        )}
-        {homeScreen.available && (
-          <DropdownMenuItem onSelect={homeScreen.open}>Add to home screen</DropdownMenuItem>
         )}
         {me?.isOperator && (
           <DropdownMenuItem onSelect={() => navigate("/operator")}>Operator</DropdownMenuItem>
@@ -352,7 +348,13 @@ function SignedIn({
                 <LeaguesPage playerName={me.displayName} />
               )}
               {route.page === "join" && <JoinPage code={route.code} />}
-              {route.page === "account" && <AccountPage email={email} />}
+              {/* `/notifications` is where notification settings used to be; old links land on Settings. */}
+              {(route.page === "account" || route.page === "notifications") && (
+                <AccountPage
+                  email={email}
+                  onAddToHomeScreen={homeScreen.available ? homeScreen.open : undefined}
+                />
+              )}
               {route.page === "unsubscribe" && <UnsubscribePage signedIn />}
               {route.page === "league" && (
                 <LeaguePage
@@ -365,7 +367,6 @@ function SignedIn({
               )}
               {route.page === "week" && <WeekPage weekId={route.weekId} userId={userId} />}
               {route.page === "manage-week" && <ManageWeekPage weekId={route.weekId} userId={userId} />}
-              {route.page === "notifications" && <NotificationsPage />}
               {route.page === "feedback" && <FeedbackPage />}
               {route.page === "operator" && me.isOperator && <OperatorPage />}
               {(route.page === "not-found" || (route.page === "operator" && !me.isOperator)) && (

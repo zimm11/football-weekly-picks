@@ -152,9 +152,10 @@ Sessions are stored per browser profile, so both accounts can stay signed in sid
 
 ### Adding POW Pick'em to your home screen
 
-In a browser, the account menu has **Add to home screen**. It opens instructions over the current
-screen, keeping unsaved picks in place, and shows only the steps for the player's phone (iPhone/iPad
-or Android; both on a computer). On a phone, the first time a player saves picks in that browser, the
+In a browser, **Settings** (account menu) has a **Home screen app** card whose **Show me how** opens
+instructions over the screen, showing only the steps for the player's phone (iPhone/iPad or Android; both
+on a computer). In an iPhone browser tab the card is left out, because the notifications card above it
+already shows the iPhone steps. On a phone, the first time a player saves picks in that browser, the
 same instructions open once on their own with a **Not now** button; they never reappear after that.
 None of this shows when running from the home-screen app. To see the one-time prompt again locally,
 remove `pow:home-screen-offered` from the site's local storage. Open the new icon after adding it;
@@ -162,13 +163,16 @@ you may need to sign in again. The app requires an internet connection.
 
 ### Push notifications
 
-Open **Notifications & pick reminders** on Your leagues, or **Notifications** in the account menu, then
-**Enable notifications** on each device that should get them and approve the browser's permission prompt.
+Open **Settings** from the account menu, then **Enable notifications** under **On this device** on each
+device that should get them, and approve the browser's permission prompt. Until a device has been asked,
+Your leagues shows a small **Get pick reminders on this device** suggestion with **Turn on** (to Settings)
+and **Not now**, which hides it for good on that browser (`pow:notifications-prompt-dismissed` in local
+storage; no storage means no suggestion).
 On iPhone and iPad (iOS 16.4+), first add POW Pick'em to the home screen and open it from its icon;
 ordinary iPhone browser tabs show those steps instead of asking for permission.
 
-Each device has its own switches for **New league threads** and **Missing-pick reminders**, alongside the
-email switches under **Account settings**. A new thread notifies the league's other current members who
+Each device has its own switches for **New league threads** and **Missing-pick reminders**, beside the
+email switches (**By email**) in the same **Notifications** section of Settings. A new thread notifies the league's other current members who
 opted in (replies don't). Reminders start at 7pm league time the evening before a game day, only for games
 still to pick, and expire at that day's first kickoff; picks and membership are checked again just before
 sending. Notifications show league names and thread titles on the lock screen, never picks or message
@@ -258,9 +262,9 @@ account can be in at most 25 leagues; removed and departed members don't count t
 
 **Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
 password. Locally, that email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
-use **Change password** or **Change your name** from the account menu in the header. **Account settings**
-(`/account`) changes the email address (confirmed from both the old and the new address) and turns
-new-thread emails and pick reminders on or off.
+use **Change password** or **Change your name** from the account menu in the header. **Settings**
+(`/account`) holds notifications (by email and on this device), the home-screen app help, and the email
+address (a change is confirmed from both the old and the new address).
 
 ### Testing locks and inspecting data
 
@@ -552,7 +556,7 @@ from `noreply@pow-pickem.com`:
   day, to players with games still to pick) are sent by the Worker through its `send_email` binding (`EMAIL`
   in `wrangler.jsonc`; no API key). They are queued in the `email_outbox` table, so each is sent once
   (per-email dedupe keys) and retried with backoff if Cloudflare can't take it. Players turn either kind off
-  under **Account settings** or with the link in each email, which also carries one-click
+  under **Settings** or with the link in each email, which also carries one-click
   `List-Unsubscribe` headers.
 
 The Worker's **Cron Trigger** (`*/5 * * * *` in `wrangler.jsonc`) runs the email job: it queues the pick

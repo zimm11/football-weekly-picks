@@ -5,7 +5,7 @@ import type { PushSupport } from "../push";
 import { useUnsavedGuard } from "./ConfirmDialog";
 import { HomeScreenInstructions } from "./HomeScreenInstall";
 import { Button } from "./ui/button";
-import { Card, Notice } from "./ui/card";
+import { Card, Eyebrow, Notice } from "./ui/card";
 
 type Props = {
   support: PushSupport;
@@ -50,11 +50,13 @@ export function PushNotificationSettings({
   return (
     <>
       {guard}
-      <Card>
-        <h3 className="text-2xl">Notifications on this device</h3>
+      <Card aria-labelledby="device-notifications-heading">
+        <Eyebrow id="device-notifications-heading" className="m-0">
+          On this device
+        </Eyebrow>
         <p className="m-0 text-muted-foreground">
-          Get new league threads and reminders for missing picks. Notifications can appear on your lock
-          screen, including league names and thread titles.
+          New threads and missing-pick reminders as notifications. They can show league names and thread
+          titles on your lock screen.
         </p>
         {support === "home-screen" ? (
           <>

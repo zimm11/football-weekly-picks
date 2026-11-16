@@ -51,12 +51,23 @@ test("signed-out visitors can explore the landing page and public guide", async 
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
-test("signed-in users can read the guide and return to their leagues", async ({ page, signedIn }) => {
+test("signed-in users can read the guide and return to their leagues", async ({
+  page,
+  signedIn,
+  isMobile,
+}) => {
   await page.getByRole("button", { name: signedIn.displayName }).click();
-  await page.getByRole("menuitem", { name: "Add to home screen" }).click();
-  await expect(page.getByRole("dialog", { name: "Add it to your home screen" })).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  if (isMobile) {
+    // An iPhone browser tab: the device card already shows the install steps.
+    await expect(page.getByRole("heading", { name: "iPhone or iPad · Safari" })).toBeVisible();
+  } else {
+    await page.getByRole("button", { name: "Show me how" }).click();
+    await expect(page.getByRole("dialog", { name: "Add it to your home screen" })).toBeVisible();
+    await expect(page).toHaveURL(/\/account$/);
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+  }
   await page.getByRole("link", { name: "How to play", exact: true }).click();
   await expect(page.getByRole("heading", { name: "How to play", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
