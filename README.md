@@ -404,7 +404,7 @@ Team logos are loaded by the browser from ESPN's image CDN (`a.espncdn.com`).
 
 The web app has a manifest and icons so it can be installed to a home screen. A push-only service worker
 (`apps/web/public/push-sw.js`, served with `Cache-Control: no-cache` from `_headers`) shows notifications
-and caches nothing, so nothing works offline.
+and caches no pages or responses, so nothing works offline.
 
 ## Development and testing
 
