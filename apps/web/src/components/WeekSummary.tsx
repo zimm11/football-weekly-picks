@@ -1,4 +1,4 @@
-import { coveringSide, type Game, type WeekResults, weekSummary } from "@picks/shared";
+import { coveringSide, type Game, tiebreakerTotal, type WeekResults, weekSummary } from "@picks/shared";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Card, Eyebrow } from "@/components/ui/card";
@@ -17,11 +17,7 @@ export function WeekSummary({ games, results, tiebreakerGameId, currentUserId }:
   const { entries } = results;
   const me = entries.find((e) => e.userId === currentUserId);
   const { topPoints, averagePoints } = weekSummary(entries);
-  const tiebreakerGame = games.find((g) => g.id === tiebreakerGameId);
-  const actualTotal =
-    tiebreakerGame && tiebreakerGame.homeScore !== null && tiebreakerGame.awayScore !== null
-      ? tiebreakerGame.homeScore + tiebreakerGame.awayScore
-      : null;
+  const actualTotal = tiebreakerTotal(games.find((g) => g.id === tiebreakerGameId));
   const winnerCount = entries.filter((e) => e.isWinner).length;
   const powHits = entries.filter((e) => e.powWon).length;
   const myPow = me?.powGameId ? games.find((g) => g.id === me.powGameId) : undefined;

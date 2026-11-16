@@ -6,6 +6,7 @@ import {
   type Game,
   lineFor,
   lowPointLosers,
+  tiebreakerTotal,
   type WeekResults,
 } from "@picks/shared";
 import { cn } from "cn";
@@ -28,11 +29,7 @@ type Props = {
  */
 export function WeekResultsTable({ games, results, tiebreakerGameId, currentUserId }: Props) {
   const pickOf = new Map(results.picks.map((p) => [`${p.userId}:${p.gameId}`, p.side]));
-  const tiebreakerGame = games.find((g) => g.id === tiebreakerGameId);
-  const actualTotal =
-    tiebreakerGame && tiebreakerGame.homeScore !== null && tiebreakerGame.awayScore !== null
-      ? tiebreakerGame.homeScore + tiebreakerGame.awayScore
-      : null;
+  const actualTotal = tiebreakerTotal(games.find((g) => g.id === tiebreakerGameId));
   const winners = results.entries.filter((e) => e.isWinner).map((e) => e.displayName);
   const lpls = new Set(lowPointLosers(results.entries));
   const tiebreakerHeading = actualTotal === null ? "Tiebreaker" : `Tiebreaker (${actualTotal})`;
