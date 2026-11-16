@@ -655,14 +655,14 @@ another host; only `wrangler.jsonc`, `src/worker.ts` and the deploy job are Clou
 
 What alerts you:
 
-| Signal                                    | Where                                                                                      |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Signal                                    | Where                                                                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | The live API or database stops answering  | [`uptime.yml`](.github/workflows/uptime.yml) checks `/api/health` every 15 minutes and opens an `uptime` issue |
-| Worker errors and exceptions              | Cloudflare Notifications, "POW Pick'em: Worker issues" (Workers Observability real-time issues) |
-| HTTP DDoS mitigations, certificate events | Cloudflare Notifications, "POW Pick'em: HTTP DDoS" and "POW Pick'em: certificate"         |
-| Spend reaching $10 (then error 1103)      | Cloudflare's budget alert; the Workers spend limit blocks `/api/*` and the cron at $10     |
-| ESPN or Kalshi changing shape             | [`contract.yml`](.github/workflows/contract.yml) opens a `feed-contract` issue             |
-| Vulnerable dependencies                   | Dependabot alerts and security-update PRs ([`dependabot.yml`](.github/dependabot.yml))     |
+| Worker errors and exceptions              | Cloudflare Notifications, "POW Pick'em: Worker issues" (Workers Observability real-time issues)                |
+| HTTP DDoS mitigations, certificate events | Cloudflare Notifications, "POW Pick'em: HTTP DDoS" and "POW Pick'em: certificate"                              |
+| Spend reaching $10 (then error 1103)      | Cloudflare's budget alert; the Workers spend limit blocks `/api/*` and the cron at $10                         |
+| ESPN or Kalshi changing shape             | [`contract.yml`](.github/workflows/contract.yml) opens a `feed-contract` issue                                 |
+| Vulnerable dependencies                   | Dependabot alerts and security-update PRs ([`dependabot.yml`](.github/dependabot.yml))                         |
 
 Cloudflare Notifications email the account address; manage them under **Manage account → Notifications**.
 
@@ -681,13 +681,13 @@ When something breaks:
 
 Rotating credentials:
 
-| Credential                          | Rotate by                                                                                      |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Database password                   | Reset it in Supabase, then `wrangler hyperdrive update <id> --origin-password` and the `SUPABASE_DB_URL` secret |
-| `CLOUDFLARE_API_TOKEN`              | Roll it in the Cloudflare dashboard and replace the GitHub secret                              |
-| `UNSUBSCRIBE_SECRET`                | `wrangler secret put`; links in emails already sent stop working                               |
-| VAPID key pair                      | Don't, unless it leaked: every subscribed device must turn notifications on again              |
-| Supabase SMTP token                 | Roll the Cloudflare Email Sending SMTP credential and update Supabase Auth → SMTP settings      |
+| Credential             | Rotate by                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Database password      | Reset it in Supabase, then `wrangler hyperdrive update <id> --origin-password` and the `SUPABASE_DB_URL` secret |
+| `CLOUDFLARE_API_TOKEN` | Roll it in the Cloudflare dashboard and replace the GitHub secret                                               |
+| `UNSUBSCRIBE_SECRET`   | `wrangler secret put`; links in emails already sent stop working                                                |
+| VAPID key pair         | Don't, unless it leaked: every subscribed device must turn notifications on again                               |
+| Supabase SMTP token    | Roll the Cloudflare Email Sending SMTP credential and update Supabase Auth → SMTP settings                      |
 
 ## Credentials and diagnostics
 

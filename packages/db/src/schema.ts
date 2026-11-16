@@ -113,7 +113,10 @@ export const weeks = pgTable(
     finalizedAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [unique("weeks_season_number_key").on(t.seasonId, t.number)],
+  (t) => [
+    unique("weeks_season_number_key").on(t.seasonId, t.number),
+    index("weeks_tiebreaker_game_idx").on(t.tiebreakerGameId),
+  ],
 ).enableRLS();
 
 /** A game on a week's slate, with the spread and point value the league is using for it. */
@@ -141,7 +144,12 @@ export const games = pgTable(
     awayScore: integer(),
     createdAt: createdAt(),
   },
-  (t) => [index("games_week_idx").on(t.weekId), unique("games_week_external_key").on(t.weekId, t.externalId)],
+  (t) => [
+    index("games_week_idx").on(t.weekId),
+    unique("games_week_external_key").on(t.weekId, t.externalId),
+    // Lets picks and the tiebreaker point at (game, week) pairs, so a pick can't claim another week's game.
+    unique("games_id_week_key").on(t.id, t.weekId),
+  ],
 ).enableRLS();
 
 /** A player's pick of one side of one game. */
@@ -166,7 +174,9 @@ export const picks = pgTable(
   },
   (t) => [
     unique("picks_game_user_key").on(t.gameId, t.userId),
-    index("picks_week_idx").on(t.weekId),
+    // The pick save and the week view read one player's picks for a week.
+    index("picks_week_user_idx").on(t.weekId, t.userId),
+    index("picks_user_idx").on(t.userId),
     uniqueIndex("picks_one_pow_per_week").on(t.weekId, t.userId).where(sql`${t.isPow}`),
   ],
 ).enableRLS();
@@ -183,7 +193,7 @@ export const tiebreakerGuesses = pgTable(
     total: integer().notNull(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.weekId, t.userId] })],
+  (t) => [primaryKey({ columns: [t.weekId, t.userId] }), index("tiebreaker_guesses_user_idx").on(t.userId)],
 ).enableRLS();
 
 /**
@@ -200,7 +210,7 @@ export const weekParticipants = pgTable(
       .references(() => weeks.id, { onDelete: "cascade" }),
     userId: userRef(),
   },
-  (t) => [primaryKey({ columns: [t.weekId, t.userId] })],
+  (t) => [primaryKey({ columns: [t.weekId, t.userId] }), index("week_participants_user_idx").on(t.userId)],
 ).enableRLS();
 
 /**
@@ -216,7 +226,7 @@ export const weekRecapViews = pgTable(
     userId: userRef(),
     seenAt: timestamp({ withTimezone: true }).notNull(),
   },
-  (t) => [primaryKey({ columns: [t.weekId, t.userId] })],
+  (t) => [primaryKey({ columns: [t.weekId, t.userId] }), index("week_recap_views_user_idx").on(t.userId)],
 ).enableRLS();
 
 /** A league-wide conversation, independent of the selected season. */
@@ -236,7 +246,10 @@ export const messageThreads = pgTable(
     createdAt: createdAt(),
     updatedAt: createdAt(),
   },
-  (t) => [index("message_threads_league_idx").on(t.leagueId, t.updatedAt)],
+  (t) => [
+    index("message_threads_league_idx").on(t.leagueId, t.updatedAt),
+    index("message_threads_author_idx").on(t.authorId),
+  ],
 ).enableRLS();
 
 /** The opening message and subsequent replies, ordered within a thread. */
@@ -254,7 +267,11 @@ export const messagePosts = pgTable(
     position: integer().notNull(),
     createdAt: createdAt(),
   },
-  (t) => [unique("message_posts_thread_position_key").on(t.threadId, t.position)],
+  (t) => [
+    unique("message_posts_thread_position_key").on(t.threadId, t.position),
+    index("message_posts_author_idx").on(t.authorId),
+    index("message_posts_quoted_post_idx").on(t.quotedPostId),
+  ],
 ).enableRLS();
 
 /** A player's emoji on a message; each emoji can be added once and removed independently. */
@@ -267,7 +284,10 @@ export const messageReactions = pgTable(
     userId: userRef(),
     emoji: text().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.postId, t.userId, t.emoji] })],
+  (t) => [
+    primaryKey({ columns: [t.postId, t.userId, t.emoji] }),
+    index("message_reactions_user_idx").on(t.userId),
+  ],
 ).enableRLS();
 
 /** Highest post actually viewed by a player; older tabs cannot move it backwards. */
@@ -280,7 +300,7 @@ export const messageReads = pgTable(
     userId: userRef(),
     version: integer().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.threadId, t.userId] })],
+  (t) => [primaryKey({ columns: [t.threadId, t.userId] }), index("message_reads_user_idx").on(t.userId)],
 ).enableRLS();
 
 /** A bug report, feature request or note a player sent to the people who run the app. Read on the operator screen. */
@@ -334,7 +354,10 @@ export const emailOutbox = pgTable(
     sentAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("email_outbox_due_idx").on(t.status, t.nextAttemptAt)],
+  (t) => [
+    index("email_outbox_due_idx").on(t.status, t.nextAttemptAt),
+    index("email_outbox_user_idx").on(t.userId),
+  ],
 ).enableRLS();
 
 /**
@@ -396,5 +419,10 @@ export const pushDeliveries = pgTable(
   (t) => [
     unique("push_delivery_event_key").on(t.subscriptionId, t.kind, t.eventKey),
     index("push_delivery_due_idx").on(t.status, t.nextAttemptAt),
+    // Cascades from leagues, threads and weeks, and the 30-day cleanup, would otherwise scan the table.
+    index("push_delivery_league_idx").on(t.leagueId),
+    index("push_delivery_thread_idx").on(t.threadId),
+    index("push_delivery_week_idx").on(t.weekId),
+    index("push_delivery_created_idx").on(t.createdAt),
   ],
 ).enableRLS();
