@@ -38,6 +38,126 @@ async function renderSheet(props: { now?: Date; picks?: Pick[]; tiebreakerTotal?
   return { screen, onSave };
 }
 
+/** The sheet rendered at `start`, so a test can move the clock on with `at(...)`. */
+async function renderAt(start: Date, picks: Pick[] = [], tiebreakerTotal: number | null = null) {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  const sheet = (now: Date, clock?: () => Date) => (
+    <PickSheet
+      games={games}
+      picks={picks}
+      tiebreakerGameId="mon"
+      tiebreakerTotal={tiebreakerTotal}
+      timeZone="America/New_York"
+      now={now}
+      clock={clock}
+      onSave={onSave}
+    />
+  );
+  const screen = await render(sheet(start));
+  return { screen, onSave, at: (now: Date, clock?: () => Date) => screen.rerender(sheet(now, clock)) };
+}
+
+describe("PickSheet locks on unsaved changes", () => {
+  const SUNDAY_NOON = new Date("2026-11-15T17:00:00Z");
+
+  it("undoes an unsaved pick when its game kicks off, and saves the rest", async () => {
+    const { screen, onSave, at } = await renderAt(SUNDAY_NOON, [
+      { gameId: "sun", side: "home", isPow: false },
+    ]);
+    await screen.getByRole("button", { name: "Chiefs -3.5" }).click();
+    await screen.getByRole("button", { name: "Ravens -4.5" }).click();
+
+    await at(SUNDAY_2PM);
+    await expect
+      .element(screen.getByRole("button", { name: "Falcons +3.5" }))
+      .toHaveAttribute("aria-pressed", "true");
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("Your change to KC at ATL didn't save: it locked first.");
+
+    await screen.getByRole("button", { name: "Save picks" }).click();
+    expect(onSave).toHaveBeenCalledWith({
+      picks: [
+        { gameId: "sun", side: "home" },
+        { gameId: "mon", side: "home" },
+      ],
+      powGameId: null,
+      tiebreakerTotal: null,
+    });
+  });
+
+  it("drops an unsaved pick and a POW whose game locked between the last tick and the save", async () => {
+    const { screen, onSave, at } = await renderAt(SUNDAY_NOON);
+    await screen.getByRole("button", { name: "Chiefs -3.5" }).click();
+    await screen.getByRole("button", { name: "POW: KC at ATL" }).click();
+    await screen.getByRole("button", { name: "Ravens -4.5" }).click();
+    // The screen's clock hasn't ticked past kickoff yet, but the save happens after it.
+    await at(SUNDAY_NOON, () => SUNDAY_2PM);
+
+    await screen.getByRole("button", { name: "Save picks" }).click();
+    expect(onSave).toHaveBeenCalledWith({
+      picks: [{ gameId: "mon", side: "home" }],
+      powGameId: null,
+      tiebreakerTotal: null,
+    });
+    await expect
+      .element(screen.getByRole("status"))
+      .toHaveTextContent(
+        "Picks saved. Your changes to KC at ATL and your POW didn't save: they locked first.",
+      );
+  });
+
+  it("puts a POW moved off a game back once that game kicks off", async () => {
+    const { screen, onSave, at } = await renderAt(SUNDAY_NOON, [
+      { gameId: "sun", side: "home", isPow: true },
+      { gameId: "mon", side: "home", isPow: false },
+    ]);
+    await screen.getByRole("button", { name: "POW: LAC at BAL" }).click();
+    await at(SUNDAY_2PM);
+    await expect
+      .element(screen.getByRole("button", { name: "POW: KC at ATL" }))
+      .toHaveAttribute("aria-pressed", "true");
+    await screen.getByRole("button", { name: "Save picks" }).click();
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ powGameId: "sun" }));
+  });
+
+  it("stops sending a pick or POW for a game the admin removed from the slate", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const sheet = (slate: Game[]) => (
+      <PickSheet
+        games={slate}
+        picks={[]}
+        tiebreakerGameId="mon"
+        tiebreakerTotal={null}
+        timeZone="America/New_York"
+        now={WEDNESDAY}
+        onSave={onSave}
+      />
+    );
+    const screen = await render(sheet(games));
+    await screen.getByRole("button", { name: "Chiefs -3.5" }).click();
+    await screen.getByRole("button", { name: "POW: KC at ATL" }).click();
+    await screen.getByRole("button", { name: "Ravens -4.5" }).click();
+    await screen.rerender(sheet(games.filter((g) => g.id !== "sun")));
+    await screen.getByRole("button", { name: "Save picks" }).click();
+    expect(onSave).toHaveBeenCalledWith({
+      picks: [{ gameId: "mon", side: "home" }],
+      powGameId: null,
+      tiebreakerTotal: null,
+    });
+  });
+
+  it("leaves saved picks and unlocked changes alone as the clock moves on", async () => {
+    const { screen, at } = await renderAt(SUNDAY_NOON);
+    await screen.getByRole("button", { name: "Ravens -4.5" }).click();
+    await at(SUNDAY_2PM);
+    await expect
+      .element(screen.getByRole("button", { name: "Ravens -4.5" }))
+      .toHaveAttribute("aria-pressed", "true");
+    await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
 describe("PickSheet", () => {
   it("opens a game's stats without touching the picks", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);

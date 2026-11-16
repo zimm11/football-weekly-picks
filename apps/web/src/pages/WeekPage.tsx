@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api, messageOf, unwrap } from "../api";
+import { now as clockNow } from "../clock";
 import { LeagueLayout } from "../components/LeagueNav";
 import { LoadError } from "../components/LoadError";
 import { PickSheet } from "../components/PickSheet";
@@ -128,6 +129,7 @@ export function WeekBody({
             tiebreakerTotal={view.myTiebreakerTotal}
             timeZone={view.timeZone}
             now={now}
+            clock={clockNow}
             onSave={savePicks}
             loadInsights={(gameId) =>
               unwrap<GameInsights>(api.games[":gameId"].insights.$get({ param: { gameId } }))
