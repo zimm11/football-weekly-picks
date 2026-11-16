@@ -239,7 +239,7 @@ new API, using the normal migration and deployment workflow.
    again and the week is
    excluded from standings until finalized again; the corrected week is then recapped again.
 7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
-   with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. The reply box stays at the bottom of the thread, and new replies appear on their own. Admins can open a thread's **⋯** menu and choose **Pin announcement** to keep it at the top of the board.
+   with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. The reply box stays at the bottom of the thread, and new replies appear on their own. Admins can open a thread's **⋯** menu and choose **Pin announcement** to keep it at the top of the board, or **Delete thread** to permanently remove it after confirming. Deletion returns you to the message board.
 
 ### Sharing league administration
 
@@ -293,6 +293,7 @@ and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the week
 
 Active league members can react to any message or reply, once per emoji per player. Counts and your
 own selections are visible to members. Reactions do not bump threads or create unread indicators.
+Only admins can permanently delete threads, including all replies and reactions, using the thread’s **⋯** menu and a confirmation. Read markers and queued notifications are removed too.
 Only admins can pin or unpin threads as announcements; pinned threads appear first without changing
 unread status. Quoted replies can reference only messages in the same thread and show the original
 author and text with a link back. You can remove a quote before posting without losing your reply.

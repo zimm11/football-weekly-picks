@@ -14,6 +14,7 @@
 --         Monday night) with made-up scores and spreads. Week 6 and Week 7 each have a push.
 --         Alex missed Week 7 entirely; Sam chose no POW in Week 8.
 -- Messages support emoji reactions, admin-only pinned announcements and quoted replies within a thread.
+-- Admins can permanently delete a thread and its replies, reactions, read markers and queued notifications after confirmation.
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
 -- Settings (account menu) holds notifications by email and per device, plus home-screen install help; on a phone
 -- the first save of picks offers the install help once. None of it shows in the home-screen app.

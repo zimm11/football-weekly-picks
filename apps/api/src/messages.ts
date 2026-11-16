@@ -1,5 +1,12 @@
 import { zValidator } from "@hono/zod-validator";
-import { messagePosts, messageReactions, messageReads, messageThreads, profiles } from "@picks/db";
+import {
+  emailOutbox,
+  messagePosts,
+  messageReactions,
+  messageReads,
+  messageThreads,
+  profiles,
+} from "@picks/db";
 import {
   createThreadSchema,
   MESSAGE_REACTIONS,
@@ -11,7 +18,7 @@ import {
   replySchema,
   type ThreadDetail,
 } from "@picks/shared";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, like, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
@@ -38,7 +45,7 @@ export function messageRoutes({
       .from(messageThreads)
       .where(and(eq(messageThreads.id, threadId), eq(messageThreads.leagueId, leagueId)));
     if (!row) fail(404, "Thread not found.");
-    return { ...row, canPin: role === "admin" };
+    return { ...row, canPin: role === "admin", canDelete: role === "admin" };
   }
   async function reactions(threadId: string, userId: string) {
     const rows = await db
@@ -149,6 +156,7 @@ export function messageRoutes({
         pinned: t.pinned,
         version: t.version,
         canPin: t.canPin,
+        canDelete: t.canDelete,
         posts: rows.map(({ post, authorName }) => ({
           id: post.id,
           reactions: byPost.get(post.id) ?? [],
@@ -169,6 +177,25 @@ export function messageRoutes({
         })),
       };
       return c.json(result);
+    })
+    .delete("/leagues/:leagueId/messages/:threadId", auth, threadParam, async (c) => {
+      const { leagueId, threadId } = c.req.valid("param");
+      const { role } = await requireMember(db, leagueId, c.var.user.id);
+      requireAdmin(role);
+      await db.transaction(async (tx) => {
+        const [deleted] = await tx
+          .delete(messageThreads)
+          .where(and(eq(messageThreads.id, threadId), eq(messageThreads.leagueId, leagueId)))
+          .returning({ id: messageThreads.id });
+        if (!deleted) fail(404, "Thread not found.");
+        // Posts, reactions, read markers and push deliveries cascade. Emails use a dedupe key instead.
+        await tx
+          .delete(emailOutbox)
+          .where(
+            and(eq(emailOutbox.kind, "new_thread"), like(emailOutbox.dedupeKey, `thread:${threadId}:%`)),
+          );
+      });
+      return c.json({ ok: true });
     })
     .put("/leagues/:leagueId/messages/:threadId/pin", auth, threadParam, body(pinThreadSchema), async (c) => {
       const { leagueId, threadId } = c.req.valid("param");
