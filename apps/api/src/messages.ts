@@ -1,4 +1,3 @@
-import { zValidator } from "@hono/zod-validator";
 import { messagePosts, messageReactions, messageReads, messageThreads, profiles } from "@picks/db";
 import {
   createThreadSchema,
@@ -15,12 +14,22 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
-import { type AppDeps, body, fail, leagueParam, requireAdmin, requireMember } from "./context";
+import {
+  type AppDeps,
+  body,
+  fail,
+  leagueParam,
+  param,
+  requireAdmin,
+  requireDisplayName,
+  requireMember,
+} from "./context";
 import { logError } from "./logging";
 import { drainOutbox, queueThreadEmails } from "./outbox";
 import { drainPush, queueThreadPush } from "./pushQueue";
 
-const threadParam = zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
+const threadParam = param(z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
+const postParam = param(z.object({ leagueId: z.uuid(), threadId: z.uuid(), postId: z.uuid() }));
 
 export function messageRoutes({
   db,
@@ -38,7 +47,7 @@ export function messageRoutes({
       .from(messageThreads)
       .where(and(eq(messageThreads.id, threadId), eq(messageThreads.leagueId, leagueId)));
     if (!row) fail(404, "Thread not found.");
-    return { ...row, canPin: role === "admin" };
+    return { ...row, role, canPin: role === "admin" };
   }
   async function reactions(threadId: string, userId: string) {
     const rows = await db
@@ -99,6 +108,7 @@ export function messageRoutes({
     .post("/leagues/:leagueId/messages", auth, leagueParam, body(createThreadSchema), async (c) => {
       const { leagueId } = c.req.valid("param");
       const { league } = await requireMember(db, leagueId, c.var.user.id);
+      await requireDisplayName(db, c.var.user.id);
       const { title, body: content } = c.req.valid("json");
       let queued = 0;
       const id = await db.transaction(async (tx) => {
@@ -172,9 +182,7 @@ export function messageRoutes({
     })
     .put("/leagues/:leagueId/messages/:threadId/pin", auth, threadParam, body(pinThreadSchema), async (c) => {
       const { leagueId, threadId } = c.req.valid("param");
-      const { role } = await requireMember(db, leagueId, c.var.user.id);
-      requireAdmin(role);
-      await thread(leagueId, threadId, c.var.user.id);
+      requireAdmin((await thread(leagueId, threadId, c.var.user.id)).role);
       const { pinned } = c.req.valid("json");
       await db.update(messageThreads).set({ pinned }).where(eq(messageThreads.id, threadId));
       return c.json({ pinned });
@@ -182,7 +190,7 @@ export function messageRoutes({
     .put(
       "/leagues/:leagueId/messages/:threadId/posts/:postId/reactions",
       auth,
-      zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid(), postId: z.uuid() })),
+      postParam,
       body(messageReactionSchema),
       async (c) => {
         const { leagueId, threadId, postId } = c.req.valid("param");
@@ -220,10 +228,11 @@ export function messageRoutes({
       async (c) => {
         const { leagueId, threadId } = c.req.valid("param");
         await thread(leagueId, threadId, c.var.user.id);
+        await requireDisplayName(db, c.var.user.id);
         await db.transaction(async (tx) => {
           const [t] = await tx
             .update(messageThreads)
-            .set({ version: sql`${messageThreads.version} + 1`, updatedAt: new Date() })
+            .set({ version: sql`${messageThreads.version} + 1`, updatedAt: now() })
             .where(eq(messageThreads.id, threadId))
             .returning();
           if (!t) fail(404, "Thread not found.");

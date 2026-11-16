@@ -8,6 +8,7 @@ import {
   effectiveTiebreakerId,
   type Game,
   type GameInsights,
+  hasResult,
   scoreWeek,
   submitPicksSchema,
   updateGameSchema,
@@ -25,6 +26,8 @@ import {
   isActive,
   leagueParam,
   listMemberRecords,
+  recordedParticipants,
+  recordWeekParticipants,
   requireAdmin,
   requireMember,
   requireWeek,
@@ -48,9 +51,6 @@ const toGame = (g: GameRow): Game => ({
   awayScore: g.awayScore,
 });
 
-/** A game with a result is closed to picks, whatever the clock says. */
-const isFinal = (g: GameRow) => g.homeScore !== null && g.awayScore !== null;
-
 /**
  * How long after kickoff a game could first be over. Before then there is no point asking the provider for
  * its result. NFL games run about three hours; none finishes in two and a half.
@@ -62,7 +62,14 @@ export const RESULTS_REFRESH_MS = 60_000;
 
 /** A provider game that kicked off long enough ago to be over and still has no result here. */
 const awaitingResult = (g: GameRow, at: Date) =>
-  g.externalId !== null && !isFinal(g) && at.getTime() - g.kickoff.getTime() >= SHORTEST_GAME_MS;
+  g.externalId !== null && !hasResult(g) && at.getTime() - g.kickoff.getTime() >= SHORTEST_GAME_MS;
+
+/**
+ * A game's points when its kickoff moves: a game still worth its old slot's default takes the new slot's (a
+ * Sunday afternoon game flexed to Sunday night goes from 1 to 2). Points the admin set by hand are kept.
+ */
+const pointsAfterKickoffChange = (game: Pick<GameRow, "kickoff" | "points">, kickoff: Date) =>
+  game.points === defaultPoints(game.kickoff) ? defaultPoints(kickoff) : game.points;
 
 const gamesOf = (db: Db, weekId: string) =>
   db.select().from(games).where(eq(games.weekId, weekId)).orderBy(asc(games.kickoff), asc(games.id));
@@ -71,19 +78,31 @@ async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<
   // Re-read the week: the caller may have just changed it.
   const [week] = await db.select().from(weeks).where(eq(weeks.id, ctx.week.id));
   if (!week) fail(404, "Week not found");
+  const final = week.status === "final";
+  // Until the week is final, only the caller's own picks and guess are read. An admin also needs everyone's
+  // picks to count submissions, but never sees the picks themselves.
+  const pickScope =
+    final || ctx.role === "admin"
+      ? eq(picks.weekId, week.id)
+      : and(eq(picks.weekId, week.id), eq(picks.userId, userId));
+  const guessScope = final
+    ? eq(tiebreakerGuesses.weekId, week.id)
+    : and(eq(tiebreakerGuesses.weekId, week.id), eq(tiebreakerGuesses.userId, userId));
   const [gameRows, pickRows, guessRows] = await Promise.all([
     gamesOf(db, week.id),
-    db.select().from(picks).where(eq(picks.weekId, week.id)),
-    db.select().from(tiebreakerGuesses).where(eq(tiebreakerGuesses.weekId, week.id)),
+    db.select().from(picks).where(pickScope),
+    db.select().from(tiebreakerGuesses).where(guessScope),
   ]);
-  const members =
-    week.status === "final" || ctx.role === "admin" ? await listMemberRecords(db, ctx.league.id) : [];
+  const members = final || ctx.role === "admin" ? await listMemberRecords(db, ctx.league.id) : [];
   const tiebreakerGameId = effectiveTiebreakerId(week.tiebreakerGameId, gameRows);
 
   let results: WeekView["results"] = null;
-  if (week.status === "final") {
+  if (final) {
     // Scored for the people who were in the league when the week was played, not today's member list.
-    const participants = new Map(weekParticipants(members, gameRows, pickRows).map((m) => [m.userId, m]));
+    const recorded = (await recordedParticipants(db, [week.id])).get(week.id);
+    const participants = new Map(
+      weekParticipants(members, gameRows, pickRows, recorded).map((m) => [m.userId, m]),
+    );
     results = {
       entries: scoreWeek({
         games: gameRows,
@@ -150,12 +169,17 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
    * Adds the provider's games to a week and refreshes kickoffs and spreads of the ones already there.
    * Drafts only: once players have picked, spreads change only when the admin edits them by hand.
    */
-  async function importGames(weekId: string, year: number, number: number): Promise<string | null> {
+  async function importGames(
+    weekId: string,
+    year: number,
+    number: number,
+    requestId?: string,
+  ): Promise<string | null> {
     let provided: Awaited<ReturnType<typeof nfl.getWeek>>;
     try {
       provided = await nfl.getWeek(year, number);
     } catch (err) {
-      logError("schedule_import", err);
+      logError("schedule_import", err, requestId);
       return "Couldn't load the schedule. Add games by hand, or try the import again.";
     }
     if (provided.length === 0) return "No games are scheduled for that week yet.";
@@ -165,18 +189,26 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
       if (current) {
         await db
           .update(games)
-          .set({ kickoff: g.kickoff, spread: g.spread ?? current.spread })
+          .set({
+            kickoff: g.kickoff,
+            spread: g.spread ?? current.spread,
+            points: pointsAfterKickoffChange(current, g.kickoff),
+          })
           .where(eq(games.id, current.id));
       } else {
-        await db.insert(games).values({
-          weekId,
-          externalId: g.externalId,
-          homeTeam: g.homeTeam,
-          awayTeam: g.awayTeam,
-          kickoff: g.kickoff,
-          spread: g.spread,
-          points: defaultPoints(g.kickoff),
-        });
+        // Two imports at once can both find the game missing; the second insert then adds nothing.
+        await db
+          .insert(games)
+          .values({
+            weekId,
+            externalId: g.externalId,
+            homeTeam: g.homeTeam,
+            awayTeam: g.awayTeam,
+            kickoff: g.kickoff,
+            spread: g.spread,
+            points: defaultPoints(g.kickoff),
+          })
+          .onConflictDoNothing({ target: [games.weekId, games.externalId] });
       }
     }
     return null;
@@ -194,7 +226,7 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
     const finals = new Map(provided.filter((g) => g.homeScore !== null).map((g) => [g.externalId, g]));
     for (const game of gameRows) {
       const final = game.externalId ? finals.get(game.externalId) : undefined;
-      if (!final || (!overwrite && isFinal(game))) continue;
+      if (!final || (!overwrite && hasResult(game))) continue;
       await db
         .update(games)
         .set({ homeScore: final.homeScore, awayScore: final.awayScore })
@@ -279,12 +311,14 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
           .returning({ id: weeks.id });
         if (!week) fail(409, "That week already exists.");
 
-        const importError = shouldImport ? await importGames(week.id, year, number) : null;
+        const importError = shouldImport
+          ? await importGames(week.id, year, number, c.get("requestId"))
+          : null;
         return c.json({ id: week.id, importError }, 201);
       })
       .post("/weeks/:weekId/import", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["draft"]);
-        const error = await importGames(ctx.week.id, ctx.season.year, ctx.week.number);
+        const error = await importGames(ctx.week.id, ctx.season.year, ctx.week.number, c.get("requestId"));
         if (error) fail(502, error);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
@@ -319,12 +353,13 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
         const homeScore = input.homeScore === undefined ? game.homeScore : input.homeScore;
         const awayScore = input.awayScore === undefined ? game.awayScore : input.awayScore;
         if ((homeScore === null) !== (awayScore === null)) fail(400, "Enter both scores, or neither.");
+        const kickoff = input.kickoff ? new Date(input.kickoff) : undefined;
         await db
           .update(games)
           .set({
-            kickoff: input.kickoff ? new Date(input.kickoff) : undefined,
+            kickoff,
             spread: input.spread,
-            points: input.points,
+            points: input.points ?? (kickoff ? pointsAfterKickoffChange(game, kickoff) : undefined),
             homeScore,
             awayScore,
           })
@@ -365,10 +400,18 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
       .post("/weeks/:weekId/finalize", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["open"]);
         const gameRows = await gamesOf(db, ctx.week.id);
-        if (gameRows.some((g) => g.homeScore === null || g.awayScore === null)) {
+        if (!gameRows.every(hasResult)) {
           fail(409, "Every game needs a final score before the week can close.");
         }
-        await db.update(weeks).set({ status: "final", finalizedAt: now() }).where(eq(weeks.id, ctx.week.id));
+        await db.transaction(async (tx) => {
+          // Updating the week row waits for any pick save in flight, so the participants read below see it.
+          await tx
+            .update(weeks)
+            .set({ status: "final", finalizedAt: now() })
+            .where(eq(weeks.id, ctx.week.id));
+          // Who this week is scored for, fixed now so that later leaving or rejoining can't rewrite it.
+          await recordWeekParticipants(tx, ctx.week.id, ctx.league.id);
+        });
         // The admin closing the week is shown the results right here, so they don't get the recap as well.
         await markRecapSeen(ctx.week.id, c.var.user.id);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
@@ -423,7 +466,6 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
         const userId = c.var.user.id;
         const ctx = await requireWeek(db, c.req.valid("param").weekId, userId);
         const input = c.req.valid("json");
-        const at = now();
         const weekId = ctx.week.id;
 
         // Read, validate and write in one transaction, so nothing can change between the check and the save.
@@ -433,6 +475,9 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
           if (week?.status !== "open") fail(409, "This week is not open for picks.");
           // One submission at a time per player and week: two simultaneous saves can't both see "no pick yet".
           await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${weekId}:${userId}`}, 0))`);
+          // Locks are judged against the time the locks were granted, not when the request arrived: a save that
+          // waited past a kickoff must not slip a pick in on that game.
+          const at = now();
 
           const gameRows = await tx
             .select()
@@ -455,7 +500,7 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
               games: gameRows.map((g) => ({
                 id: g.id,
                 kickoff: g.kickoff,
-                final: isFinal(g),
+                final: hasResult(g),
                 label: `${g.awayTeam} at ${g.homeTeam}`,
               })),
               existing,
@@ -465,7 +510,7 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
             }) ??
             checkTiebreakerGuess({
               tiebreakerGame: tiebreakerRow
-                ? { kickoff: tiebreakerRow.kickoff, final: isFinal(tiebreakerRow) }
+                ? { kickoff: tiebreakerRow.kickoff, final: hasResult(tiebreakerRow) }
                 : null,
               existing: guess?.total ?? null,
               total: input.tiebreakerTotal,

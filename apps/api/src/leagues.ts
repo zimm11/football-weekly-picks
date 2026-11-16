@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { zValidator } from "@hono/zod-validator";
 import {
   games,
   leagueMembers,
@@ -43,11 +42,18 @@ import {
   isActive,
   leagueParam,
   listMemberRecords,
+  param,
+  query,
+  recordedParticipants,
   requireAdmin,
+  requireDisplayName,
   requireMember,
+  type Tx,
   toMember,
   weekParticipants,
 } from "./context";
+
+const memberParam = param(z.object({ leagueId: z.uuid(), userId: z.uuid() }));
 
 /** Every player in the standings has stats, since both are built from the same list. */
 function omitUserId(stats: PlayerSeasonStats | undefined): Omit<PlayerSeasonStats, "userId"> {
@@ -57,8 +63,6 @@ function omitUserId(stats: PlayerSeasonStats | undefined): Omit<PlayerSeasonStat
 }
 
 const newInviteCode = () => randomBytes(9).toString("base64url");
-
-type Tx = Parameters<Parameters<AppDeps["db"]["transaction"]>[0]>[0];
 
 const defaultLimits = { membersPerLeague: MAX_LEAGUE_MEMBERS, leaguesPerUser: MAX_LEAGUES_PER_USER };
 
@@ -138,6 +142,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
       })
       .post("/leagues", auth, body(createLeagueSchema), async (c) => {
         const { name, timeZone } = c.req.valid("json");
+        await requireDisplayName(db, c.var.user.id);
         const id = await db.transaction(async (tx) => {
           await requireRoomForAnotherLeague(tx, c.var.user.id);
           const [league] = await tx
@@ -237,7 +242,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
       .patch(
         "/leagues/:leagueId/members/:userId",
         auth,
-        zValidator("param", z.object({ leagueId: z.uuid(), userId: z.uuid() })),
+        memberParam,
         body(updateMemberRoleSchema),
         async (c) => {
           const { leagueId, userId } = c.req.valid("param");
@@ -250,16 +255,11 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
        * is kept and marked, so weeks they already played keep their results; they lose access until they
        * rejoin through an invite link.
        */
-      .delete(
-        "/leagues/:leagueId/members/:userId",
-        auth,
-        zValidator("param", z.object({ leagueId: z.uuid(), userId: z.uuid() })),
-        async (c) => {
-          const { leagueId, userId } = c.req.valid("param");
-          await changeMembership(leagueId, c.var.user.id, userId, null);
-          return c.json({ ok: true });
-        },
-      )
+      .delete("/leagues/:leagueId/members/:userId", auth, memberParam, async (c) => {
+        const { leagueId, userId } = c.req.valid("param");
+        await changeMembership(leagueId, c.var.user.id, userId, null);
+        return c.json({ ok: true });
+      })
       /** Replaces the invite code, so links already handed out stop working. */
       .post("/leagues/:leagueId/invite", auth, leagueParam, async (c) => {
         const { leagueId } = c.req.valid("param");
@@ -302,6 +302,7 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
             .where(and(eq(leagueMembers.leagueId, league.id), eq(leagueMembers.userId, userId)));
           // Joining a league you're already in is harmless and doesn't count against either limit.
           if (existing && existing.removedAt === null) return;
+          await requireDisplayName(tx, userId);
           if (
             (await countMemberships(tx, eq(leagueMembers.leagueId, league.id))) >= limits.membersPerLeague
           ) {
@@ -311,7 +312,8 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
           await tx
             .insert(leagueMembers)
             .values({ leagueId: league.id, userId, joinedAt: now() })
-            // A removed player rejoining starts a fresh membership; weeks they picked in before still count.
+            // A removed player rejoining starts a fresh membership. Weeks finalized before keep the players
+            // recorded when they closed (`week_participants`), so the new `joinedAt` can't take them out.
             .onConflictDoUpdate({
               target: [leagueMembers.leagueId, leagueMembers.userId],
               set: { removedAt: null, joinedAt: now() },
@@ -324,12 +326,11 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
         "/leagues/:leagueId/standings",
         auth,
         leagueParam,
-        zValidator(
-          "query",
+        query(
           z.object({
             year: z
               .string()
-              .regex(/^\d{4}$/)
+              .regex(/^\d{4}$/, "Choose a season year")
               .optional(),
           }),
         ),
@@ -364,13 +365,14 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
                 .orderBy(asc(weeks.number))
             : [];
           const weekIds = finalWeeks.map((w) => w.id);
-          const [gameRows, pickRows, guessRows] = weekIds.length
+          const [gameRows, pickRows, guessRows, recorded] = weekIds.length
             ? await Promise.all([
                 db.select().from(games).where(inArray(games.weekId, weekIds)),
                 db.select().from(picks).where(inArray(picks.weekId, weekIds)),
                 db.select().from(tiebreakerGuesses).where(inArray(tiebreakerGuesses.weekId, weekIds)),
+                recordedParticipants(db, weekIds),
               ])
-            : [[], [], []];
+            : [[], [], [], new Map<string, Set<string>>()];
           const statsWeeks = finalWeeks.map((week) => {
             const weekGames = gameRows.filter((g) => g.weekId === week.id);
             const weekPicks = pickRows.filter((p) => p.weekId === week.id);
@@ -379,7 +381,9 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
               picks: weekPicks,
               guesses: guessRows.filter((g) => g.weekId === week.id),
               // Each week is scored for the people who were in the league when it was played.
-              userIds: weekParticipants(members, weekGames, weekPicks).map((m) => m.userId),
+              userIds: weekParticipants(members, weekGames, weekPicks, recorded.get(week.id)).map(
+                (m) => m.userId,
+              ),
               tiebreakerGameId: effectiveTiebreakerId(week.tiebreakerGameId, weekGames),
             });
             return { games: weekGames, picks: weekPicks, entries };

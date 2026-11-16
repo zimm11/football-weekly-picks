@@ -187,6 +187,23 @@ export const tiebreakerGuesses = pgTable(
 ).enableRLS();
 
 /**
+ * Who a closed week is scored for, recorded when it is finalized: everyone in the league at its last kickoff,
+ * plus anyone who picked. Later membership changes (leaving, rejoining) never change it. Finalizing again after
+ * a reopen only adds players; nobody is dropped. Weeks finalized before this table existed have no rows and are
+ * worked out from the membership history instead.
+ */
+export const weekParticipants = pgTable(
+  "week_participants",
+  {
+    weekId: uuid()
+      .notNull()
+      .references(() => weeks.id, { onDelete: "cascade" }),
+    userId: userRef(),
+  },
+  (t) => [primaryKey({ columns: [t.weekId, t.userId] })],
+).enableRLS();
+
+/**
  * A player has been shown a closed week's results recap. It counts only if it is no older than the week's
  * `finalizedAt`, so a week reopened and closed again is recapped again.
  */
