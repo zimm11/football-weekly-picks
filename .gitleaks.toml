@@ -6,3 +6,12 @@ id = "supabase-secret-key"
 description = "Supabase privileged secret key"
 regex = '''\bsb_secret_[A-Za-z0-9_-]{20,}\b'''
 keywords = ["sb_secret_"]
+
+# The worked example from RFC 8291 (Web Push encryption), Appendix A, which apps/api/test/pushSender.test.ts
+# reproduces byte for byte. These are published test values, not credentials. Only these exact strings are allowed.
+[[allowlists]]
+description = "RFC 8291 Appendix A test vectors"
+regexes = [
+  '''^BTBZMqHH6r4Tts7J_aSIgg$''',
+  '''^yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw$''',
+]
