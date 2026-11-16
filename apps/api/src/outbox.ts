@@ -325,10 +325,19 @@ async function stillWorthSending(
       result.set(row.id, ok ? (row.message as OutboxMessage) : "NOT_A_MEMBER");
       continue;
     }
-    const still =
-      key?.kind === "pick_reminder" && key.userId === row.userId
-        ? await reminderStillDue(db, { weekId: key.weekId, date: key.date, userId: row.userId }, now)
-        : null;
+    let still: Awaited<ReturnType<typeof reminderStillDue>> = null;
+    try {
+      still =
+        key?.kind === "pick_reminder" && key.userId === row.userId
+          ? await reminderStillDue(db, { weekId: key.weekId, date: key.date, userId: row.userId }, now)
+          : null;
+    } catch (error) {
+      // The recheck is a refinement. If it can't run for this row, send what was queued rather than leave the
+      // whole claimed batch unsent behind it.
+      logError("reminder_targets", error);
+      result.set(row.id, row.message as OutboxMessage);
+      continue;
+    }
     result.set(
       row.id,
       still

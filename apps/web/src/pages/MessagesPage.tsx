@@ -112,10 +112,13 @@ function Board({ leagueId }: { leagueId: string }) {
     if (!cursor) return;
     run("older", async () => {
       const page = await loadThreads(leagueId, cursor);
-      setOlder((prev) => ({
-        threads: [...(prev?.threads ?? []), ...page.threads],
-        nextCursor: page.nextCursor,
-      }));
+      setOlder((prev) => {
+        const have = new Set(prev?.threads.map((t) => t.id));
+        return {
+          threads: [...(prev?.threads ?? []), ...page.threads.filter((t) => !have.has(t.id))],
+          nextCursor: page.nextCursor,
+        };
+      });
     });
   }
 

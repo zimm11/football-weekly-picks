@@ -18,6 +18,7 @@ import {
   THREAD_PAGE_SIZE,
   type ThreadDetail,
   type ThreadPage,
+  threadCursor,
   threadListQuerySchema,
 } from "@picks/shared";
 import { and, asc, count, desc, eq, like, type SQL, sql } from "drizzle-orm";
@@ -87,10 +88,13 @@ export function messageRoutes({
     return result;
   }
   /** Threads newest first (pinned before the rest), each marked unread for this player or not. */
-  async function listThreads(userId: string, where: SQL | undefined, limit?: number) {
+  /** `updated_at` to the microsecond, as the text a page cursor carries (a JS Date would drop the last digits). */
+  const updatedAtMicros = sql<string>`(extract(epoch from ${messageThreads.updatedAt}) * 1000000)::bigint`;
+  async function threadRows(userId: string, where: SQL | undefined, limit?: number) {
     const query = db
       .select({
         thread: messageThreads,
+        position: sql<string>`${updatedAtMicros}::text`,
         authorName: profiles.displayName,
         readVersion: messageReads.version,
       })
@@ -104,7 +108,8 @@ export function messageRoutes({
       .orderBy(desc(messageThreads.pinned), desc(messageThreads.updatedAt), desc(messageThreads.id));
     const rows = await (limit === undefined ? query : query.limit(limit));
     return rows.map(
-      ({ thread: t, authorName, readVersion }): MessageThread => ({
+      ({ thread: t, position, authorName, readVersion }): MessageThread & { position: string } => ({
+        position,
         id: t.id,
         title: t.title,
         pinned: t.pinned,
@@ -115,6 +120,13 @@ export function messageRoutes({
         unread: (readVersion ?? 0) < t.version,
       }),
     );
+  }
+  async function listThreads(
+    userId: string,
+    where: SQL | undefined,
+    limit?: number,
+  ): Promise<MessageThread[]> {
+    return (await threadRows(userId, where, limit)).map(({ position: _, ...thread }) => thread);
   }
   /** How many of the league's threads have posts this player hasn't read, across every page. */
   async function unreadThreads(userId: string, leagueId: string) {
@@ -151,16 +163,15 @@ export function messageRoutes({
         const [pinned, rest, unreadCount] = await Promise.all([
           // Every pinned announcement leads the first page; later pages carry none.
           before ? [] : listThreads(userId, and(inLeague, eq(messageThreads.pinned, true))),
-          listThreads(
+          threadRows(
             userId,
             and(
               inLeague,
               eq(messageThreads.pinned, false),
-              // The cursor thread's position is read from the table, so the comparison keeps the timestamp's
-              // full precision.
+              // Everything after the position the last page ended at, in the board's order (newest first, then
+              // id). The cursor is a position, not a thread: it still works if that thread was bumped or deleted.
               before
-                ? sql`(${messageThreads.updatedAt}, ${messageThreads.id}) <
-                  (select updated_at, id from message_threads where id = ${before} and league_id = ${leagueId})`
+                ? sql`(${updatedAtMicros}, ${messageThreads.id}) < (${before.updatedAtMicros}::bigint, ${before.id}::uuid)`
                 : undefined,
             ),
             size + 1,
@@ -168,9 +179,10 @@ export function messageRoutes({
           unreadThreads(userId, leagueId),
         ]);
         const page = rest.slice(0, size);
+        const last = page.at(-1);
         return c.json<ThreadPage>({
-          threads: [...pinned, ...page],
-          nextCursor: rest.length > size ? (page.at(-1)?.id ?? null) : null,
+          threads: [...pinned, ...page.map(({ position: _, ...thread }) => thread)],
+          nextCursor: rest.length > size && last ? threadCursor(last.position, last.id) : null,
           unreadCount,
         });
       },

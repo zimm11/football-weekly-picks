@@ -223,6 +223,19 @@ describe.skipIf(!process.env.DATABASE_URL)("email outbox with a local database",
     ).toEqual([author, other].sort());
   });
 
+  it("sends a reminder as queued when its recheck can't run, instead of holding up the batch", async () => {
+    await queueReminders(db, email, now);
+    const [thread] = await threads(1);
+    assert(thread);
+    await db.insert(emailOutbox).values(threadRow(thread.id, player));
+    // A time zone the runtime doesn't know makes working out the due day throw.
+    await db.update(leagues).set({ timeZone: "Not/AZone" }).where(eq(leagues.id, leagueId));
+    await drainOutbox(db, email, now);
+    // All three reminders and the thread email behind them still go out.
+    expect(mine()).toHaveLength(4);
+    expect((await outbox()).every((r) => r.status === "sent")).toBe(true);
+  });
+
   it("skips a reminder once its week is no longer open", async () => {
     await queueReminders(db, email, now);
     await db.update(weeks).set({ status: "draft" }).where(eq(weeks.id, weekId));

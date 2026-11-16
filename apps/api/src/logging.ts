@@ -169,7 +169,6 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
 
 const warnings = {
   email_budget_reached: "Email budget reached; notification emails resume tomorrow (UTC).",
-  push_device_pruned: "Removed a push subscription after repeated permanent delivery failures.",
 };
 
 /** A fixed, expected condition worth seeing in the logs. Carries no data beyond its name and message. */

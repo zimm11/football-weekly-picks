@@ -296,37 +296,21 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
     const [row] = await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
     expect(row).toMatchObject({ status: "sent", attempts: 2 });
   });
-  it("forgets a device after three permanent failures in a row", async () => {
+  it("keeps a device however often its deliveries fail: only a gone subscription is removed", async () => {
     const d = await device();
     const more = await db
       .insert(messageThreads)
       .values([
         { leagueId, authorId: author, title: "Two" },
         { leagueId, authorId: author, title: "Three" },
+        { leagueId, authorId: author, title: "Four" },
       ])
       .returning({ id: messageThreads.id });
+    // A 401/403 from every push service is what a bad VAPID subject looks like: our fault, not the device's.
     send.mockResolvedValue("failed");
     for (const [i, id] of [threadId, ...more.map((t) => t.id)].entries()) {
-      // Queued a second apart, so "in a row" has an order.
       await queueThreadPush(db, leagueId, id, author, new Date(at.getTime() + i * 1000));
-      await drainPush(db, push, new Date(at.getTime() + i * 1000));
-      const left = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, d.id));
-      expect(left).toHaveLength(i < 2 ? 1 : 0);
-    }
-  });
-  it("keeps a device whose failures are broken up by a success", async () => {
-    const d = await device();
-    const more = await db
-      .insert(messageThreads)
-      .values([
-        { leagueId, authorId: author, title: "Two" },
-        { leagueId, authorId: author, title: "Three" },
-      ])
-      .returning({ id: messageThreads.id });
-    send.mockResolvedValueOnce("failed").mockResolvedValueOnce("sent").mockResolvedValueOnce("failed");
-    for (const [i, id] of [threadId, ...more.map((t) => t.id)].entries()) {
-      await queueThreadPush(db, leagueId, id, author, new Date(at.getTime() + i * 1000));
-      await drainPush(db, push, new Date(at.getTime() + i * 1000));
+      expect((await drainPush(db, push, new Date(at.getTime() + i * 1000))).failed).toBe(1);
     }
     expect(await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, d.id))).toHaveLength(1);
   });

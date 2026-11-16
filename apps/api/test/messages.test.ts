@@ -18,7 +18,8 @@ it("rejects a malformed page request before touching the database", async () => 
     app.request(`/api/leagues/${randomUUID()}/messages?${query}`, {
       headers: { Authorization: `Bearer ${member}` },
     });
-  for (const query of ["limit=0", "limit=101", "limit=ten", "before=nope"]) {
+  // A bare thread id isn't a cursor: a cursor is a position (see `threadCursor`).
+  for (const query of ["limit=0", "limit=101", "limit=ten", "before=nope", `before=${randomUUID()}`]) {
     const res = await get(query);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid page." });
@@ -85,7 +86,7 @@ describe.skipIf(!process.env.DATABASE_URL)("thread list pages (requires `pnpm db
     const first = await get<ThreadPage>("?limit=2");
     expect(first.threads.map((t) => t.title)).toEqual(["t1", "t6", "t5"]);
     expect(first.unreadCount).toBe(6);
-    expect(first.nextCursor).toBe(first.threads.at(-1)?.id);
+    expect(first.nextCursor).toMatch(new RegExp(`^\\d+\\.${first.threads.at(-1)?.id}$`));
 
     const second = await get<ThreadPage>(`?limit=2&before=${first.nextCursor}`);
     expect(second.threads.map((t) => t.title)).toEqual(["t4", "t3"]);
@@ -101,7 +102,24 @@ describe.skipIf(!process.env.DATABASE_URL)("thread list pages (requires `pnpm db
     expect(all.find((t) => t.title === "t5")?.unread).toBe(false);
   });
 
-  it("ignores a cursor from another league", async () => {
+  it("keeps its place when the thread a page ended on is bumped or deleted", async () => {
+    await seed();
+    const first = await get<ThreadPage>("?limit=2");
+    const ended = first.threads.at(-1);
+    expect(ended?.title).toBe("t5");
+    assert(ended);
+    // A reply bumps t5 to the top: the next page still starts after where it was.
+    await db.update(messageThreads).set({ updatedAt: new Date() }).where(eq(messageThreads.id, ended.id));
+    const afterBump = await get<ThreadPage>(`?limit=2&before=${first.nextCursor}`);
+    expect(afterBump.threads.map((t) => t.title)).toEqual(["t4", "t3"]);
+    // An admin deletes it: the same cursor still works.
+    await db.delete(messageThreads).where(eq(messageThreads.id, ended.id));
+    const afterDelete = await get<ThreadPage>(`?limit=2&before=${first.nextCursor}`);
+    expect(afterDelete.threads.map((t) => t.title)).toEqual(["t4", "t3"]);
+    expect(afterDelete.nextCursor).not.toBeNull();
+  });
+
+  it("only ever lists this league's threads, whatever position the cursor names", async () => {
     await seed();
     const [other] = await db.insert(leagues).values({ name: "Other", inviteCode: randomUUID() }).returning();
     assert(other);
@@ -110,9 +128,11 @@ describe.skipIf(!process.env.DATABASE_URL)("thread list pages (requires `pnpm db
         .insert(messageThreads)
         .values({ leagueId: other.id, authorId: member, title: "elsewhere" })
         .returning();
-      const page = await get<ThreadPage>(`?before=${foreign?.id}`);
-      expect(page.threads).toEqual([]);
-      expect(page.nextCursor).toBeNull();
+      assert(foreign);
+      // A cursor built from another league's newest thread is just a position: far in the future here.
+      const page = await get<ThreadPage>(`?before=${foreign.updatedAt.getTime() * 1000}.${foreign.id}`);
+      expect(page.threads.map((t) => t.title)).toEqual(["t6", "t5", "t4", "t3", "t2", "t0"]);
+      expect(page.threads.some((t) => t.title === "elsewhere")).toBe(false);
     } finally {
       await db.delete(leagues).where(eq(leagues.id, other.id));
     }

@@ -8,9 +8,24 @@ export const THREAD_PAGE_SIZE = 30;
  * Asking for a page (with `limit`, `before` or both) gets a `ThreadPage`. A request with neither gets the
  * whole list as an array, the way tabs opened before pagination still ask for it.
  */
+/**
+ * Where a page of the board ended: the last thread's `updated_at` in microseconds, then its id. A position
+ * rather than a thread, so the next page starts in the same place even if that thread has since been bumped
+ * by a reply or deleted.
+ */
+const threadCursorSchema = z
+  .string()
+  .regex(/^\d{1,19}\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  .transform((cursor) => {
+    const [updatedAtMicros = "", id = ""] = cursor.split(".");
+    return { updatedAtMicros, id };
+  });
+
+export const threadCursor = (updatedAtMicros: string, id: string) => `${updatedAtMicros}.${id}`;
+
 export const threadListQuerySchema = z.object({
-  /** The last thread of the previous page. */
-  before: z.uuid().optional(),
+  /** The `nextCursor` of the previous page. */
+  before: threadCursorSchema.optional(),
   limit: z
     .string()
     .regex(/^\d{1,3}$/)

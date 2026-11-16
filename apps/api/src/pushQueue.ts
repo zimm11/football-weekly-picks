@@ -7,8 +7,8 @@ import {
   pushSubscriptions,
 } from "@picks/db";
 import type { PushPayload } from "@picks/shared";
-import { and, asc, desc, eq, inArray, isNull, lt, lte, ne } from "drizzle-orm";
-import { logError, logWarning } from "./logging";
+import { and, asc, eq, inArray, isNull, lt, lte, ne } from "drizzle-orm";
+import { logError } from "./logging";
 import type { PushSender } from "./pushSender";
 import { dueReminderTargets, reminderStillDue } from "./reminderTargets";
 
@@ -110,8 +110,6 @@ const SENDS_PER_SENDER = 20;
 const MAX_ATTEMPTS = 5;
 const FIRST_RETRY_MS = 5 * 60_000;
 const RETENTION_MS = 30 * 24 * 60 * 60_000;
-/** A device whose last this-many settled deliveries all failed is forgotten, like one the push service says is gone. */
-export const PRUNE_AFTER_FAILURES = 3;
 
 type Claim = {
   id: string;
@@ -208,22 +206,6 @@ async function claimPush(db: Db, at: Date): Promise<Claim | "skipped" | null> {
   });
 }
 
-/** Whether a device's most recent settled deliveries all failed (the latest one included). */
-async function keepsFailing(db: Db, subscriptionId: string) {
-  const recent = await db
-    .select({ status: pushDeliveries.status })
-    .from(pushDeliveries)
-    .where(
-      and(
-        eq(pushDeliveries.subscriptionId, subscriptionId),
-        inArray(pushDeliveries.status, ["sent", "failed"]),
-      ),
-    )
-    .orderBy(desc(pushDeliveries.createdAt), desc(pushDeliveries.id))
-    .limit(PRUNE_AFTER_FAILURES);
-  return recent.length === PRUNE_AFTER_FAILURES && recent.every((r) => r.status === "failed");
-}
-
 /**
  * Sends what is due, a bounded batch per call. The send itself happens outside any transaction, so a slow push
  * service never holds a database connection. Delivery is at least once: a crash after the provider accepts a
@@ -258,12 +240,11 @@ export async function drainPush(db: Db, sender: PushSender, at: Date) {
           counts.retrying++;
         } else {
           const status = result === "sent" ? "sent" : "failed";
+          // A failure here never removes the device. Only the push service saying the subscription is gone
+          // (404/410, above) does: a 401/403 or an outage is as likely our side's fault (a bad VAPID subject, a
+          // provider incident), and dropping devices for it would silently turn notifications off for everyone.
           await settle(claim.id, status);
           counts[status]++;
-          if (status === "failed" && (await keepsFailing(db, claim.device.id))) {
-            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, claim.device.id));
-            logWarning("push_device_pruned");
-          }
         }
       }
     }),
