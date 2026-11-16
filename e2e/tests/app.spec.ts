@@ -191,7 +191,7 @@ test("admins have equal authority and can step down while keeping one admin", as
   }
 });
 
-/** A `datetime-local` value a few days out, so every pick window is still open. */
+/** A `datetime-local` value a few days out (read in the league's time zone), so every pick window is still open. */
 function kickoffInDays(days: number) {
   const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -245,7 +245,7 @@ test("upcoming picks take priority over unfinished past weeks and season changes
     await page.getByRole("button", { name: "Create week" }).click();
     await page.getByLabel("Away team").selectOption("KC");
     await page.getByLabel("Home team").selectOption("ATL");
-    await page.getByLabel("Kickoff (your local time)").fill(kickoffInDays(days));
+    await page.getByLabel(/^Kickoff \(.* time\)$/).fill(kickoffInDays(days));
     await page.getByLabel("Home spread", { exact: true }).fill("3.5");
     await page.getByRole("button", { name: "Add game" }).click();
     await page.getByRole("button", { name: "Open week for picks" }).click();
@@ -282,7 +282,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
 
   await page.getByLabel("Away team").selectOption("KC");
   await page.getByLabel("Home team").selectOption("ATL");
-  await page.getByLabel("Kickoff (your local time)").fill(kickoffInDays(3));
+  await page.getByLabel(/^Kickoff \(.* time\)$/).fill(kickoffInDays(3));
   await page.getByLabel("Home spread", { exact: true }).fill("3.5");
   await page.getByRole("button", { name: "Add game" }).click();
   await expect(page.getByRole("row", { name: /KC at ATL/ })).toBeVisible();
