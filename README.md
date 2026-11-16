@@ -477,11 +477,15 @@ The app is one [Cloudflare Worker](https://developers.cloudflare.com/workers/), 
 | Hyperdrive                 | Pools database connections and verifies Supabase's certificate (`verify-full` with the Supabase CA)    |
 | `apps/web/public/_headers` | Caches hashed files under `/assets/` forever                                                           |
 
-Workers start in milliseconds, so there is no cold-start wait. The free plan covers the app itself: static
-asset requests are free, and API requests and Hyperdrive queries each allow 100,000 a day. A request may use
-10 ms of CPU on the free plan (time waiting on the database or ESPN doesn't count); Workers Logs show each
-request's CPU time. **Email needs Workers Paid** ($5 a month): Cloudflare Email Sending can only send to
-your own verified addresses on the free plan (see "Email" below).
+Workers start in milliseconds, so there is no cold-start wait. The app runs on **Workers Paid** ($5 a month),
+which email requires: on the free plan Cloudflare Email Sending can only send to your own verified addresses
+(see "Email" below). The plan includes 10 million API requests and 30 million CPU milliseconds a month, and
+Hyperdrive queries are unlimited; static asset requests are always free. API requests use about 10–130 ms of
+CPU each (time waiting on the database or ESPN doesn't count), so the app stays well inside the included
+usage. `wrangler.jsonc` caps each invocation at 2 s of CPU to stop a runaway loop; Workers Logs show each
+request's CPU time. A rate limiting rule on the zone (dashboard, Security → Security rules) blocks an IP for
+10 s once it sends more than 50 requests to `/api/*` in 10 s, before the Worker runs, so a flood from one
+source can't run up the bill or trip the account's spend limit.
 
 `pnpm worker:dev` runs the same Worker locally against local Supabase. Day-to-day development stays on
 `pnpm dev` (Node), which `src/index.ts` serves.
