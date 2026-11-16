@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   cached,
+  FAILURE_TTL,
   kalshiEventSuffix,
   liveInsights,
   type MarketGame,
@@ -241,7 +242,7 @@ describe("parseEspnSummary", () => {
 });
 
 describe("cached", () => {
-  it("reuses a result until it expires, and doesn't keep failures", async () => {
+  it("reuses a result until it expires", async () => {
     let time = 0;
     const get = cached<number>(1000, () => time);
     const load = vi.fn(async () => 1);
@@ -251,13 +252,28 @@ describe("cached", () => {
     time = 1000;
     await get("a", load);
     expect(load).toHaveBeenCalledTimes(2);
+  });
 
-    const failing = vi.fn(async () => {
-      throw new Error("offline");
+  it("remembers a failure for a minute, per key, then asks again", async () => {
+    let time = 0;
+    const get = cached<number>(10 * 60_000, () => time);
+    let down = true;
+    const load = vi.fn(async () => {
+      if (down) throw new Error("offline");
+      return 7;
     });
-    await expect(get("b", failing)).rejects.toThrow("offline");
-    await expect(get("b", failing)).rejects.toThrow("offline");
-    expect(failing).toHaveBeenCalledTimes(2);
+    await expect(get("b", load)).rejects.toThrow("offline");
+    time = FAILURE_TTL - 1;
+    await expect(get("b", load)).rejects.toThrow("offline");
+    expect(load).toHaveBeenCalledTimes(1);
+    // Another key is asked on its own.
+    await expect(get("c", load)).rejects.toThrow("offline");
+    expect(load).toHaveBeenCalledTimes(2);
+
+    down = false;
+    time = FAILURE_TTL;
+    expect(await get("b", load)).toBe(7);
+    expect(load).toHaveBeenCalledTimes(3);
   });
 });
 

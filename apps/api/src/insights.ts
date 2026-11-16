@@ -373,28 +373,43 @@ export function marketInsights(board: MarketBoard, spread: number | null): Marke
 // ---------- Live provider ----------
 
 const CACHE_LIMIT = 200;
+/** How long a failed lookup is remembered before the source is asked again. */
+export const FAILURE_TTL = 60_000;
 
 /**
  * Remembers each key's result for `ttlMs`, so a league opening the same game doesn't refetch it per player.
  * Only settled results are kept: on Workers a request must not wait on I/O another request started, so two
- * requests that miss at the same moment each fetch. Failures aren't kept. Expiry runs on the real clock, not
- * the league's.
+ * requests that miss at the same moment each fetch. A failure is remembered for `failureTtlMs` and thrown
+ * again without asking, so an outage costs one round of fetches (and their timeouts) a minute rather than one
+ * per sheet opened. Expiry runs on the real clock, not the league's.
  */
-export function cached<T>(ttlMs: number, clock: () => number = Date.now) {
-  const entries = new Map<string, { at: number; value: T }>();
-  return async (key: string, load: () => Promise<T>): Promise<T> => {
-    const hit = entries.get(key);
-    if (hit && clock() - hit.at < ttlMs) return hit.value;
-    const at = clock();
-    const value = await load();
+export function cached<T>(ttlMs: number, clock: () => number = Date.now, failureTtlMs = FAILURE_TTL) {
+  type Entry = { at: number; ok: true; value: T } | { at: number; ok: false; error: unknown };
+  const entries = new Map<string, Entry>();
+  const remember = (key: string, entry: Entry) => {
     entries.delete(key);
-    entries.set(key, { at, value });
+    entries.set(key, entry);
     // Oldest out first: a Map keeps insertion order.
     for (const oldest of entries.keys()) {
       if (entries.size <= CACHE_LIMIT) break;
       entries.delete(oldest);
     }
-    return value;
+  };
+  return async (key: string, load: () => Promise<T>): Promise<T> => {
+    const hit = entries.get(key);
+    if (hit && clock() - hit.at < (hit.ok ? ttlMs : failureTtlMs)) {
+      if (hit.ok) return hit.value;
+      throw hit.error;
+    }
+    const at = clock();
+    try {
+      const value = await load();
+      remember(key, { at, ok: true, value });
+      return value;
+    } catch (error) {
+      remember(key, { at, ok: false, error });
+      throw error;
+    }
   };
 }
 
