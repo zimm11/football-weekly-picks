@@ -7,6 +7,7 @@ import { api, getSupabase, messageOf, unwrap } from "../api";
 import { useUnsavedGuard } from "../components/ConfirmDialog";
 import { notifyDone, notifyError } from "../notify";
 import { Link } from "../router";
+import { LegalLinks } from "./LegalPages";
 import { useLoad } from "./useLoad";
 
 /** Which notification emails to get, the email address, and a way to the change-password screen. */
@@ -66,6 +67,7 @@ export function AccountPage({ email }: { email?: string }) {
           Change password
         </Link>
       </Card>
+      <LegalLinks />
       {unsavedDialog}
     </div>
   );

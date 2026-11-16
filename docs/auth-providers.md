@@ -82,11 +82,15 @@ Use (or create) a Google Cloud project for POW Pick'em.
 | App logo               | optional; adding one triggers Google brand verification                |
 | App home page          | `https://www.pow-pickem.com`                                           |
 | Privacy policy / Terms | URLs on the site (needed before publishing; the app has none yet)      |
-| Authorized domains     | `pow-pickem.com` (and `supabase.co` unless using a custom domain)      |
+| Authorized domains     | `pow-pickem.com` and `<project-ref>.supabase.co` (see below)           |
 | Scopes                 | `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`       |
 | Publishing status      | **In production**. While "Testing", only listed test users can sign in |
 
 These are non-sensitive scopes, so publishing doesn't need Google's security review.
+
+Authorized domains must be "top private domains". `supabase.co` is on the public suffix list, so Google rejects it
+("Invalid domain: must be a top private domain"); enter the project's own host, `<project-ref>.supabase.co`,
+which the redirect URI below uses. With a Supabase custom domain, `pow-pickem.com` already covers it.
 
 **Google Auth Platform → Clients → Create client** (formerly "Credentials → OAuth client ID"):
 

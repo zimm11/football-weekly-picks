@@ -13,6 +13,7 @@ import { Badge } from "../components/ui/badge";
 import { buttonVariants } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Link } from "../router";
+import { LegalLinks } from "./LegalPages";
 
 export function LandingPage({
   onSignIn,
@@ -153,6 +154,9 @@ export function LandingPage({
           />
         </Card>
       </section>
+      <footer className="border-t pt-2">
+        <LegalLinks />
+      </footer>
     </div>
   );
 }

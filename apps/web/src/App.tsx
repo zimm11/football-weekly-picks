@@ -28,6 +28,7 @@ import { HowToPlayPage } from "./pages/HowToPlayPage";
 import { LandingPage } from "./pages/LandingPage";
 import { LeaguePage } from "./pages/LeaguePage";
 import { JoinPage, LeaguesPage } from "./pages/LeaguesPage";
+import { PrivacyPage, TermsPage } from "./pages/LegalPages";
 import { ManageWeekPage } from "./pages/ManageWeekPage";
 import { OperatorPage } from "./pages/OperatorPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
@@ -86,7 +87,8 @@ function Shell({ account, children }: { account?: ReactNode; children: ReactNode
               How to play
             </Link>
             {account ??
-              (path === "/" || path === "/how-to-play" ? (
+              // Only the sign-in screens have a form to jump to; elsewhere, go to one.
+              (["/", "/how-to-play", "/privacy", "/terms"].includes(path) ? (
                 <Link to="/login" className={signInClass}>
                   Sign in
                 </Link>
@@ -180,6 +182,10 @@ export function App() {
         <HowToPlayPage signedIn={false} />
       </Shell>
     );
+  }
+  // The privacy policy and terms are public (Google's sign-in setup links to them).
+  if ((route.page === "privacy" || route.page === "terms") && !session) {
+    return <Shell>{route.page === "privacy" ? <PrivacyPage /> : <TermsPage />}</Shell>;
   }
   // Unsubscribe links work without signing in.
   if (route.page === "unsubscribe" && !session) {
@@ -337,6 +343,10 @@ function SignedIn({
       {homeScreen.sheet}
       {route.page === "how-to-play" && !editingName ? (
         <HowToPlayPage signedIn />
+      ) : route.page === "privacy" && !editingName ? (
+        <PrivacyPage />
+      ) : route.page === "terms" && !editingName ? (
+        <TermsPage />
       ) : route.page === "reset-password" ? (
         // Reached from a reset email (which signs the user in) or the account menu.
         <div className="mx-auto grid max-w-sm gap-5 pt-6">

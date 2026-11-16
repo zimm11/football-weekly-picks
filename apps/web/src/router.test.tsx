@@ -50,6 +50,9 @@ describe("matchRoute", () => {
   it("gives the public guide its own address", () => {
     expect(matchRoute("/how-to-play")).toEqual({ page: "how-to-play" });
     expect(matchRoute("/how-to-play/unknown")).toEqual({ page: "not-found" });
+    expect(matchRoute("/privacy")).toEqual({ page: "privacy" });
+    expect(matchRoute("/terms")).toEqual({ page: "terms" });
+    expect(matchRoute("/terms/unknown")).toEqual({ page: "not-found" });
   });
 
   it("opens a league on its Picks tab", () => {

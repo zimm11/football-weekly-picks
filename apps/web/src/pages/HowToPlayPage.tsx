@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { buttonVariants } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Link } from "../router";
+import { LegalLinks } from "./LegalPages";
 
 const sections = [
   ["rules", "The pick rules"],
@@ -303,6 +304,7 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
           {signedIn ? "Go to your leagues" : "Get started"} <ArrowRightIcon aria-hidden />
         </Link>
       </footer>
+      <LegalLinks />
     </div>
   );
 }
