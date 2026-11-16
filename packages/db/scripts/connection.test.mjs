@@ -65,10 +65,21 @@ test("URL validation rejects routing overrides and never includes credential-bea
     `https://u:${secret}@db.example.com/db`,
     `postgresql://u:${secret}\n@db.example.com/db`,
     `postgresql://u:${secret}@localhost/db?host=remote.example.com`,
+    `postgresql://u:${secret}@localhost#@remote.example.com/db`,
+    `postgresql://u:${secret}@localhost/db#fragment`,
+    `postgresql://u:${secret}@x@localhost/db`,
+    `postgresql://u:${secret}@localhost,remote.example.com/db`,
+    `postgresql://u:${secret}@localhost:5432,remote.example.com:5432/db`,
   ]) {
     assert.throws(
       () => parseDatabaseUrl(value),
       (error) => !String(error).includes(secret) && !error.input,
     );
   }
+});
+
+test("a percent-encoded '@' or '#' in the password is still accepted", () => {
+  const url = parseDatabaseUrl("postgresql://u:p%40ss%23word@db.example.com:5432/db");
+  assert.equal(url.hostname, "db.example.com");
+  assert.equal(decodeURIComponent(url.password), "p@ss#word");
 });
