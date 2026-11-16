@@ -7,7 +7,7 @@ import {
   TrophyIcon,
 } from "@phosphor-icons/react";
 import { POW_BONUS } from "@picks/shared";
-import { type Credentials, SignInForm, type SignInMode } from "../components/SignInForm";
+import { type Credentials, SignInForm, type SignInMode, type SignInResult } from "../components/SignInForm";
 import { TeamLogo } from "../components/TeamLogo";
 import { Badge } from "../components/ui/badge";
 import { buttonVariants } from "../components/ui/button";
@@ -18,7 +18,7 @@ export function LandingPage({
   onSignIn,
   onResetRequest,
 }: {
-  onSignIn: (mode: SignInMode, credentials: Credentials) => Promise<string | undefined>;
+  onSignIn: (mode: SignInMode, credentials: Credentials) => Promise<SignInResult>;
   onResetRequest: (email: string) => Promise<string | undefined>;
 }) {
   return (

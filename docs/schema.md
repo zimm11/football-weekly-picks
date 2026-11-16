@@ -31,6 +31,7 @@ erDiagram
   weeks ||--o{ picks : "week_id"
   games ||--o{ picks : "game_id"
   auth_users ||--o{ picks : "user_id"
+  games ||--o{ picks : "game_id, week_id"
   auth_users ||--o| profiles : "user_id"
   push_subscriptions ||--o{ push_deliveries : "subscription_id"
   leagues ||--o{ push_deliveries : "league_id"
@@ -40,6 +41,8 @@ erDiagram
   leagues ||--o{ seasons : "league_id"
   weeks ||--o{ tiebreaker_guesses : "week_id"
   auth_users ||--o{ tiebreaker_guesses : "user_id"
+  weeks ||--o{ week_participants : "week_id"
+  auth_users ||--o{ week_participants : "user_id"
   weeks ||--o{ week_recap_views : "week_id"
   auth_users ||--o{ week_recap_views : "user_id"
   seasons ||--o{ weeks : "season_id"
@@ -185,6 +188,10 @@ erDiagram
     integer total
     timestamptz updated_at
   }
+  week_participants {
+    uuid week_id PK, FK
+    uuid user_id PK, FK
+  }
   week_recap_views {
     uuid week_id PK, FK
     uuid user_id PK, FK
@@ -266,7 +273,7 @@ A game on a week's slate, with the spread and point value the league is using fo
 | `away_score` | integer | yes |  | Final score. Null until the game is final. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
-Unique together: (`week_id`, `external_id`).
+Unique together: (`week_id`, `external_id`); (`id`, `week_id`).
 
 ### `league_members`
 
@@ -434,6 +441,15 @@ A player's guess at the combined score of the week's tiebreaker game.
 | `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
 | `total` | integer | no |  | Guessed combined points of both teams. |
 | `updated_at` | timestamptz | no |  | Has a default. |
+
+### `week_participants`
+
+Who a closed week is scored for, recorded when it is finalized: everyone in the league at its last kickoff, plus anyone who picked. Later membership changes (leaving, rejoining) never change it. Finalizing again after a reopen only adds players; nobody is dropped. Weeks finalized before this table existed have no rows and are worked out from the membership history instead.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `week_id` | uuid | no | PK, FK → `weeks.id` |  |
+| `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
 
 ### `week_recap_views`
 

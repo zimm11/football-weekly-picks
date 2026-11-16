@@ -11,10 +11,7 @@ concurrency:
 permissions:
   contents: read
 
-# Browser coverage restored after the Ubuntu mirror DNS outage was resolved.
-# https://github.com/actions/runner-images/issues/15296
 env:
-  SKIP_BROWSER_TESTS: "false"
   WRANGLER_SEND_METRICS: "false"
 
 jobs:
@@ -23,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
       - name: Scan history for secrets
@@ -31,10 +28,10 @@ jobs:
           docker run --rm --network=none -v "$PWD:/repo:ro"
           ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
           git --config=/repo/.gitleaks.toml --redact=100 --no-banner --log-opts="--all" /repo
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 26
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -60,7 +57,6 @@ jobs:
           fi
 
       - name: Install Chromium for component tests
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm --filter @picks/web exec playwright install --with-deps chromium
 
       - name: Unit + script tests
@@ -69,12 +65,7 @@ jobs:
           node --test scripts/*.test.mjs
 
       - name: Component tests
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm --filter @picks/web test
-
-      - name: Browser coverage temporarily suspended
-        if: ${{ env.SKIP_BROWSER_TESTS == 'true' }}
-        run: echo "::warning::Component and E2E browser tests are temporarily skipped during the Ubuntu mirror DNS outage."
 
       # The web build becomes the Worker's static assets, so it goes first.
       - name: Build web app and bundle the Worker
@@ -85,11 +76,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 26
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -114,19 +105,17 @@ jobs:
         run: pnpm --filter @picks/api test
 
       - name: Install Playwright browsers
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm playwright:install
 
       # Against the production build in the Workers runtime (`pnpm worker:dev`), not the Node dev servers.
       - name: E2E tests
-        if: ${{ env.SKIP_BROWSER_TESTS != 'true' }}
         run: pnpm test:e2e
         env:
           E2E_TARGET: worker
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() && env.SKIP_BROWSER_TESTS != 'true' }}
-        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report
           path: e2e/playwright-report

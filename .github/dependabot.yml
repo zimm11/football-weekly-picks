@@ -1,0 +1,23 @@
+# Dependency update PRs. Security updates are on in the repo settings too, so a vulnerable package gets a PR
+# as soon as an advisory lands; these scheduled runs keep everything else current in a few grouped PRs.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  # Actions are pinned to full commit SHAs (a tag can be moved to different code; a SHA can't), with the
+  # version in a comment. Dependabot reads that comment and updates both.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    groups:
+      actions:
+        patterns: ["*"]

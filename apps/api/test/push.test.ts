@@ -7,6 +7,7 @@ import {
   leagues,
   messageThreads,
   picks,
+  profiles,
   pushDeliveries,
   pushSubscriptions,
   seasons,
@@ -71,6 +72,8 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
   beforeAll(async () => {
     for (const id of users)
       await db.execute(sql`insert into auth.users (id, email) values (${id}, ${`${id}@push.test`})`);
+    // Posting needs a display name. Removed with the users (cascade).
+    await db.insert(profiles).values(users.map((userId, i) => ({ userId, displayName: `Push ${i}` })));
   });
   beforeEach(async () => {
     send.mockReset().mockResolvedValue("sent");
@@ -144,6 +147,28 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
     expect((await call(player, "PUT", "/push/device", { ...devices[0], newThreads: false })).status).toBe(
       200,
     );
+  });
+  it("swaps out a subscription the browser replaced, for the same player only", async () => {
+    const old = await device();
+    await call(player, "PUT", "/push/device", { ...old, newThreads: false });
+    const theirs = await device(other);
+    for (let i = 0; i < 9; i++) await device();
+    // At the cap, a replacement still fits: the old row goes, and its preferences carry over.
+    const fresh = subscription(randomUUID());
+    const res = await call(player, "PUT", "/push/device", { ...fresh, oldEndpoint: old.endpoint });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { device: PushDevice }).device).toMatchObject({
+      newThreads: false,
+      pickReminders: true,
+    });
+    const rows = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, player));
+    expect(rows.map((r) => r.endpoint)).not.toContain(old.endpoint);
+    expect(rows.map((r) => r.endpoint)).toContain(fresh.endpoint);
+    // Naming another player's endpoint removes nothing of theirs.
+    await call(player, "PUT", "/push/device", { ...fresh, oldEndpoint: theirs.endpoint });
+    expect(
+      (await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, theirs.id))).length,
+    ).toBe(1);
   });
   it("queues new threads for other current opted-in members only, and deduplicates events", async () => {
     await device(author);
@@ -234,6 +259,95 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
     expect(await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId))).toHaveLength(
       0,
     );
+  });
+  it("sends each notification exactly once when drains overlap", async () => {
+    // More devices than the per-account cap the route enforces, so insert them directly.
+    const devices = await db
+      .insert(pushSubscriptions)
+      .values(
+        Array.from({ length: 30 }, () => ({
+          userId: player,
+          endpoint: `https://web.push.apple.com/${randomUUID()}`,
+          ...keys,
+        })),
+      )
+      .returning({ id: pushSubscriptions.id });
+    await queueThreadPush(db, leagueId, threadId, author, at);
+    send.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return "sent";
+    });
+    await Promise.all([drainPush(db, push, at), drainPush(db, push, at), drainPush(db, push, at)]);
+    expect(send).toHaveBeenCalledTimes(devices.length);
+    expect(new Set(send.mock.calls.map(([device]) => device.endpoint)).size).toBe(devices.length);
+    const rows = await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    expect(rows.every((r) => r.status === "sent" && r.attempts === 1)).toBe(true);
+  });
+  it("retries a delivery whose sender died mid-send once its lease runs out", async () => {
+    await device();
+    await queueThreadPush(db, leagueId, threadId, author, at);
+    send.mockRejectedValueOnce(new Error("isolate cut off"));
+    await expect(drainPush(db, push, at)).rejects.toThrow();
+    // Leased: no other run takes it while the lease lasts...
+    await drainPush(db, push, new Date(at.getTime() + 60_000));
+    expect(send).toHaveBeenCalledOnce();
+    // ...and the next run after it sends it.
+    expect((await drainPush(db, push, new Date(at.getTime() + 5 * 60_000))).sent).toBe(1);
+    const [row] = await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    expect(row).toMatchObject({ status: "sent", attempts: 2 });
+  });
+  it("keeps a device however often its deliveries fail: only a gone subscription is removed", async () => {
+    const d = await device();
+    const more = await db
+      .insert(messageThreads)
+      .values([
+        { leagueId, authorId: author, title: "Two" },
+        { leagueId, authorId: author, title: "Three" },
+        { leagueId, authorId: author, title: "Four" },
+      ])
+      .returning({ id: messageThreads.id });
+    // A 401/403 from every push service is what a bad VAPID subject looks like: our fault, not the device's.
+    send.mockResolvedValue("failed");
+    for (const [i, id] of [threadId, ...more.map((t) => t.id)].entries()) {
+      await queueThreadPush(db, leagueId, id, author, new Date(at.getTime() + i * 1000));
+      expect((await drainPush(db, push, new Date(at.getTime() + i * 1000))).failed).toBe(1);
+    }
+    expect(await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, d.id))).toHaveLength(1);
+  });
+  it("leaves everything queued while the sender isn't ready (mismatched VAPID keys)", async () => {
+    await device();
+    await queueThreadPush(db, leagueId, threadId, author, at);
+    expect(await drainPush(db, { ...push, ready: async () => false }, at)).toEqual({
+      sent: 0,
+      skipped: 0,
+      retrying: 0,
+      failed: 0,
+    });
+    expect(send).not.toHaveBeenCalled();
+    const [row] = await db.select().from(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    expect(row).toMatchObject({ status: "pending", attempts: 0 });
+  });
+  it("drops a queued reminder for a player who has left the league", async () => {
+    await device();
+    expect(await queuePickPush(db, at)).toBe(1);
+    await db
+      .update(leagueMembers)
+      .set({ removedAt: at })
+      .where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, player)));
+    expect((await drainPush(db, push, at)).skipped).toBe(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("queues one reminder per device in a single pass, and not for a game with both scores in", async () => {
+    await device();
+    await device();
+    expect(await queuePickPush(db, at)).toBe(2);
+    await db.delete(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    // Only one score typed so far: the game hasn't been played, so it still needs a pick.
+    await db.update(games).set({ homeScore: 3 }).where(eq(games.id, gameId));
+    expect(await queuePickPush(db, at)).toBe(2);
+    await db.delete(pushDeliveries).where(eq(pushDeliveries.leagueId, leagueId));
+    await db.update(games).set({ homeScore: 3, awayScore: 0 }).where(eq(games.id, gameId));
+    expect(await queuePickPush(db, at)).toBe(0);
   });
   it("stops permanent failures and honors preference changes on pending notifications", async () => {
     const d = await device();

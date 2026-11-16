@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, Eyebrow, Notice } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { api, messageOf, unwrap } from "../api";
+import { LoadError } from "../components/LoadError";
 import { NotificationsPrompt } from "../components/NotificationsPrompt";
 import { ListSkeleton } from "../components/Skeletons";
 import { Splash } from "../components/Splash";
@@ -44,7 +45,7 @@ export function LeaguesPage({ playerName }: { playerName?: string }) {
     }
   }
 
-  if (leagues.error) return <Notice kind="alert">{leagues.error}</Notice>;
+  if (leagues.error) return <LoadError message={leagues.error} onRetry={leagues.reload} />;
   if (!leagues.data) {
     // Opening the app lands here, so the first load continues the splash; coming back later shows the list's shape.
     return opening ? <Splash name={playerName} /> : <ListSkeleton label="Loading your leagues" rows={2} />;
@@ -115,7 +116,7 @@ export function JoinPage({ code }: { code: string }) {
     }
   }
 
-  if (invite.error) return <Notice kind="alert">{invite.error}</Notice>;
+  if (invite.error) return <LoadError message={invite.error} onRetry={invite.reload} />;
   if (!invite.data) return <ListSkeleton label="Loading invite" rows={1} />;
   return (
     <div className="mx-auto grid max-w-sm gap-5 pt-6">

@@ -19,6 +19,11 @@ export const pushSubscriptionSchema = z.object({
     auth: z.string().regex(/^[A-Za-z0-9_-]{22}$/, "Invalid push secret."),
   }),
   ...pushPreferencesSchema.shape,
+  /**
+   * The subscription this one replaces, when the browser swapped it out on its own. The server drops that row
+   * (if it is this player's) and keeps its preferences. Optional, so older clients still work.
+   */
+  oldEndpoint: pushEndpointSchema.optional(),
 });
 export const pushDeviceSchema = z.object({ endpoint: pushEndpointSchema });
 export type PushPreferences = z.infer<typeof pushPreferencesSchema>;

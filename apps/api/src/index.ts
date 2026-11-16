@@ -38,14 +38,20 @@ async function main() {
       : undefined;
   if (!email) console.warn("Email is off: set INBOX_URL (`pnpm env:local`) to send notifications locally");
   const now = clock?.now ?? (() => new Date());
-  const push =
+  const sender =
     env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT
-      ? webPushSender({
-          publicKey: env.VAPID_PUBLIC_KEY,
-          privateKey: env.VAPID_PRIVATE_KEY,
-          subject: env.VAPID_SUBJECT,
-        })
+      ? webPushSender(
+          {
+            publicKey: env.VAPID_PUBLIC_KEY,
+            privateKey: env.VAPID_PRIVATE_KEY,
+            subject: env.VAPID_SUBJECT,
+          },
+          fetch,
+          now,
+        )
       : undefined;
+  // A mismatched VAPID pair is logged (VAPID_KEY_MISMATCH) and switches push off instead of failing every send.
+  const push = sender && (await sender.ready?.()) ? sender : undefined;
   const app = createApp({
     db,
     push,

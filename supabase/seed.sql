@@ -13,6 +13,8 @@
 --       - Weeks 6–8: made-up eight-game slates (Thursday, five Sunday afternoon games, Sunday night,
 --         Monday night) with made-up scores and spreads. Week 6 and Week 7 each have a push.
 --         Alex missed Week 7 entirely; Sam chose no POW in Week 8.
+--       - Each closed week records its players (week_participants), as finalizing does, so leaving and
+--         rejoining the league later doesn't change its results. Everyone joined on 2026-08-01.
 -- Messages support emoji reactions, admin-only pinned announcements and quoted replies within a thread.
 -- Admins can permanently delete a thread and its replies, reactions, read markers and queued notifications after confirmation.
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
@@ -59,8 +61,9 @@ select id, display_name from seed_users;
 insert into leagues (id, name, time_zone, invite_code)
 values ('22222222-2222-4222-8222-000000000001', 'Sunday Crew', 'America/New_York', 'local-invite');
 
+-- A fixed date before the seeded weeks, not one relative to today, so the history doesn't shift as the clock moves.
 insert into league_members (league_id, user_id, role, joined_at)
-select '22222222-2222-4222-8222-000000000001', id, role, now() - interval '60 days' + n * interval '1 minute'
+select '22222222-2222-4222-8222-000000000001', id, role, timestamptz '2026-08-01 12:00:00+00' + n * interval '1 minute'
 from seed_users;
 
 insert into seasons (id, league_id, year)
@@ -198,3 +201,12 @@ from (values
   (8, 0, 37), (8, 1, 31), (8, 2, 40), (8, 3, 45)
 ) as t(w, n, total)
 join seed_users u on u.n = t.n;
+
+-- ---------- Who each closed week is scored for ----------
+
+-- Recorded at finalize in the app; here, all four players for Weeks 6–9 (Alex included in Week 7, which Alex
+-- missed but was in the league for).
+insert into week_participants (week_id, user_id)
+select ('44444444-4444-4444-8444-' || lpad(w::text, 12, '0'))::uuid, u.id
+from generate_series(6, 9) w
+cross join seed_users u;

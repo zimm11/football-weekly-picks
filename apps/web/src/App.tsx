@@ -2,7 +2,7 @@ import { CaretDownIcon, FootballIcon } from "@phosphor-icons/react";
 import type { Me } from "@picks/shared";
 import type { Session } from "@supabase/supabase-js";
 import { type ReactNode, useEffect, useState } from "react";
-import { Card, Notice } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,15 +10,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
-import { api, getSupabase, messageOf, unwrap } from "./api";
+import { api, getSupabase, messageOf, SESSION_ENDED, takeSessionEnded, unwrap } from "./api";
 import { clockOffset, onClockChange } from "./clock";
 import { Avatar } from "./components/Avatar";
 import { useHomeScreenHelp } from "./components/HomeScreenInstall";
+import { LoadError } from "./components/LoadError";
 import { NameForm } from "./components/NameForm";
 import { NewPasswordForm } from "./components/NewPasswordForm";
 import { type Credentials, SignInForm, type SignInMode } from "./components/SignInForm";
 import { SimulatedClockBanner } from "./components/SimulatedClockBanner";
-import { Splash } from "./components/Splash";
+import { Splash, StartError } from "./components/Splash";
 import { buttonVariants } from "./components/ui/button";
 import { notifyDone, notifyError } from "./notify";
 import { AccountPage } from "./pages/AccountPage";
@@ -32,8 +33,31 @@ import { OperatorPage } from "./pages/OperatorPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { useNow } from "./pages/useNow";
 import { WeekPage } from "./pages/WeekPage";
-import { disablePush, reconcilePushAccount } from "./push";
-import { Link, matchRoute, navigate, usePath } from "./router";
+import { disablePush, onPushSubscriptionChange, reconcilePushAccount } from "./push";
+import { Link, matchRoute, navigate, requestLeave, takeScrollPosition, usePath } from "./router";
+
+/**
+ * Scrolls to `top` once the page is tall enough to: after going back, the screen may still be loading.
+ * Gives up after two seconds, or as soon as the player scrolls themselves. Returns a cleanup.
+ */
+function scrollWhenReady(top: number) {
+  const scroll = () => window.scrollTo({ top, left: 0, behavior: "instant" });
+  scroll();
+  if (top === 0) return undefined;
+  let tries = 0;
+  const stop = () => {
+    clearInterval(timer);
+    window.removeEventListener("wheel", stop);
+    window.removeEventListener("touchstart", stop);
+  };
+  const timer = setInterval(() => {
+    scroll();
+    if (Math.abs(window.scrollY - top) < 2 || ++tries > 40) stop();
+  }, 50);
+  window.addEventListener("wheel", stop, { passive: true });
+  window.addEventListener("touchstart", stop, { passive: true });
+  return stop;
+}
 
 /**
  * Supabase sends people back from an expired or already-used email link with the reason in the URL fragment
@@ -114,29 +138,44 @@ function Shell({ account, children }: { account?: ReactNode; children: ReactNode
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [linkError] = useState(takeAuthLinkError);
+  // The app couldn't load its configuration (offline, or the API is down), so nothing else can work yet.
+  const [startError, setStartError] = useState<string>();
+  const [startAttempt, setStartAttempt] = useState(0);
   const path = usePath();
   const route = matchRoute(path);
 
   useEffect(() => {
-    // New pages start at the top; native section anchors retain their own scrolling.
-    if (path && !window.location.hash) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    // New pages start at the top, and going back returns to where the player was; native section anchors
+    // keep their own scrolling.
+    const top = takeScrollPosition();
+    if (path && !window.location.hash) return scrollWhenReady(top);
   }, [path]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `startAttempt` is what asks again after a failure.
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    getSupabase().then((sb) => {
-      sb.auth.getSession().then(({ data }) => setSession(data.session));
-      unsubscribe = sb.auth.onAuthStateChange((event, s) => {
-        setSession(s);
-        // A reset link signs the player in. If Auth sent them somewhere other than the reset screen
-        // (e.g. a redirect URL it doesn't allow), still ask for the new password.
-        if (event === "PASSWORD_RECOVERY" && window.location.pathname !== "/reset-password") {
-          navigate("/reset-password");
-        }
-      }).data.subscription.unsubscribe;
-    });
-    return () => unsubscribe?.();
-  }, []);
+    let current = true;
+    getSupabase().then(
+      (sb) => {
+        if (!current) return;
+        sb.auth.getSession().then(({ data }) => setSession(data.session));
+        unsubscribe = sb.auth.onAuthStateChange((event, s) => {
+          setSession(s);
+          if (event === "SIGNED_OUT" && takeSessionEnded()) notifyError(SESSION_ENDED);
+          // A reset link signs the player in. If Auth sent them somewhere other than the reset screen
+          // (e.g. a redirect URL it doesn't allow), still ask for the new password.
+          if (event === "PASSWORD_RECOVERY" && window.location.pathname !== "/reset-password") {
+            navigate("/reset-password");
+          }
+        }).data.subscription.unsubscribe;
+      },
+      (err) => current && setStartError(messageOf(err)),
+    );
+    return () => {
+      current = false;
+      unsubscribe?.();
+    };
+  }, [startAttempt]);
 
   async function signIn(mode: SignInMode, credentials: Credentials) {
     const sb = await getSupabase();
@@ -148,7 +187,7 @@ export function App() {
     });
     if (error) return error.message;
     // Hosted Supabase requires email confirmation by default, so sign-up returns no session.
-    return data.session ? undefined : "Check your email to confirm your account, then sign in.";
+    return data.session ? undefined : { status: "Check your email to confirm your account, then sign in." };
   }
 
   async function requestReset(email: string) {
@@ -172,6 +211,17 @@ export function App() {
       <Shell>
         <UnsubscribePage signedIn={false} />
       </Shell>
+    );
+  }
+  if (startError && session === undefined) {
+    return (
+      <StartError
+        message={startError}
+        onRetry={() => {
+          setStartError(undefined);
+          setStartAttempt((n) => n + 1);
+        }}
+      />
     );
   }
   if (session === undefined) return <Splash />;
@@ -234,11 +284,28 @@ function SignedIn({
   const [editingName, setEditingName] = useState(false);
   const homeScreen = useHomeScreenHelp();
 
+  const [meAttempt, setMeAttempt] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `meAttempt` is what asks again after a failure.
   useEffect(() => {
-    reconcilePushAccount()
-      .then(() => unwrap<Me>(api.me.$get()))
-      .then(setMe, (err) => setError(messageOf(err)));
-  }, []);
+    let current = true;
+    unwrap<Me>(api.me.$get()).then(
+      (value) => current && setMe(value),
+      (err) => current && setError(messageOf(err)),
+    );
+    return () => {
+      current = false;
+    };
+  }, [meAttempt]);
+
+  // Alongside loading the app, never ahead of it: a push hiccup must not keep the player out.
+  useEffect(() => {
+    const reconcile = () => {
+      reconcilePushAccount(userId).catch((err) => notifyError(messageOf(err)));
+    };
+    reconcile();
+    return onPushSubscriptionChange(reconcile);
+  }, [userId]);
 
   async function saveName(displayName: string) {
     try {
@@ -252,14 +319,16 @@ function SignedIn({
     }
   }
 
-  const signOut = async () => {
-    try {
-      await disablePush();
-      await (await getSupabase()).auth.signOut();
-    } catch (err) {
-      notifyError(messageOf(err));
-    }
-  };
+  // Signing out and the name form both replace the screen, so unsaved work on it gets its say first.
+  const signOut = () =>
+    requestLeave(async () => {
+      try {
+        await disablePush();
+        await (await getSupabase()).auth.signOut();
+      } catch (err) {
+        notifyError(messageOf(err));
+      }
+    });
 
   async function savePassword(password: string) {
     const { error } = await (await getSupabase()).auth.updateUser({ password });
@@ -281,7 +350,9 @@ function SignedIn({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {me?.displayName && (
-          <DropdownMenuItem onSelect={() => setEditingName(true)}>Change your name</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => requestLeave(() => setEditingName(true))}>
+            Change your name
+          </DropdownMenuItem>
         )}
         {/* Notifications and the home-screen app live in Settings too, so they need no items of their own. */}
         <DropdownMenuItem onSelect={() => navigate("/account")}>Settings</DropdownMenuItem>
@@ -320,7 +391,15 @@ function SignedIn({
         </div>
       ) : (
         <>
-          {error && <Notice kind="alert">{error}</Notice>}
+          {error && !me && (
+            <LoadError
+              message={error}
+              onRetry={() => {
+                setError(undefined);
+                setMeAttempt((n) => n + 1);
+              }}
+            />
+          )}
           {!me && !error && <Splash />}
           {me && (!me.displayName || editingName) && (
             <div className="mx-auto grid max-w-sm gap-5 pt-6">
@@ -351,6 +430,7 @@ function SignedIn({
               {/* `/notifications` is where notification settings used to be; old links land on Settings. */}
               {(route.page === "account" || route.page === "notifications") && (
                 <AccountPage
+                  userId={userId}
                   email={email}
                   onAddToHomeScreen={homeScreen.available ? homeScreen.open : undefined}
                 />

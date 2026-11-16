@@ -8,6 +8,7 @@ import {
   TEAM_ABBRS,
   type UpdateGame,
   type WeekStatus,
+  zonedTimeToUtc,
 } from "@picks/shared";
 import { cn } from "cn";
 import { type FormEvent, useState } from "react";
@@ -21,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Field, Input, NativeSelect } from "@/components/ui/input";
-import { kickoffDay, kickoffTime, matchup } from "../format";
+import { kickoffDay, kickoffTime, matchup, zoneName } from "../format";
 import { useUnsavedGuard } from "./ConfirmDialog";
 import { TAB_BAR_OFFSET } from "./LeagueNav";
 import { TeamLogo } from "./TeamLogo";
@@ -39,8 +40,11 @@ type Props = {
   onSave: (updates: GameUpdate[]) => void;
   /** True while a change is being sent, so nothing is submitted twice. */
   busy?: boolean;
+  /** Which of this editor's own actions is being sent, so its button can say so. */
+  pending?: "save" | "add";
   onRemove: (gameId: string) => void;
-  onAdd: (game: CreateGame) => void;
+  /** Resolves to whether the game was added; the form clears only then. */
+  onAdd: (game: CreateGame) => Promise<boolean>;
   onSetTiebreaker: (gameId: string) => void;
 };
 
@@ -61,6 +65,7 @@ export function GameEditor({
   now,
   onSave,
   busy = false,
+  pending,
   onRemove,
   onAdd,
   onSetTiebreaker,
@@ -270,7 +275,7 @@ export function GameEditor({
             disabled={busy || updates.length === 0 || !!problem}
             onClick={() => onSave(updates)}
           >
-            {busy && updates.length > 0 ? "Saving…" : "Save changes"}
+            {pending === "save" ? "Saving…" : "Save changes"}
           </Button>
           {problem ? (
             <Notice kind="alert">{problem}</Notice>
@@ -283,25 +288,53 @@ export function GameEditor({
           )}
         </div>
       )}
-      <AddGameForm onAdd={onAdd} busy={busy} />
+      <AddGameForm onAdd={onAdd} busy={busy} adding={pending === "add"} timeZone={timeZone} />
     </div>
   );
 }
 
-function AddGameForm({ onAdd, busy }: Pick<Props, "onAdd" | "busy">) {
+/** The instant a `datetime-local` value ("2026-11-15T13:00") names on the wall clock of `timeZone`. */
+export function kickoffFromInput(value: string, timeZone: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!match) return null;
+  const [year, month, day, hour, minute] = match.slice(1).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const hourStart = zonedTimeToUtc(year, month, day, hour, timeZone);
+  return Number.isNaN(hourStart.getTime()) ? null : new Date(hourStart.getTime() + minute * 60_000);
+}
+
+function AddGameForm({
+  onAdd,
+  busy,
+  adding,
+  timeZone,
+}: Pick<Props, "onAdd" | "busy" | "timeZone"> & { adding: boolean }) {
   const [error, setError] = useState<string>();
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const kickoff = new Date(String(form.get("kickoff")));
+    const formElement = e.currentTarget;
+    const form = new FormData(formElement);
+    // Typed in the league's time zone, the one the slate shows.
+    const kickoff = kickoffFromInput(String(form.get("kickoff")), timeZone);
     const awayTeam = String(form.get("awayTeam")) as CreateGame["awayTeam"];
     const homeTeam = String(form.get("homeTeam")) as CreateGame["homeTeam"];
     if (awayTeam === homeTeam) return setError("Choose two different teams.");
-    if (Number.isNaN(kickoff.getTime())) return setError("Enter the kickoff date and time.");
+    if (!kickoff) return setError("Enter the kickoff date and time.");
     setError(undefined);
-    onAdd({ awayTeam, homeTeam, kickoff: kickoff.toISOString(), spread: Number(form.get("spread")) });
-    e.currentTarget.reset();
+    const added = await onAdd({
+      awayTeam,
+      homeTeam,
+      kickoff: kickoff.toISOString(),
+      spread: Number(form.get("spread")),
+    });
+    // A failed add keeps what was typed, so it can be fixed and sent again.
+    if (added) formElement.reset();
   }
 
   const teamOptions = TEAM_ABBRS.map((abbr) => (
@@ -331,14 +364,14 @@ function AddGameForm({ onAdd, busy }: Pick<Props, "onAdd" | "busy">) {
               {teamOptions}
             </NativeSelect>
           </Field>
-          <Field label="Kickoff (your local time)" className="max-md:col-span-2">
+          <Field label={`Kickoff (${zoneName(timeZone)} time)`} className="max-md:col-span-2">
             <Input name="kickoff" type="datetime-local" required />
           </Field>
           <Field label="Home spread">
             <Input name="spread" type="number" step={0.5} required />
           </Field>
           <Button type="submit" variant="secondary" className="self-end" disabled={busy}>
-            Add game
+            {adding ? "Adding…" : "Add game"}
           </Button>
         </div>
         {error && <Notice kind="alert">{error}</Notice>}

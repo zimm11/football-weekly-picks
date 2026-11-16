@@ -194,15 +194,15 @@ Its feedback inbox supports **Mark done**, **Reopen**, and loading older reports
 stored picks and messages: it does not measure visits, sessions, or time spent. Private pick choices
 and league message bodies are never included.
 
-Operator access is separate from league admin access. On the **API service**, set `OPERATOR_USER_IDS`
-to your Supabase Auth user UUID (or a comma-separated list). Find it under **Authentication → Users**
-in your Supabase dashboard. Restart/redeploy the API, then reload the app. An empty or unset value
-grants nobody access; players cannot grant themselves access through their profile or league role.
-To revoke access, remove the UUID and restart/redeploy the API.
+Operator access is separate from league admin access. Set the Worker secret `OPERATOR_USER_IDS` to your
+Supabase Auth user UUID (or a comma-separated list): `pnpm exec wrangler secret put OPERATOR_USER_IDS` from
+`apps/api`. Find the UUID under **Authentication → Users** in your Supabase dashboard. A secret change takes
+effect within seconds, without a deploy; reload the app. An empty or unset value grants nobody access, and
+everyone else gets a 404 on the operator routes; players cannot grant themselves access through their profile
+or league role. To revoke access, put the secret again without that UUID.
 
 For local development, `pnpm env:local` makes the seeded `admin@example.com` account an operator.
-This local setting is not applied to production. The feedback migration must be deployed before the
-new API, using the normal migration and deployment workflow.
+This local setting is not applied to production.
 
 ### Walking through a week
 
@@ -214,7 +214,8 @@ new API, using the normal migration and deployment workflow.
    weeks open with **Manage week**. With **Import games and spreads from ESPN** checked, creation
    fetches the slate from ESPN and opens the draft's management screen. Imports need internet access.
 3. Review kickoffs, spreads, point values, and the tiebreaker game. Add or remove games as needed and
-   press **Save changes** after edits. A draft is visible only to admins. Every game needs a spread
+   press **Save changes** after edits. Kickoffs you type are in the league's time zone, and a game whose
+   kickoff moves takes the new slot's points unless you set them by hand. A draft is visible only to admins. Every game needs a spread
    before you can press **Open week for picks**. After the week opens, the app offers to post a league
    message announcing it; you can edit the draft or skip it.
 4. Follow **Make your own picks**, or open **Picks**. Select teams, mark one POW, enter a guess for the
@@ -295,7 +296,8 @@ Active league members can react to any message or reply, once per emoji per play
 own selections are visible to members. Reactions do not bump threads or create unread indicators.
 Only admins can permanently delete threads, including all replies and reactions, using the thread’s **⋯** menu and a confirmation. Read markers and queued notifications are removed too.
 Only admins can pin or unpin threads as announcements; pinned threads appear first without changing
-unread status. Quoted replies can reference only messages in the same thread and show the original
+unread status. The board loads the newest 30 threads, with **Load older threads** for the rest. A player can start five
+threads a day in a league; replies aren't limited. Quoted replies can reference only messages in the same thread and show the original
 author and text with a link back. You can remove a quote before posting without losing your reply.
 
 ### Scoring
@@ -328,7 +330,7 @@ holding it kicks off. After that it stays on that game for the week.
   or removed.
 - **At kickoff**, the game locks: no new picks or changes are accepted, and it can no longer become the
   POW. A POW already on it cannot be moved or removed. A recorded result locks the game regardless of
-  the clock.
+  the clock. A change the player hadn't saved on a game that locks is undone, and the save bar says so.
 - **The tiebreaker guess** follows its game's lock: it can be entered or changed until kickoff. A saved
   guess cannot be removed.
 - **The tiebreaker game** is the admin's explicit choice, otherwise the last Monday game, otherwise the
@@ -354,8 +356,9 @@ Each finalized week names its winner and hands out these, all worked out from th
 The stored week lifecycle is `draft → open → final`; only an admin finalizes a week. The interface derives
 additional phases such as **Games underway** and **Awaiting finalization** from kickoffs and scores.
 Picks stay private until finalization, including from admins. Removing a member, or a member leaving,
-preserves their history; weekly participation uses membership dates rather than applying today's member
-list to past weeks.
+preserves their history. Finalizing a week records who it is scored for (everyone in the league at its last
+kickoff, plus anyone who picked), so leaving or rejoining later never changes a closed week; finalizing again
+after a reopen only adds players. Weeks closed before that record existed use membership dates instead.
 
 ## Architecture and repository layout
 
@@ -402,7 +405,7 @@ Team logos are loaded by the browser from ESPN's image CDN (`a.espncdn.com`).
 
 The web app has a manifest and icons so it can be installed to a home screen. A push-only service worker
 (`apps/web/public/push-sw.js`, served with `Cache-Control: no-cache` from `_headers`) shows notifications
-and caches nothing, so nothing works offline.
+and caches no pages or responses, so nothing works offline.
 
 ## Development and testing
 
@@ -413,7 +416,8 @@ Run workspace commands from the repository root:
 | Command              | Purpose                                                                            |
 | -------------------- | ---------------------------------------------------------------------------------- |
 | `pnpm dev`           | Start web and API development servers                                              |
-| `pnpm build`         | Build web assets to `apps/web/dist` and the API bundle to `apps/api/dist/index.js` |
+| `pnpm worker:dev`    | Run the production build in the Workers runtime against local Supabase             |
+| `pnpm build`         | Build web assets to `apps/web/dist` and a dry-run Worker bundle to `apps/api/dist` |
 | `pnpm lint`          | Check formatting and lint rules with Biome                                         |
 | `pnpm format`        | Apply Biome formatting and fixes                                                   |
 | `pnpm typecheck`     | Type-check workspace packages                                                      |
@@ -501,7 +505,7 @@ The app is one [Cloudflare Worker](https://developers.cloudflare.com/workers/), 
 | Static Assets              | Serves `apps/web/dist` from Cloudflare's edge, falls back to `index.html` for SPA routes; never sleeps |
 | `src/worker.ts`            | Runs the Hono API for `/api/*` only, placed in AWS us-east-1 beside the Supabase project               |
 | Hyperdrive                 | Pools database connections and verifies Supabase's certificate (`verify-full` with the Supabase CA)    |
-| `apps/web/public/_headers` | Caches hashed files under `/assets/` forever                                                           |
+| `apps/web/public/_headers` | Caches hashed files under `/assets/` forever; sets the site's security headers (CSP, HSTS, framing)    |
 
 Workers start in milliseconds, so there is no cold-start wait. The app runs on **Workers Paid** ($5 a month),
 which email requires: on the free plan Cloudflare Email Sending can only send to your own verified addresses
@@ -511,7 +515,10 @@ CPU each (time waiting on the database or ESPN doesn't count), so the app stays 
 usage. `wrangler.jsonc` caps each invocation at 2 s of CPU to stop a runaway loop; Workers Logs show each
 request's CPU time. A rate limiting rule on the zone (dashboard, Security → Security rules) blocks an IP for
 10 s once it sends more than 50 requests to `/api/*` in 10 s, before the Worker runs, so a flood from one
-source can't run up the bill or trip the account's spend limit.
+source can't run up the bill or trip the account's spend limit. That rule only guards the custom domain, so
+`wrangler.jsonc` turns off the Worker's `workers.dev` and preview URLs (`workers_dev`, `preview_urls`): the app
+is reachable only at `www.pow-pickem.com`. The zone forces HTTPS (Always Use HTTPS, minimum TLS 1.2), and the
+apex `pow-pickem.com` redirects to `www`.
 
 `pnpm worker:dev` runs the same Worker locally against local Supabase. Day-to-day development stays on
 `pnpm dev` (Node), which `src/index.ts` serves.
@@ -525,8 +532,11 @@ Run these once from `apps/api` (`pnpm exec wrangler login` first):
    `pnpm exec wrangler cert upload certificate-authority --ca-cert prod-ca-2021.crt --name supabase-root-2021`.
 2. Create the Hyperdrive config with the Supabase **direct** connection string (Hyperdrive does its own
    pooling), and put the printed id in `wrangler.jsonc`:
-   `pnpm exec wrangler hyperdrive create pow-pickem-db --connection-string="$(pbpaste)" --ca-certificate-id <id> --sslmode verify-full`.
-   If the direct host isn't reachable over IPv4, use the **session pooler** string instead.
+   `pnpm exec wrangler hyperdrive create pow-pickem-db --connection-string="$(pbpaste)" --ca-certificate-id <id> --sslmode verify-full --caching-disabled`.
+   If the direct host isn't reachable over IPv4, use the **session pooler** string instead. Keep query
+   caching off: Hyperdrive's cache isn't cleared by writes, so membership checks and reads after a save
+   would be up to a minute stale. If the database password changes, update the config with
+   `pnpm exec wrangler hyperdrive update <id> --origin-password` as well as `SUPABASE_DB_URL`.
 3. Set the Worker's secrets: `pnpm exec wrangler secret put SUPABASE_URL`, then `SUPABASE_PUBLISHABLE_KEY` and,
    optionally, `OPERATOR_USER_IDS`.
 4. Add the domain to Cloudflare and point the registrar's nameservers at it, then attach `www.pow-pickem.com`
@@ -573,8 +583,8 @@ against runaway sending, well above what the leagues use; a month at the cap wou
 the included 3,000. Over budget, emails wait in the outbox until the next UTC day, and
 ones that expire meanwhile (a reminder after its game day's first kickoff) are skipped with
 `last_error = 'OVER_BUDGET'`. Cloudflare also sets a daily quota of its own that starts low on new accounts
-and grows with use; if it refuses a send with `E_DAILY_LIMIT_EXCEEDED`, the API stops for the rest of the
-day. The log shows `email_budget_reached` or the error code when either happens.
+and grows with use; if it refuses a send with `E_DAILY_LIMIT_EXCEEDED`, what is due waits for the next UTC
+day, and nothing is counted against the caps above. The log shows `email_budget_reached` or the error code when either happens.
 
 One-time setup:
 
@@ -610,11 +620,13 @@ yet. Nothing is sent to a device that hasn't opted in.
 One-time setup, from `apps/api`:
 
 ```sh
-node ../../scripts/vapid-keys.mjs > /tmp/vapid.json   # keep this pair; a new one orphans every device
-node -p 'require("/tmp/vapid.json").publicKey'  | pnpm exec wrangler secret put VAPID_PUBLIC_KEY
-node -p 'require("/tmp/vapid.json").privateKey' | pnpm exec wrangler secret put VAPID_PRIVATE_KEY
-echo "mailto:<a contact address>"               | pnpm exec wrangler secret put VAPID_SUBJECT
-rm /tmp/vapid.json
+umask 077; keys="$(mktemp)"                  # readable only by you, removed below
+node ../../scripts/vapid-keys.mjs > "$keys"  # keep this pair; a new one orphans every device
+key() { node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$keys','utf8'))['$1'])"; }
+key publicKey  | pnpm exec wrangler secret put VAPID_PUBLIC_KEY
+key privateKey | pnpm exec wrangler secret put VAPID_PRIVATE_KEY
+echo "mailto:<a contact address>" | pnpm exec wrangler secret put VAPID_SUBJECT
+rm "$keys"
 ```
 
 The same Cron Trigger as email (`*/5 * * * *`) queues due reminders and sends up to 100 pending deliveries
@@ -645,7 +657,45 @@ database connectivity and returns HTTP 503 if that check fails. A failed live ch
 applied in production.
 
 The Node entrypoint (`src/index.ts`) still listens on `PORT` with a `DATABASE_URL`, so the API can move to
-a container host again; only `wrangler.jsonc`, `src/worker.ts` and the deploy job are Cloudflare-specific.
+another host; only `wrangler.jsonc`, `src/worker.ts` and the deploy job are Cloudflare-specific.
+
+### Monitoring and recovery
+
+What alerts you:
+
+| Signal                                    | Where                                                                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| The live API or database stops answering  | [`uptime.yml`](.github/workflows/uptime.yml) checks `/api/health` every 15 minutes and opens an `uptime` issue |
+| Worker errors and exceptions              | Cloudflare Notifications, "POW Pick'em: Worker issues" (Workers Observability real-time issues)                |
+| HTTP DDoS mitigations, certificate events | Cloudflare Notifications, "POW Pick'em: HTTP DDoS" and "POW Pick'em: certificate"                              |
+| Spend reaching $10 (then error 1103)      | Cloudflare's budget alert; the Workers spend limit blocks `/api/*` and the cron at $10                         |
+| ESPN or Kalshi changing shape             | [`contract.yml`](.github/workflows/contract.yml) opens a `feed-contract` issue                                 |
+| Vulnerable dependencies                   | Dependabot alerts and security-update PRs ([`dependabot.yml`](.github/dependabot.yml))                         |
+
+Cloudflare Notifications email the account address; manage them under **Manage account → Notifications**.
+
+When something breaks:
+
+- **A bad deploy.** `pnpm --filter @picks/api exec wrangler rollback` from the repo root returns to the
+  previous Worker version within seconds. It does **not** undo migrations, which is why they must stay
+  compatible with the previous code (expand, then contract). Undo a migration with a new one.
+- **Error 1103 on `/api/*`.** The Workers spend limit was reached. Check Workers Logs and the zone's
+  analytics for the source, block it, then raise or reset the limit under **Billing**.
+- **A bad migration or deleted data.** The Supabase project is on the Free plan, which keeps **no backups**
+  and no point-in-time recovery. Before a risky migration, take a dump yourself (it holds every player's
+  data; keep it off the repo and delete it when done):
+  `pg_dump "$(pbpaste)" --no-owner --format=custom --file=pow-$(date +%F).dump`, using the session pooler
+  URL; `pg_restore --clean --no-owner -d <url> pow-<date>.dump` puts it back.
+
+Rotating credentials:
+
+| Credential             | Rotate by                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Database password      | Reset it in Supabase, then `wrangler hyperdrive update <id> --origin-password` and the `SUPABASE_DB_URL` secret |
+| `CLOUDFLARE_API_TOKEN` | Roll it in the Cloudflare dashboard and replace the GitHub secret                                               |
+| `UNSUBSCRIBE_SECRET`   | `wrangler secret put`; links in emails already sent stop working                                                |
+| VAPID key pair         | Don't, unless it leaked: every subscribed device must turn notifications on again                               |
+| Supabase SMTP token    | Roll the Cloudflare Email Sending SMTP credential and update Supabase Auth → SMTP settings                      |
 
 ## Credentials and diagnostics
 

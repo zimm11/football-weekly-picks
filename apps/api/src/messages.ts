@@ -1,4 +1,3 @@
-import { zValidator } from "@hono/zod-validator";
 import {
   emailOutbox,
   messagePosts,
@@ -16,24 +15,41 @@ import {
   pinThreadSchema,
   readThreadSchema,
   replySchema,
+  THREAD_DAILY_LIMIT,
+  THREAD_PAGE_SIZE,
   type ThreadDetail,
+  type ThreadPage,
+  threadCursor,
+  threadListQuerySchema,
 } from "@picks/shared";
-import { and, asc, desc, eq, like, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, like, type SQL, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
-import { type AppDeps, body, fail, leagueParam, requireAdmin, requireMember } from "./context";
+import {
+  type AppDeps,
+  body,
+  fail,
+  leagueParam,
+  param,
+  query,
+  requireAdmin,
+  requireDisplayName,
+  requireMember,
+} from "./context";
 import { logError } from "./logging";
 import { drainOutbox, queueThreadEmails } from "./outbox";
 import { drainPush, queueThreadPush } from "./pushQueue";
 
-const threadParam = zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
+const threadParam = param(z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
+const postParam = param(z.object({ leagueId: z.uuid(), threadId: z.uuid(), postId: z.uuid() }));
 
 export function messageRoutes({
   db,
   verifyToken,
   email,
   push,
+  limits,
   now = () => new Date(),
   background = (task) => void task(),
 }: AppDeps) {
@@ -45,7 +61,7 @@ export function messageRoutes({
       .from(messageThreads)
       .where(and(eq(messageThreads.id, threadId), eq(messageThreads.leagueId, leagueId)));
     if (!row) fail(404, "Thread not found.");
-    return { ...row, canPin: role === "admin", canDelete: role === "admin" };
+    return { ...row, role, canPin: role === "admin", canDelete: role === "admin" };
   }
   async function reactions(threadId: string, userId: string) {
     const rows = await db
@@ -73,25 +89,29 @@ export function messageRoutes({
     }
     return result;
   }
-  return new Hono<{ Variables: AuthVariables }>()
-    .get("/leagues/:leagueId/messages", auth, leagueParam, async (c) => {
-      const { leagueId } = c.req.valid("param");
-      await requireMember(db, leagueId, c.var.user.id);
-      const rows = await db
-        .select({
-          thread: messageThreads,
-          authorName: profiles.displayName,
-          readVersion: messageReads.version,
-        })
-        .from(messageThreads)
-        .leftJoin(profiles, eq(profiles.userId, messageThreads.authorId))
-        .leftJoin(
-          messageReads,
-          and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, c.var.user.id)),
-        )
-        .where(eq(messageThreads.leagueId, leagueId))
-        .orderBy(desc(messageThreads.pinned), desc(messageThreads.updatedAt), desc(messageThreads.id));
-      const result: MessageThread[] = rows.map(({ thread: t, authorName, readVersion }) => ({
+  /** Threads newest first (pinned before the rest), each marked unread for this player or not. */
+  /** `updated_at` to the microsecond, as the text a page cursor carries (a JS Date would drop the last digits). */
+  const updatedAtMicros = sql<string>`(extract(epoch from ${messageThreads.updatedAt}) * 1000000)::bigint`;
+  async function threadRows(userId: string, where: SQL | undefined, limit?: number) {
+    const query = db
+      .select({
+        thread: messageThreads,
+        position: sql<string>`${updatedAtMicros}::text`,
+        authorName: profiles.displayName,
+        readVersion: messageReads.version,
+      })
+      .from(messageThreads)
+      .leftJoin(profiles, eq(profiles.userId, messageThreads.authorId))
+      .leftJoin(
+        messageReads,
+        and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, userId)),
+      )
+      .where(where)
+      .orderBy(desc(messageThreads.pinned), desc(messageThreads.updatedAt), desc(messageThreads.id));
+    const rows = await (limit === undefined ? query : query.limit(limit));
+    return rows.map(
+      ({ thread: t, position, authorName, readVersion }): MessageThread & { position: string } => ({
+        position,
         id: t.id,
         title: t.title,
         pinned: t.pinned,
@@ -100,15 +120,100 @@ export function messageRoutes({
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
         unread: (readVersion ?? 0) < t.version,
-      }));
-      return c.json(result);
-    })
+      }),
+    );
+  }
+  async function listThreads(
+    userId: string,
+    where: SQL | undefined,
+    limit?: number,
+  ): Promise<MessageThread[]> {
+    return (await threadRows(userId, where, limit)).map(({ position: _, ...thread }) => thread);
+  }
+  /** How many of the league's threads have posts this player hasn't read, across every page. */
+  async function unreadThreads(userId: string, leagueId: string) {
+    const [row] = await db
+      .select({ n: count() })
+      .from(messageThreads)
+      .leftJoin(
+        messageReads,
+        and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, userId)),
+      )
+      .where(
+        and(
+          eq(messageThreads.leagueId, leagueId),
+          sql`coalesce(${messageReads.version}, 0) < ${messageThreads.version}`,
+        ),
+      );
+    return row?.n ?? 0;
+  }
+  return new Hono<{ Variables: AuthVariables }>()
+    .get(
+      "/leagues/:leagueId/messages",
+      auth,
+      leagueParam,
+      query(threadListQuerySchema, "Invalid page."),
+      async (c) => {
+        const { leagueId } = c.req.valid("param");
+        const { before, limit } = c.req.valid("query");
+        const userId = c.var.user.id;
+        await requireMember(db, leagueId, userId);
+        const inLeague = eq(messageThreads.leagueId, leagueId);
+        // Without `limit` or `before`, the whole board as an array: what tabs opened before pagination ask for.
+        if (limit === undefined && before === undefined) return c.json(await listThreads(userId, inLeague));
+        const size = limit ?? THREAD_PAGE_SIZE;
+        const [pinned, rest, unreadCount] = await Promise.all([
+          // Every pinned announcement leads the first page; later pages carry none.
+          before ? [] : listThreads(userId, and(inLeague, eq(messageThreads.pinned, true))),
+          threadRows(
+            userId,
+            and(
+              inLeague,
+              eq(messageThreads.pinned, false),
+              // Everything after the position the last page ended at, in the board's order (newest first, then
+              // id). The cursor is a position, not a thread: it still works if that thread was bumped or deleted.
+              before
+                ? sql`(${updatedAtMicros}, ${messageThreads.id}) < (${before.updatedAtMicros}::bigint, ${before.id}::uuid)`
+                : undefined,
+            ),
+            size + 1,
+          ),
+          unreadThreads(userId, leagueId),
+        ]);
+        const page = rest.slice(0, size);
+        const last = page.at(-1);
+        return c.json<ThreadPage>({
+          threads: [...pinned, ...page.map(({ position: _, ...thread }) => thread)],
+          nextCursor: rest.length > size && last ? threadCursor(last.position, last.id) : null,
+          unreadCount,
+        });
+      },
+    )
     .post("/leagues/:leagueId/messages", auth, leagueParam, body(createThreadSchema), async (c) => {
       const { leagueId } = c.req.valid("param");
       const { league } = await requireMember(db, leagueId, c.var.user.id);
+      await requireDisplayName(db, c.var.user.id);
       const { title, body: content } = c.req.valid("json");
       let queued = 0;
       const id = await db.transaction(async (tx) => {
+        // One thread at a time per player and league, so two posts at once can't both slip under the limit.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`thread:${leagueId}:${c.var.user.id}`}, 0))`,
+        );
+        const [recent] = await tx
+          .select({ n: count() })
+          .from(messageThreads)
+          .where(
+            and(
+              eq(messageThreads.leagueId, leagueId),
+              eq(messageThreads.authorId, c.var.user.id),
+              // A thread's `created_at` is the database's clock, so the day is measured on it too.
+              sql`${messageThreads.createdAt} > now() - interval '24 hours'`,
+            ),
+          );
+        if ((recent?.n ?? 0) >= (limits?.threadsPerDay ?? THREAD_DAILY_LIMIT)) {
+          fail(429, "You've started a lot of threads here today. Reply to one, or try again tomorrow.");
+        }
         const [t] = await tx
           .insert(messageThreads)
           .values({ leagueId, authorId: c.var.user.id, title })
@@ -199,9 +304,7 @@ export function messageRoutes({
     })
     .put("/leagues/:leagueId/messages/:threadId/pin", auth, threadParam, body(pinThreadSchema), async (c) => {
       const { leagueId, threadId } = c.req.valid("param");
-      const { role } = await requireMember(db, leagueId, c.var.user.id);
-      requireAdmin(role);
-      await thread(leagueId, threadId, c.var.user.id);
+      requireAdmin((await thread(leagueId, threadId, c.var.user.id)).role);
       const { pinned } = c.req.valid("json");
       await db.update(messageThreads).set({ pinned }).where(eq(messageThreads.id, threadId));
       return c.json({ pinned });
@@ -209,7 +312,7 @@ export function messageRoutes({
     .put(
       "/leagues/:leagueId/messages/:threadId/posts/:postId/reactions",
       auth,
-      zValidator("param", z.object({ leagueId: z.uuid(), threadId: z.uuid(), postId: z.uuid() })),
+      postParam,
       body(messageReactionSchema),
       async (c) => {
         const { leagueId, threadId, postId } = c.req.valid("param");
@@ -247,10 +350,11 @@ export function messageRoutes({
       async (c) => {
         const { leagueId, threadId } = c.req.valid("param");
         await thread(leagueId, threadId, c.var.user.id);
+        await requireDisplayName(db, c.var.user.id);
         await db.transaction(async (tx) => {
           const [t] = await tx
             .update(messageThreads)
-            .set({ version: sql`${messageThreads.version} + 1`, updatedAt: new Date() })
+            .set({ version: sql`${messageThreads.version} + 1`, updatedAt: now() })
             .where(eq(messageThreads.id, threadId))
             .returning();
           if (!t) fail(404, "Thread not found.");

@@ -1,4 +1,4 @@
-import { coveringSide, type ScoredGame, type Side, type WeekEntry } from "./rules";
+import { coveringSide, type ScoredGame, type Side, tiebreakerTotal, type WeekEntry } from "./rules";
 
 /*
  * The week's bragging rights (and the opposite), derived from a scored week. Pure functions: callers pass
@@ -39,11 +39,7 @@ export function weekAwards(input: {
 }): WeekAwards {
   const { games, entries, picks, tiebreakerGameId } = input;
   const scored = new Set(entries.map((e) => e.userId));
-  const tiebreakerGame = games.find((g) => g.id === tiebreakerGameId);
-  const actualTotal =
-    tiebreakerGame && tiebreakerGame.homeScore !== null && tiebreakerGame.awayScore !== null
-      ? tiebreakerGame.homeScore + tiebreakerGame.awayScore
-      : null;
+  const actualTotal = tiebreakerTotal(games.find((g) => g.id === tiebreakerGameId));
 
   const loneWolves: WeekAwards["loneWolves"] = [];
   for (const game of games) {

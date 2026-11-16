@@ -1,11 +1,12 @@
 // biome-ignore-all lint/a11y/noRedundantRoles: on a phone these rows are laid out as cards, and a browser drops a table's built-in roles once its display changes. The explicit roles keep it a table for screen readers.
-import { TrophyIcon } from "@phosphor-icons/react";
+import { CheckIcon, EqualsIcon, TrophyIcon } from "@phosphor-icons/react";
 import {
   coveringSide,
   formatLine,
   type Game,
   lineFor,
   lowPointLosers,
+  tiebreakerTotal,
   type WeekResults,
 } from "@picks/shared";
 import { cn } from "cn";
@@ -28,11 +29,7 @@ type Props = {
  */
 export function WeekResultsTable({ games, results, tiebreakerGameId, currentUserId }: Props) {
   const pickOf = new Map(results.picks.map((p) => [`${p.userId}:${p.gameId}`, p.side]));
-  const tiebreakerGame = games.find((g) => g.id === tiebreakerGameId);
-  const actualTotal =
-    tiebreakerGame && tiebreakerGame.homeScore !== null && tiebreakerGame.awayScore !== null
-      ? tiebreakerGame.homeScore + tiebreakerGame.awayScore
-      : null;
+  const actualTotal = tiebreakerTotal(games.find((g) => g.id === tiebreakerGameId));
   const winners = results.entries.filter((e) => e.isWinner).map((e) => e.displayName);
   const lpls = new Set(lowPointLosers(results.entries));
   const tiebreakerHeading = actualTotal === null ? "Tiebreaker" : `Tiebreaker (${actualTotal})`;
@@ -132,7 +129,8 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
                   if (!side) {
                     return (
                       <td role="cell" key={game.id} className={cn(chip, "text-muted-foreground")}>
-                        —
+                        <span aria-hidden>—</span>
+                        <span className="sr-only">No pick</span>
                       </td>
                     );
                   }
@@ -153,9 +151,17 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
                         size={22}
                         className={cn("md:mr-1.5", outcome === "loss" && "opacity-45 grayscale")}
                       />
+                      {/* The result is never color alone: a check for a win, a strike for a loss, an equals sign
+                          for a push, and the word itself for screen readers (after the POW badge, below). */}
                       <span className={outcome === "loss" ? "line-through" : undefined}>
                         {side === "home" ? game.homeTeam : game.awayTeam}
                       </span>
+                      {outcome === "win" && (
+                        <CheckIcon aria-hidden weight="bold" className="inline size-3 md:ml-1" />
+                      )}
+                      {outcome === "push" && (
+                        <EqualsIcon aria-hidden weight="bold" className="inline size-3 md:ml-1" />
+                      )}
                       {entry.powGameId === game.id && (
                         <>
                           {" "}
@@ -164,6 +170,9 @@ export function WeekResultsTable({ games, results, tiebreakerGameId, currentUser
                           </Badge>
                         </>
                       )}
+                      <span className="sr-only">
+                        , {outcome === "win" ? "won" : outcome === "loss" ? "lost" : "push"}
+                      </span>
                     </td>
                   );
                 })}

@@ -64,13 +64,40 @@ describe("WeekResultsTable", () => {
 
     const cells = (row: number) => screen.getByRole("row").nth(row).getByRole("cell");
     // Rank, player, points, W–L, tiebreaker guess, then one cell per game.
-    for (const [i, text] of ["1", "Pat", "11", "2–0", "50", "NYG", "BAL POW"].entries()) {
+    for (const [i, text] of ["1", "Pat", "11", "2–0", "50", "NYG, won", "BAL POW, won"].entries()) {
       await expect.element(cells(1).nth(i)).toHaveTextContent(text);
     }
     // Sam made no tiebreaker guess and no Monday pick.
-    for (const [i, text] of ["2", "Sam LPL: Low Point Loser", "0", "0–1", "—", "WSH", "—"].entries()) {
+    for (const [i, text] of [
+      "2",
+      "Sam LPL: Low Point Loser",
+      "0",
+      "0–1",
+      "—",
+      "WSH, lost",
+      "—No pick",
+    ].entries()) {
       await expect.element(cells(2).nth(i)).toHaveTextContent(text);
     }
+  });
+
+  it("says how each pick came out in words, not only in color", async () => {
+    const pushGame: Game = { ...games[1], id: "push", spread: -7 } as Game;
+    const screen = await render(
+      <WeekResultsTable
+        games={[...games, pushGame]}
+        results={{ ...results, picks: [...results.picks, { userId: "sam", gameId: "push", side: "away" }] }}
+        tiebreakerGameId="mon"
+      />,
+    );
+    const cells = (row: number) => screen.getByRole("row").nth(row).getByRole("cell");
+    // Pat: NYG covered, and so did the POW on BAL. No pick on the third game.
+    await expect.element(cells(1).nth(5)).toHaveTextContent("NYG, won");
+    await expect.element(cells(1).nth(6)).toHaveTextContent("BAL POW, won");
+    await expect.element(cells(1).nth(7)).toHaveTextContent("—No pick");
+    // Sam: WSH didn't cover; BAL by exactly 7 is a push.
+    await expect.element(cells(2).nth(5)).toHaveTextContent("WSH, lost");
+    await expect.element(cells(2).nth(7)).toHaveTextContent("LAC, push");
   });
 
   it("marks the Low Point Loser", async () => {

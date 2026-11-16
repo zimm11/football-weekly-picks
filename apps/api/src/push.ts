@@ -35,10 +35,34 @@ export function pushRoutes({ db, verifyToken, push }: AppDeps) {
           sql`select pg_advisory_xact_lock(hashtext('push-device'), hashtext(${c.var.user.id}))`,
         );
         const devices = await tx
-          .select({ endpoint: pushSubscriptions.endpoint })
+          .select({
+            endpoint: pushSubscriptions.endpoint,
+            newThreads: pushSubscriptions.newThreads,
+            pickReminders: pushSubscriptions.pickReminders,
+          })
           .from(pushSubscriptions)
           .where(eq(pushSubscriptions.userId, c.var.user.id));
-        if (devices.length >= 10 && !devices.some((d) => d.endpoint === value.endpoint))
+        // A browser that replaced its subscription names the old one. Only this player's own row is swapped
+        // out, so naming someone else's endpoint changes nothing.
+        const replaced =
+          value.oldEndpoint && value.oldEndpoint !== value.endpoint
+            ? devices.find((d) => d.endpoint === value.oldEndpoint)
+            : undefined;
+        if (replaced) {
+          await tx
+            .delete(pushSubscriptions)
+            .where(
+              and(
+                eq(pushSubscriptions.userId, c.var.user.id),
+                eq(pushSubscriptions.endpoint, replaced.endpoint),
+              ),
+            );
+        }
+        const preferences = replaced
+          ? { newThreads: replaced.newThreads, pickReminders: replaced.pickReminders }
+          : { newThreads: value.newThreads, pickReminders: value.pickReminders };
+        const others = devices.filter((d) => d !== replaced);
+        if (others.length >= 10 && !others.some((d) => d.endpoint === value.endpoint))
           fail(409, "You can enable up to 10 devices. Disable notifications on another device first.");
         const [saved] = await tx
           .insert(pushSubscriptions)
@@ -47,16 +71,14 @@ export function pushRoutes({ db, verifyToken, push }: AppDeps) {
             endpoint: value.endpoint,
             p256dh: value.keys.p256dh,
             auth: value.keys.auth,
-            newThreads: value.newThreads,
-            pickReminders: value.pickReminders,
+            ...preferences,
           })
           .onConflictDoUpdate({
             target: pushSubscriptions.endpoint,
             set: {
               p256dh: value.keys.p256dh,
               auth: value.keys.auth,
-              newThreads: value.newThreads,
-              pickReminders: value.pickReminders,
+              ...preferences,
             },
             setWhere: eq(pushSubscriptions.userId, c.var.user.id),
           })

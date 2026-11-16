@@ -167,3 +167,32 @@ export async function vapidAuthorization(endpoint: string, vapid: Vapid, now: Da
   );
   return `vapid t=${header}.${claims}.${base64UrlEncode(signature)}, k=${vapid.publicKey}`;
 }
+
+/**
+ * Whether the VAPID private key belongs to the public key: signs a token the way every send does and verifies it
+ * with the public key browsers subscribed with. A mismatched pair would otherwise fail every push, one at a time.
+ */
+export async function vapidKeysMatch(vapid: Vapid, now: Date): Promise<boolean> {
+  try {
+    const header = await vapidAuthorization("https://push.invalid/vapid-check", vapid, now);
+    const [, token = ""] = header.match(/^vapid t=([^,]+), k=/) ?? [];
+    const [head, claims, signature] = token.split(".");
+    if (!head || !claims || !signature) return false;
+    const publicKey = await crypto.subtle.importKey(
+      "raw",
+      base64UrlDecode(vapid.publicKey),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    return await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      publicKey,
+      base64UrlDecode(signature),
+      encoder.encode(`${head}.${claims}`),
+    );
+  } catch {
+    // A key that won't even import is no pair either.
+    return false;
+  }
+}

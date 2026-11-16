@@ -4,6 +4,16 @@ import { routePath } from "hono/route";
 import type { AuthVariables } from "./auth";
 import { CLOUDFLARE_EMAIL_ERROR_CODES } from "./email";
 
+/** Fixed codes for push failures the push service won't recover from, by HTTP status class (pushSender.ts). */
+export const PUSH_ERROR_CODES = [
+  "VAPID_KEY_MISMATCH",
+  "PUSH_BAD_REQUEST",
+  "PUSH_UNAUTHORIZED",
+  "PUSH_PAYLOAD_TOO_LARGE",
+  "PUSH_REJECTED",
+  "PUSH_SUBSCRIPTION_INVALID",
+] as const;
+
 const methods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const codes = new Set<string>([
   "INVALID_ENVIRONMENT",
@@ -12,6 +22,7 @@ const codes = new Set<string>([
   "EMAIL_REJECTED",
   "EMAIL_PROVIDER_UNAVAILABLE",
   "EMAIL_QUOTA_EXCEEDED",
+  ...PUSH_ERROR_CODES,
   "DATABASE_TLS_REQUIRED",
   "ECONNREFUSED",
   "ECONNRESET",
@@ -48,6 +59,14 @@ const messages: Record<string, string> = {
     "Cloudflare refused the recipient (on Workers Free, only verified addresses can receive).",
   E_RECIPIENT_SUPPRESSED:
     "The recipient is on Cloudflare's suppression list (an earlier bounce or complaint).",
+  VAPID_KEY_MISMATCH:
+    "VAPID_PRIVATE_KEY doesn't belong to VAPID_PUBLIC_KEY; push stays off until the pair matches.",
+  PUSH_BAD_REQUEST: "A push service rejected a notification as malformed (400).",
+  PUSH_UNAUTHORIZED:
+    "A push service refused this app's VAPID authorization (401/403), e.g. a subscription made with other keys.",
+  PUSH_PAYLOAD_TOO_LARGE: "A push service refused a notification as too large (413).",
+  PUSH_REJECTED: "A push service permanently rejected a notification (other 4xx).",
+  PUSH_SUBSCRIPTION_INVALID: "A device subscription has an unusable endpoint or keys.",
   DATABASE_TLS_REQUIRED: "Pooler-to-database TLS is disabled. Enable database SSL enforcement.",
   ECONNREFUSED: "Connection refused.",
   ECONNRESET: "Connection reset.",
@@ -85,9 +104,13 @@ const operationMessages = {
   matchup_insights: "Matchup stats provider request failed.",
   market_insights: "Prediction market provider request failed.",
   push_delivery: "Push notification delivery failed.",
+  push_queue: "Queueing pick reminder notifications failed.",
+  push_config: "Push configuration is invalid; push is off.",
+  reminder_targets: "Working out who needs a pick reminder failed.",
   startup: "API startup failed; check environment configuration.",
   email_send: "Sending an email failed.",
   email_jobs: "Email job failed.",
+  email_queue: "Queueing pick reminder emails failed.",
 };
 type Operation = keyof typeof operationMessages;
 
@@ -115,7 +138,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /apps\/api\/src\/(app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|nfl|operator|outbox|push|pushQueue|pushSender|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /apps\/api\/src\/(app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|nfl|operator|outbox|push|pushQueue|pushSender|reminderTargets|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;

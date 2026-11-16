@@ -71,6 +71,20 @@
       "when": 1794786712914,
       "tag": "20261115235152_push_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794839311477,
+      "tag": "20261116142831_week_participants_indexes_and_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794839322589,
+      "tag": "20261116142842_tiebreaker_key_participants_and_grants",
+      "breakpoints": true
     }
   ]
 }

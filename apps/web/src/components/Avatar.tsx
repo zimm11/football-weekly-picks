@@ -31,7 +31,7 @@ export function Avatar({
     <span
       aria-hidden
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white select-none before:content-[attr(data-initials)]",
+        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-avatar-foreground select-none before:content-[attr(data-initials)]",
         size === "sm" ? "size-6 text-[0.625rem]" : "size-8 text-xs",
         className,
       )}

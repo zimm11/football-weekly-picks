@@ -1,9 +1,10 @@
 import type { Me, NotificationSettings } from "@picks/shared";
 import { useState } from "react";
 import { EmailChangeForm, NotificationSettingsForm } from "@/components/AccountForms";
+import { LoadError } from "@/components/LoadError";
 import { SettingsSkeleton } from "@/components/Skeletons";
 import { Button } from "@/components/ui/button";
-import { Card, Eyebrow, Notice } from "@/components/ui/card";
+import { Card, Eyebrow } from "@/components/ui/card";
 import { api, getSupabase, messageOf, unwrap } from "../api";
 import { useUnsavedGuard } from "../components/ConfirmDialog";
 import { notifyDone, notifyError } from "../notify";
@@ -17,9 +18,12 @@ import { useLoad } from "./useLoad";
  * app, the email address, and a way to the change-password screen.
  */
 export function AccountPage({
+  userId,
   email,
   onAddToHomeScreen,
 }: {
+  /** The signed-in player, so this device's notifications are recorded as theirs. */
+  userId: string;
   email?: string;
   /** Opens the home-screen help over this screen. Absent once the app runs from the home screen. */
   onAddToHomeScreen?: () => void;
@@ -63,14 +67,14 @@ export function AccountPage({
           <Eyebrow id="email-notifications-heading" className="m-0">
             By email
           </Eyebrow>
-          {settings.error && <Notice kind="alert">{settings.error}</Notice>}
+          {settings.error && <LoadError message={settings.error} onRetry={settings.reload} />}
           {settings.data ? (
             <NotificationSettingsForm settings={settings.data} onChange={changeNotifications} />
           ) : (
             !settings.error && <SettingsSkeleton label="Loading email settings" />
           )}
         </Card>
-        <DeviceNotifications />
+        <DeviceNotifications userId={userId} />
       </section>
       {showHomeScreen && (
         <Card aria-labelledby="home-screen-heading">

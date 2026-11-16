@@ -1,27 +1,19 @@
 import {
   type Db,
-  games,
   leagueMembers,
   leagues,
   messageThreads,
-  picks,
   pushDeliveries,
   pushSubscriptions,
-  seasons,
-  weeks,
 } from "@picks/db";
-import { dueReminderDay, missingPicks, type PushPayload } from "@picks/shared";
-import { and, asc, eq, isNull, lt, lte, ne } from "drizzle-orm";
+import type { PushPayload } from "@picks/shared";
+import { and, asc, eq, inArray, isNull, lt, lte, ne } from "drizzle-orm";
+import { logError } from "./logging";
 import type { PushSender } from "./pushSender";
+import { dueReminderTargets, reminderStillDue } from "./reminderTargets";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Store = Db | Tx;
-
-/** A week's games in the shape the lock rules read. */
-async function slateOf(db: Store, weekId: string) {
-  const slate = await db.select().from(games).where(eq(games.weekId, weekId));
-  return slate.map((g) => ({ ...g, final: g.homeScore !== null || g.awayScore !== null }));
-}
 
 /** Called inside the thread transaction: either both the post and notifications commit, or neither does. */
 export async function queueThreadPush(
@@ -60,55 +52,54 @@ export async function queueThreadPush(
       .onConflictDoNothing();
 }
 
-/** Queues one reminder per device, week and game day, from 7pm league time the evening before (`dueReminderDay`). */
+/** A reminder's event key: the week and the game day (`YYYY-MM-DD`, league time) it is for. */
+const reminderKey = (weekId: string, date: string) => `${weekId}:${date}`;
+const reminderDateOf = (eventKey: string) => eventKey.split(":")[1];
+
+/**
+ * Queues one reminder per device, week and game day, from 7pm league time the evening before (`dueReminderDay`),
+ * for the players `dueReminderTargets` finds. One insert per week; a week that fails is logged and skipped.
+ */
 export async function queuePickPush(db: Db, at: Date) {
+  const targets = await dueReminderTargets(db, at);
+  if (!targets.length) return 0;
+  const devices = await db
+    .select({ id: pushSubscriptions.id, userId: pushSubscriptions.userId })
+    .from(pushSubscriptions)
+    .where(
+      and(
+        inArray(pushSubscriptions.userId, [
+          ...new Set(targets.flatMap((t) => t.players.map((p) => p.userId))),
+        ]),
+        eq(pushSubscriptions.pickReminders, true),
+      ),
+    );
   let queued = 0;
-  const openWeeks = await db
-    .select({ week: weeks, league: leagues })
-    .from(weeks)
-    .innerJoin(seasons, eq(seasons.id, weeks.seasonId))
-    .innerJoin(leagues, eq(leagues.id, seasons.leagueId))
-    .where(eq(weeks.status, "open"));
-  for (const { week, league } of openWeeks) {
-    const due = dueReminderDay(await slateOf(db, week.id), league.timeZone, at);
-    if (!due) continue;
-    const devices = await db
-      .select({ device: pushSubscriptions })
-      .from(pushSubscriptions)
-      .innerJoin(
-        leagueMembers,
-        and(
-          eq(leagueMembers.userId, pushSubscriptions.userId),
-          eq(leagueMembers.leagueId, league.id),
-          isNull(leagueMembers.removedAt),
-        ),
-      )
-      .where(eq(pushSubscriptions.pickReminders, true));
-    const saved = await db
-      .select({ userId: picks.userId, gameId: picks.gameId })
-      .from(picks)
-      .where(eq(picks.weekId, week.id));
-    for (const { device } of devices) {
-      const missing = missingPicks(
-        due.games,
-        new Set(saved.filter((p) => p.userId === device.userId).map((p) => p.gameId)),
-      );
-      if (!missing.length) continue;
-      const inserted = await db
-        .insert(pushDeliveries)
-        .values({
-          subscriptionId: device.id,
+  for (const { league, week, due, players } of targets) {
+    const rows = players.flatMap(({ userId, missing }) =>
+      devices
+        .filter((d) => d.userId === userId)
+        .map((d) => ({
+          subscriptionId: d.id,
           leagueId: league.id,
           weekId: week.id,
-          kind: "pick_reminder",
-          eventKey: `${week.id}:${due.date}`,
+          kind: "pick_reminder" as const,
+          eventKey: reminderKey(week.id, due.date),
           gameIds: missing.map((g) => g.id),
           nextAttemptAt: at,
           expiresAt: due.expiresAt,
-        })
+        })),
+    );
+    if (!rows.length) continue;
+    try {
+      const inserted = await db
+        .insert(pushDeliveries)
+        .values(rows)
         .onConflictDoNothing()
         .returning({ id: pushDeliveries.id });
       queued += inserted.length;
+    } catch (error) {
+      logError("push_queue", error);
     }
   }
   return queued;
@@ -188,22 +179,13 @@ async function claimPush(db: Db, at: Date): Promise<Claim | "skipped" | null> {
         tag: delivery.id,
       };
     } else {
-      const [week] = delivery.weekId
-        ? await tx
-            .select({ id: weeks.id, status: weeks.status })
-            .from(weeks)
-            .where(eq(weeks.id, delivery.weekId))
-        : [];
-      if (week?.status !== "open") return skip();
-      const due = dueReminderDay(await slateOf(tx, week.id), league.timeZone, at);
-      const saved = await tx
-        .select({ gameId: picks.gameId })
-        .from(picks)
-        .where(and(eq(picks.weekId, week.id), eq(picks.userId, device.userId)));
-      const remaining = missingPicks(
-        due?.games.filter((g) => delivery.gameIds.includes(g.id)) ?? [],
-        new Set(saved.map((p) => p.gameId)),
-      );
+      const date = reminderDateOf(delivery.eventKey);
+      const still =
+        delivery.weekId && date
+          ? await reminderStillDue(tx, { weekId: delivery.weekId, date, userId: device.userId }, at)
+          : null;
+      // Only the games it was queued for: a game added since gets its own reminder or none.
+      const remaining = still?.missing.filter((g) => delivery.gameIds.includes(g.id)) ?? [];
       if (!remaining.length) return skip();
       payload = {
         title: "Make your picks",
@@ -211,7 +193,7 @@ async function claimPush(db: Db, at: Date): Promise<Claim | "skipped" | null> {
           0,
           180,
         ),
-        url: `/weeks/${week.id}`,
+        url: `/weeks/${delivery.weekId}`,
         tag: delivery.id,
       };
     }
@@ -231,6 +213,8 @@ async function claimPush(db: Db, at: Date): Promise<Claim | "skipped" | null> {
  */
 export async function drainPush(db: Db, sender: PushSender, at: Date) {
   const counts = { sent: 0, skipped: 0, retrying: 0, failed: 0 };
+  // Misconfigured keys (logged once by the sender): leave everything queued rather than fail it all.
+  if (sender.ready && !(await sender.ready())) return counts;
   await db.delete(pushDeliveries).where(lt(pushDeliveries.createdAt, new Date(at.getTime() - RETENTION_MS)));
   const settle = (id: string, status: "sent" | "failed") =>
     db.update(pushDeliveries).set({ status }).where(eq(pushDeliveries.id, id));
@@ -256,6 +240,9 @@ export async function drainPush(db: Db, sender: PushSender, at: Date) {
           counts.retrying++;
         } else {
           const status = result === "sent" ? "sent" : "failed";
+          // A failure here never removes the device. Only the push service saying the subscription is gone
+          // (404/410, above) does: a 401/403 or an outage is as likely our side's fault (a bad VAPID subject, a
+          // provider incident), and dropping devices for it would silently turn notifications off for everyone.
           await settle(claim.id, status);
           counts[status]++;
         }
@@ -263,4 +250,18 @@ export async function drainPush(db: Db, sender: PushSender, at: Date) {
     }),
   );
   return counts;
+}
+
+/**
+ * The scheduled push job: queue due reminders, then send. Queueing and sending fail separately, so a reminder
+ * that can't be queued never holds up retries and thread notifications already waiting.
+ */
+export async function runPushJobs(db: Db, sender: PushSender, now: Date) {
+  let queued = 0;
+  try {
+    queued = await queuePickPush(db, now);
+  } catch (error) {
+    logError("push_queue", error);
+  }
+  return { queued, ...(await drainPush(db, sender, now)) };
 }

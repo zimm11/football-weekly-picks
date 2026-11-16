@@ -6,6 +6,7 @@ import {
   defaultPoints,
   defaultTiebreakerGame,
   effectiveTiebreakerId,
+  hasResult,
   isLocked,
   pickPoints,
   type ScoredGame,
@@ -13,6 +14,7 @@ import {
   scoreSoFar,
   scoreWeek,
   seasonStandings,
+  tiebreakerTotal,
 } from "./rules";
 import { zonedTimeToUtc } from "./time";
 
@@ -250,6 +252,21 @@ describe("coveringSide", () => {
     expect(coveringSide(game(3.5, 20, 23))).toBe("home"); // lost by 3, getting 3.5
     expect(coveringSide(game(-3, 23, 20))).toBe("push");
     expect(coveringSide(game(-3, null, null))).toBeNull();
+  });
+});
+
+describe("hasResult and tiebreakerTotal", () => {
+  it("needs both scores", () => {
+    expect(hasResult({ homeScore: 21, awayScore: 0 })).toBe(true);
+    expect(hasResult({ homeScore: 21, awayScore: null })).toBe(false);
+    expect(hasResult({ homeScore: null, awayScore: null })).toBe(false);
+  });
+
+  it("adds the tiebreaker game's scores once it has a result", () => {
+    expect(tiebreakerTotal({ homeScore: 24, awayScore: 20 })).toBe(44);
+    expect(tiebreakerTotal({ homeScore: 0, awayScore: 0 })).toBe(0);
+    expect(tiebreakerTotal({ homeScore: 24, awayScore: null })).toBeNull();
+    expect(tiebreakerTotal(undefined)).toBeNull();
   });
 });
 

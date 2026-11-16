@@ -3,7 +3,7 @@ import type { SeasonEntry, Side, WeekEntry } from "./rules";
 import type { WeekPhase } from "./seasons";
 import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
 import { TEAM_ABBRS } from "./teams";
-import { isValidTimeZone } from "./time";
+import { canonicalTimeZone, MAX_TIME_ZONE_LENGTH } from "./time";
 
 export * from "./awards";
 export * from "./insights";
@@ -22,8 +22,27 @@ export * from "./time";
 
 // ---------- Requests ----------
 
+/** Line breaks, tabs and the other control characters, plus Unicode's own line and paragraph separators. */
+const CONTROL_CHARACTERS = /[\p{Cc}\u2028\u2029]/u;
+
+/**
+ * A name or title: one line of text. These end up in email subjects, notification titles and table cells, so
+ * a line break in one is never wanted, and in a subject it would be a way to forge headers.
+ */
+const singleLine = (max: number, empty: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, empty)
+    .max(max)
+    .refine((value) => !CONTROL_CHARACTERS.test(value), "Use a single line of text.");
+
+/** Collapses anything `singleLine` would refuse into spaces, for text stored before that rule. */
+export const toSingleLine = (text: string) =>
+  text.replace(new RegExp(`${CONTROL_CHARACTERS.source}+`, "gu"), " ").trim();
+
 export const updateProfileSchema = z.object({
-  displayName: z.string().trim().min(1, "Enter a name").max(40),
+  displayName: singleLine(40, "Enter a name"),
 });
 
 /** Most active players a league can have, admins included. */
@@ -42,15 +61,26 @@ export type NotificationSettings = { newThreads: boolean; pickReminders: boolean
 export const unsubscribeSchema = z.object({ token: z.string().min(1).max(512) });
 export type UnsubscribeResult = { kind: "new_thread" | "pick_reminder" };
 
+/** A time zone, stored in its canonical spelling (see `canonicalTimeZone`). */
+const timeZoneSchema = z
+  .string()
+  .max(MAX_TIME_ZONE_LENGTH, "Unknown time zone")
+  .transform((timeZone, ctx) => {
+    const canonical = canonicalTimeZone(timeZone);
+    if (canonical) return canonical;
+    ctx.addIssue({ code: "custom", message: "Unknown time zone" });
+    return z.NEVER;
+  });
+
 export const createLeagueSchema = z.object({
-  name: z.string().trim().min(1, "Enter a league name").max(80),
-  timeZone: z.string().refine(isValidTimeZone, "Unknown time zone").default("America/New_York"),
+  name: singleLine(80, "Enter a league name"),
+  timeZone: timeZoneSchema.default("America/New_York"),
 });
 
 export const updateLeagueSchema = z
   .object({
-    name: z.string().trim().min(1, "Enter a league name").max(80).optional(),
-    timeZone: z.string().refine(isValidTimeZone, "Unknown time zone").optional(),
+    name: singleLine(80, "Enter a league name").optional(),
+    timeZone: timeZoneSchema.optional(),
   })
   .refine((v) => v.name !== undefined || v.timeZone !== undefined, "Nothing to change");
 
@@ -241,7 +271,7 @@ export function lineFor(side: Side, spread: number): number {
 }
 
 export const createThreadSchema = z.object({
-  title: z.string().trim().min(1, "Enter a title").max(120),
+  title: singleLine(120, "Enter a title"),
   body: z.string().trim().min(1, "Enter a message").max(5000),
 });
 export const replySchema = createThreadSchema.pick({ body: true }).extend({
@@ -258,8 +288,9 @@ export const MESSAGE_REACTIONS = [
   { emoji: "🙏", label: "Thanks" },
   { emoji: "🏈", label: "Football" },
 ] as const;
+type MessageReactionEmoji = (typeof MESSAGE_REACTIONS)[number]["emoji"];
 export const messageReactionSchema = z.object({
-  emoji: z.enum(["👍", "😂", "🔥", "🎉", "😮", "🙏", "🏈"]),
+  emoji: z.enum(MESSAGE_REACTIONS.map((r) => r.emoji) as [MessageReactionEmoji, ...MessageReactionEmoji[]]),
   active: z.boolean(),
 });
 export type MessageEmoji = z.infer<typeof messageReactionSchema>["emoji"];
@@ -294,5 +325,5 @@ export type ThreadDetail = {
   posts: MessagePost[];
 };
 
+export * from "./messages";
 export * from "./push";
-export * from "./reminders";
