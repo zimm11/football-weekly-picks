@@ -145,6 +145,28 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
       200,
     );
   });
+  it("swaps out a subscription the browser replaced, for the same player only", async () => {
+    const old = await device();
+    await call(player, "PUT", "/push/device", { ...old, newThreads: false });
+    const theirs = await device(other);
+    for (let i = 0; i < 9; i++) await device();
+    // At the cap, a replacement still fits: the old row goes, and its preferences carry over.
+    const fresh = subscription(randomUUID());
+    const res = await call(player, "PUT", "/push/device", { ...fresh, oldEndpoint: old.endpoint });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { device: PushDevice }).device).toMatchObject({
+      newThreads: false,
+      pickReminders: true,
+    });
+    const rows = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, player));
+    expect(rows.map((r) => r.endpoint)).not.toContain(old.endpoint);
+    expect(rows.map((r) => r.endpoint)).toContain(fresh.endpoint);
+    // Naming another player's endpoint removes nothing of theirs.
+    await call(player, "PUT", "/push/device", { ...fresh, oldEndpoint: theirs.endpoint });
+    expect(
+      (await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, theirs.id))).length,
+    ).toBe(1);
+  });
   it("queues new threads for other current opted-in members only, and deduplicates events", async () => {
     await device(author);
     const recipient = await device();

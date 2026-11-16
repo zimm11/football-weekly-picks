@@ -8,7 +8,7 @@ import { createApp } from "../src/app";
 
 const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: "test" };
 const member = randomUUID();
-const users = [member];
+const users: string[] = [member];
 const verifyToken = async (token: string) => (users.includes(token) ? { id: token } : null);
 const nfl = { getWeek: async () => [] };
 

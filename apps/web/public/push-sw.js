@@ -30,6 +30,40 @@ self.addEventListener("push", (event) => {
   );
 });
 
+/*
+ * A browser can replace a subscription on its own (Firefox does). Subscribe again if it hasn't, then leave the
+ * endpoint it replaced where the app reads it (`takeRotation` in src/push.ts): this worker has no sign-in to
+ * tell the server, so the app does, right away if a window is open, else the next time it opens. Only that
+ * one record is stored; no page or response is ever cached.
+ */
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      const oldSubscription = event.oldSubscription ?? null;
+      let subscription = event.newSubscription ?? (await self.registration.pushManager.getSubscription());
+      const applicationServerKey = oldSubscription?.options?.applicationServerKey;
+      if (!subscription && applicationServerKey) {
+        subscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      }
+      if (!subscription) return;
+      if (oldSubscription?.endpoint && oldSubscription.endpoint !== subscription.endpoint) {
+        const cache = await self.caches.open("pow-push-rotation");
+        await cache.put(
+          "/push-rotation",
+          new Response(JSON.stringify({ oldEndpoint: oldSubscription.endpoint }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) client.postMessage({ type: "push-subscription-changed" });
+    })(),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = new URL(safePath(event.notification.data?.url), self.location.origin).href;

@@ -1,12 +1,14 @@
 import type { PushDevice, PushSettings } from "@picks/shared";
 import { useEffect, useRef, useState } from "react";
 import { api, messageOf, unwrap } from "../api";
+import { LoadError } from "../components/LoadError";
 import { PushNotificationSettings } from "../components/PushNotificationSettings";
-import { Notice } from "../components/ui/card";
+import { SettingsSkeleton } from "../components/Skeletons";
+import { Card } from "../components/ui/card";
 import { notifyDone } from "../notify";
 import { disablePush, preparePush, pushSupport, savePush } from "../push";
 
-export function NotificationsPage() {
+export function NotificationsPage({ userId }: { userId: string }) {
   const [support] = useState(pushSupport);
   const [state, setState] = useState<{
     config: PushSettings;
@@ -19,6 +21,8 @@ export function NotificationsPage() {
   );
   const operation = useRef({ busy: false, revision: 0 });
   const [error, setError] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` is what asks again after a failure.
   useEffect(() => {
     let current = true;
     async function load() {
@@ -50,7 +54,7 @@ export function NotificationsPage() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [support]);
+  }, [support, attempt]);
   function change(action: () => Promise<void>) {
     operation.current.busy = true;
     operation.current.revision++;
@@ -79,7 +83,7 @@ export function NotificationsPage() {
         userVisibleOnly: true,
         applicationServerKey: state.config.publicKey,
       });
-      const device = await savePush(subscription, { newThreads: true, pickReminders: true });
+      const device = await savePush(subscription, { newThreads: true, pickReminders: true }, userId);
       setState({ ...state, subscription, device });
       notifyDone("Notifications enabled on this device.");
     });
@@ -88,9 +92,17 @@ export function NotificationsPage() {
     <div className="mx-auto grid max-w-2xl gap-5 pt-3">
       <h2 className="text-4xl leading-none font-extrabold">Notifications</h2>
       {error ? (
-        <Notice kind="alert">{error}</Notice>
+        <LoadError
+          message={error}
+          onRetry={() => {
+            setError(undefined);
+            setAttempt((n) => n + 1);
+          }}
+        />
       ) : !state ? (
-        <p className="text-muted-foreground">Loading…</p>
+        <Card>
+          <SettingsSkeleton label="Loading notification settings" />
+        </Card>
       ) : (
         <PushNotificationSettings
           key={state.device?.id ?? "off"}
@@ -110,7 +122,7 @@ export function NotificationsPage() {
           onSave={(preferences) =>
             change(async () => {
               if (!state.subscription) throw new Error("Enable notifications first.");
-              const device = await savePush(state.subscription, preferences);
+              const device = await savePush(state.subscription, preferences, userId);
               setState({ ...state, device });
               notifyDone("Notification preferences saved.");
             })

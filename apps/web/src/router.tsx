@@ -6,6 +6,35 @@ import { flushSync } from "react-dom";
  * The static host rewrites unknown paths to index.html, so deep links (e.g. invite links) work.
  */
 
+/*
+ * Scroll positions, per history entry. A new screen starts at the top; going back (or forward) returns to
+ * where the player was. Each entry carries a key in `history.state` so its position can be found again.
+ */
+type EntryState = { key?: string; flash?: Flash } | null;
+const positions = new Map<string, number>();
+const newKey = () => Math.random().toString(36).slice(2);
+const entryKey = () => (window.history.state as EntryState)?.key;
+if (!entryKey()) window.history.replaceState({ ...(window.history.state ?? {}), key: newKey() }, "");
+if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
+let currentKey = entryKey();
+/** The position the screen being shown should open at: where it was left, after back or forward; else the top. */
+let pendingScroll = 0;
+let navigating = false;
+window.addEventListener("popstate", () => {
+  if (currentKey) positions.set(currentKey, window.scrollY);
+  currentKey = entryKey();
+  // `navigate` announces its own changes with a popstate event too; those open at the top.
+  pendingScroll = navigating || !currentKey ? 0 : (positions.get(currentKey) ?? 0);
+  navigating = false;
+});
+
+/** Where the screen just shown should scroll to. Read once per screen change. */
+export function takeScrollPosition(): number {
+  const top = pendingScroll;
+  pendingScroll = 0;
+  return top;
+}
+
 function subscribe(onChange: () => void) {
   window.addEventListener("popstate", onChange);
   return () => window.removeEventListener("popstate", onChange);
@@ -40,7 +69,8 @@ export function useLeaveGuard(active: boolean, ask: LeaveGuard) {
 export function navigate(to: string, flash?: Flash) {
   const go = () => {
     leaveGuard = undefined;
-    window.history.pushState(flash ? { flash } : null, "", to);
+    navigating = true;
+    window.history.pushState({ key: newKey(), ...(flash ? { flash } : {}) }, "", to);
     withTransition(() => window.dispatchEvent(new PopStateEvent("popstate")));
   };
   requestLeave(go);
@@ -69,23 +99,24 @@ export function requestLeave(go: () => void) {
 
 /** The message `navigate` carried to this screen, if any. It is dropped from history so a reload doesn't repeat it. */
 export function useFlash(): Flash | undefined {
-  const [flash] = useState<Flash | undefined>(
-    () => (window.history.state as { flash?: Flash } | null)?.flash,
-  );
+  const [flash] = useState<Flash | undefined>(() => (window.history.state as EntryState)?.flash);
   useEffect(() => {
-    if (flash) window.history.replaceState(null, "");
+    if (flash) window.history.replaceState({ key: entryKey() }, "");
   }, [flash]);
   return flash;
 }
 
-export function Link({ to, ...rest }: { to: string } & AnchorHTMLAttributes<HTMLAnchorElement>) {
-  function onClick(e: MouseEvent<HTMLAnchorElement>) {
+/** An in-app link. An `onClick` of its own runs first, and can call `preventDefault` to stay put. */
+export function Link({ to, onClick, ...rest }: { to: string } & AnchorHTMLAttributes<HTMLAnchorElement>) {
+  function handleClick(e: MouseEvent<HTMLAnchorElement>) {
+    onClick?.(e);
+    if (e.defaultPrevented) return;
     // Leave modified clicks (new tab, etc.) to the browser.
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     navigate(to);
   }
-  return <a href={to} onClick={onClick} {...rest} />;
+  return <a href={to} {...rest} onClick={handleClick} />;
 }
 
 export type Route =
