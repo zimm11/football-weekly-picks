@@ -235,12 +235,12 @@ export function HowToPlayPage({ signedIn }: { signedIn: boolean }) {
               {
                 title: "Get reminders",
                 detail:
-                  "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default; turn either kind off under Account settings. To get them as notifications on this device too, open Notifications in the account menu and tap Enable notifications. On iPhone and iPad, add POW Pick'em to your home screen first (iOS 16.4 or later).",
+                  "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default. To get them as notifications on this device too, or to turn either kind off, open Settings from the account menu. On iPhone and iPad, add POW Pick'em to your home screen first (iOS 16.4 or later).",
               },
               {
                 title: "Manage your account",
                 detail:
-                  "Tap your name in the header to change your name or password, or to sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings.",
+                  "Tap your name in the header to change your name or password, open Settings, or sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings.",
               },
             ]}
           />
