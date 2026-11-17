@@ -108,7 +108,6 @@ const operationMessages = {
   results_sync: "Results provider request failed.",
   results_autosync: "Automatic results provider request failed.",
   matchup_insights: "Matchup stats provider request failed.",
-  market_insights: "Prediction market provider request failed.",
   push_delivery: "Push notification delivery failed.",
   push_queue: "Queueing pick reminder notifications failed.",
   push_config: "Push configuration is invalid; push is off.",

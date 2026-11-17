@@ -1,104 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  cached,
-  FAILURE_TTL,
-  kalshiEventSuffix,
-  liveInsights,
-  type MarketGame,
-  marketInsights,
-  parseEspnNews,
-  parseEspnSummary,
-  parseKalshiBoard,
-} from "../src/insights";
-
-const SUNDAY = new Date("2026-11-15T18:00:00Z");
-const lions: MarketGame = { homeTeam: "DET", awayTeam: "NE", kickoff: SUNDAY, spread: -3.5 };
-
-const market = (ticker: string, bid: number, ask: number, over?: number, status = "active") => ({
-  ticker,
-  status,
-  floor_strike: over,
-  yes_bid_dollars: bid.toFixed(4),
-  yes_ask_dollars: ask.toFixed(4),
-});
-const winner = {
-  markets: [
-    market("KXNFLGAME-26NOV15NEDET-DET", 0.57, 0.58),
-    market("KXNFLGAME-26NOV15NEDET-NE", 0.42, 0.43),
-  ],
-};
-const ladder = {
-  markets: [
-    market("KXNFLSPREAD-26NOV15NEDET-DET3", 0.52, 0.53, 2.5),
-    market("KXNFLSPREAD-26NOV15NEDET-DET4", 0.42, 0.43, 3.5),
-    market("KXNFLSPREAD-26NOV15NEDET-DET7", 0.34, 0.35, 6.5),
-    market("KXNFLSPREAD-26NOV15NEDET-NE3", 0.38, 0.39, 2.5),
-    market("KXNFLSPREAD-26NOV15NEDET-NE4", 0.29, 0.3, 3.5),
-    // Nobody is really quoting this one: the gap is too wide to call a price.
-    market("KXNFLSPREAD-26NOV15NEDET-NE6", 0.1, 0.6, 5.5),
-  ],
-};
-
-describe("kalshiEventSuffix", () => {
-  it("uses the Eastern kickoff date, away team first", () => {
-    expect(kalshiEventSuffix(lions)).toBe("26NOV15NEDET");
-    // Monday night in the east is already Tuesday in UTC.
-    const monday = { homeTeam: "BAL", awayTeam: "LAC", kickoff: new Date("2026-11-17T01:15:00Z") };
-    expect(kalshiEventSuffix(monday)).toBe("26NOV16LACBAL");
-  });
-
-  it("translates the teams Kalshi spells differently", () => {
-    expect(kalshiEventSuffix({ homeTeam: "WSH", awayTeam: "JAX", kickoff: SUNDAY })).toBe("26NOV15JACWAS");
-  });
-});
-
-describe("market prices", () => {
-  const board = parseKalshiBoard(winner, ladder, lions);
-
-  it("reads the win probability and each line from live two-sided quotes", () => {
-    expect(board.homeWin).toBeCloseTo(0.575);
-    expect(board.rungs).toHaveLength(5);
-    expect(board.rungs).toContainEqual({ side: "home", over: 3.5, p: expect.closeTo(0.425) });
-  });
-
-  it("prices the league's line for a favored home team, and finds the market's own line", () => {
-    expect(marketInsights(board, -3.5)).toEqual({
-      source: "Kalshi",
-      homeWin: 0.575,
-      cover: { home: 0.425, away: 0.575 },
-      spread: -2.5,
-    });
-  });
-
-  it("prices the league's line for a home underdog from the away team's ladder", () => {
-    // Detroit +2.5 covers unless New England wins by more than 2.5.
-    expect(marketInsights(board, 2.5)?.cover).toEqual({ home: 0.615, away: 0.385 });
-  });
-
-  it("leaves room for a push on a whole-number line", () => {
-    // Detroit -3: wins by more than 3.5 to cover; New England covers unless Detroit wins by more than 2.5.
-    expect(marketInsights(board, -3)?.cover).toEqual({ home: 0.425, away: 0.475 });
-  });
-
-  it("uses the win probability for a pick'em", () => {
-    expect(marketInsights(board, 0)?.cover).toEqual({ home: 0.575, away: 0.425 });
-  });
-
-  it("gives no cover price for a line the market isn't quoting", () => {
-    const result = marketInsights(board, -5.5);
-    expect(result?.cover).toBeNull();
-    expect(result?.homeWin).toBe(0.575);
-    expect(marketInsights(board, null)?.cover).toBeNull();
-  });
-
-  it("shows nothing once the markets have closed or when the game isn't listed", () => {
-    const closed = {
-      markets: [market("KXNFLGAME-26NOV15NEDET-DET", 0.99, 1, undefined, "finalized")],
-    };
-    expect(marketInsights(parseKalshiBoard(closed, null, lions), -3.5)).toBeNull();
-    expect(marketInsights(parseKalshiBoard({ markets: [] }, { unexpected: true }, lions), -3.5)).toBeNull();
-  });
-});
+import { cached, FAILURE_TTL, liveInsights, parseEspnNews, parseEspnSummary } from "../src/insights";
 
 describe("parseEspnSummary", () => {
   const team = (id: string, abbreviation: string) => ({ id, abbreviation });
@@ -170,6 +71,11 @@ describe("parseEspnSummary", () => {
       },
     ],
     pickcenter: [{ overUnder: 38.5 }],
+    predictor: {
+      header: "Matchup Predictor",
+      homeTeam: { id: "33", gameProjection: "81.2" },
+      awayTeam: { id: "24", gameProjection: "18.6" },
+    },
   };
 
   it("lines each team's form up by side", () => {
@@ -179,6 +85,7 @@ describe("parseEspnSummary", () => {
       away: { record: "0-8", venueRecord: "0-4", lastFive: [], injuries: [] },
       stats: [{ label: "Points Per Game", home: "21.3", away: "15.1" }],
       overUnder: 38.5,
+      prediction: { home: 0.812, away: 0.186 },
       url: "https://www.espn.com/nfl/game/_/gameId/401",
     });
     expect(matchup?.home.lastFive).toEqual([
@@ -187,6 +94,35 @@ describe("parseEspnSummary", () => {
     expect(matchup?.away.leaders).toEqual([
       { label: "Passing Yards", name: "Justin Herbert", line: "1,591 YDS" },
     ]);
+  });
+
+  it("matches ESPN's prediction to the teams by id, not by the order it lists them", () => {
+    const predictor = {
+      homeTeam: { id: "24", gameProjection: 30 },
+      awayTeam: { id: "33", gameProjection: "69.5" },
+    };
+    expect(parseEspnSummary({ ...summary, predictor }, "401")?.prediction).toEqual({
+      home: 0.695,
+      away: 0.3,
+    });
+  });
+
+  it("shows no prediction when ESPN has none or it doesn't add up", () => {
+    const { predictor: _, ...finished } = summary;
+    expect(parseEspnSummary(finished, "401")?.prediction).toBeNull();
+    const team = (id: string, gameProjection: unknown) => ({ id, gameProjection });
+    for (const predictor of [
+      { homeTeam: team("33", "81.2"), awayTeam: team("99", "18.6") },
+      { homeTeam: team("33", "81.2"), awayTeam: team("24", "") },
+      { homeTeam: team("33", "81.2"), awayTeam: team("24", "-5") },
+      { homeTeam: team("33", "81.2"), awayTeam: team("24", "48.6") },
+      { homeTeam: team("33", "81.2") },
+    ]) {
+      const matchup = parseEspnSummary({ ...summary, predictor }, "401");
+      expect(matchup?.prediction).toBeNull();
+      // The rest of the sheet still shows.
+      expect(matchup?.home.record).toBe("4-5");
+    }
   });
 
   it("lists injured quarterbacks first", () => {
@@ -278,29 +214,9 @@ describe("cached", () => {
 });
 
 describe("liveInsights", () => {
-  it("asks Kalshi for the game by ticker and reads it against the league's spread", async () => {
-    const urls: string[] = [];
-    const fetchImpl = (async (input: string | URL | Request) => {
-      const url = String(input);
-      urls.push(url);
-      return Response.json(url.includes("KXNFLSPREAD") ? ladder : winner);
-    }) as typeof fetch;
-    const provider = liveInsights(fetchImpl);
-    expect((await provider.getMarket(lions))?.cover).toEqual({ home: 0.425, away: 0.575 });
-    // A second league with a different line reuses the same prices.
-    expect((await provider.getMarket({ ...lions, spread: -2.5 }))?.cover).toEqual({
-      home: 0.525,
-      away: 0.475,
-    });
-    expect(urls).toHaveLength(2);
-    expect(urls[0]).toContain("event_ticker=KXNFLGAME-26NOV15NEDET");
-  });
-
-  it("never puts an unexpected id or team code into a request", async () => {
+  it("never puts an unexpected id into a request", async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
-    const provider = liveInsights(fetchImpl);
-    expect(await provider.getMatchup("401/../news")).toBeNull();
-    expect(await provider.getMarket({ ...lions, homeTeam: "x&y" })).toBeNull();
+    expect(await liveInsights(fetchImpl).getMatchup("401/../news")).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

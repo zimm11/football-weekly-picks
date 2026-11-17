@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Writes the body of the GitHub issue the feed contract workflow opens when a check fails, from Vitest's JSON
-// report: which checks failed and why, without stack traces. The messages describe ESPN's and Kalshi's public
-// feeds only.
+// report: which checks failed and why, without stack traces. The messages describe ESPN's public feeds only.
 //
 //   node scripts/contract-issue.mjs <vitest-report.json> <run-url> > body.md
 import { readFileSync } from "node:fs";
@@ -49,7 +48,7 @@ export function failures(report) {
 /** The issue body in Markdown. `report` is the parsed Vitest JSON report, or null if there isn't one. */
 export function issueBody(report, runUrl) {
   const intro = [
-    "The scheduled check of the ESPN and Kalshi feeds found responses that no longer match what POW Pick'em reads.",
+    "The scheduled check of the ESPN feeds found responses that no longer match what POW Pick'em reads.",
     "The app keeps running, but the parts named below may be empty or wrong for players until the parsing in",
     "`apps/api/src/nfl.ts` or `apps/api/src/insights.ts` is updated. Rerun locally with `pnpm test:contract`.",
     "",

@@ -549,7 +549,7 @@ export function WeekScreen({
                         style={({ pressed }) => [s.insights, pressed && { backgroundColor: colors.raised }]}
                       >
                         <Icon name="chart" size={16} color={colors.mutedForeground} filled />
-                        <Text style={[s.disclosure, { flex: 1 }]}>Stats, news & market</Text>
+                        <Text style={[s.disclosure, { flex: 1 }]}>Stats & news</Text>
                         <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
                       </Pressable>
                     </View>

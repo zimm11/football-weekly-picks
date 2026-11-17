@@ -102,7 +102,7 @@ export function WeekSetupCard({
           </Action>
           <PreferenceToggle
             small
-            label="Import games and spreads from ESPN"
+            label="Auto-fill games and spreads"
             checked={importGames}
             onChange={setImportGames}
             disabled={!!busy}

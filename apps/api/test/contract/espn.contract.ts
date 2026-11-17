@@ -6,8 +6,6 @@
  * without `events` parses as an empty week. That keeps the app up, but it also means nothing in the app
  * notices. These checks run the app's own URLs, schemas and parsers against today's real responses and fail
  * on anything that would quietly empty or corrupt what players see.
- *
- * Kalshi's market prices are checked the same way in `kalshi.contract.ts`.
  */
 import { seasonYear, TEAM_ABBRS, teamLogoUrl } from "@picks/shared";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -345,6 +343,8 @@ describe("ESPN game summary", () => {
     const sheet = parseEspnSummary(summary, game.externalId);
     expect(sheet, `${name}: the summary doesn't name both teams`).not.toBeNull();
     if (!sheet) return;
+    // The Matchup Predictor names its teams by id, so it comes out empty if those stop matching the header's.
+    expect(sheet.prediction, `${name}: ESPN's win prediction`).not.toBeNull();
     // Week 1 has no season to draw form from yet.
     if (upcoming.week === 1) return;
     const empty: string[] = [];

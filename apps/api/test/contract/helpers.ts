@@ -12,8 +12,6 @@ export const LINES_POSTED_WITHIN_MS = 3 * 24 * 60 * 60_000;
 export const kickingOffSoon = (games: ProviderGame[]) =>
   games.filter((g) => g.kickoff > now && g.kickoff.getTime() - now.getTime() < LINES_POSTED_WITHIN_MS);
 
-export const gameName = (g: ProviderGame) => `${g.awayTeam} @ ${g.homeTeam}`;
-
 // ---------- Fetching ----------
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -15,7 +15,7 @@ export function PreferenceToggle({
   checked: boolean;
   disabled?: boolean;
   onChange: (value: boolean) => void;
-  /** A plain 14px label, as web's inline checkboxes ("Import games and spreads from ESPN"). */
+  /** A plain 14px label, as web's inline checkboxes ("Auto-fill games and spreads"). */
   small?: boolean;
 }) {
   // Shows the tap at once, as a browser checkbox does, while the parent saves; the saved value then takes over.

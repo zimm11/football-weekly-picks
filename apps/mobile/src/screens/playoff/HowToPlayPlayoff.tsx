@@ -40,12 +40,12 @@ export function HowToPlayManagement() {
       <Heading title="Automatic or hands-on" icon="refresh" />
       <Card>
         <Item title="Automatic (the default)">
-          The league runs itself from ESPN. The admin presses Start season on the League tab and picks the
-          start week; the season then runs through Week 18. Each Tuesday at 9 AM Eastern the week's games and
-          that morning's lines come in and it opens for picks, all at once, so the spreads you pick against
-          are never days old (they freeze then). Final scores fill in as games end, and the week finalizes
-          after its last game, usually Monday night. You get a notification when a week opens and when it's
-          final.
+          The league runs itself from the NFL schedule. The admin presses Start season on the League tab and
+          picks the start week; the season then runs through Week 18. Each Tuesday at 9 AM Eastern the week's
+          games and that morning's lines come in and it opens for picks, all at once, so the spreads you pick
+          against are never days old (they freeze then). Final scores fill in as games end, and the week
+          finalizes after its last game, usually Monday night. You get a notification when a week opens and
+          when it's final.
         </Item>
         <Item title="What the admin can still do">
           Edit spreads and points until a week's first kickoff, choose the tiebreaker game, add or remove a
@@ -75,7 +75,7 @@ export function HowToPlayPlayoff() {
       </Body>
       <Card>
         <Item title="Rounds and points">
-          {`A win is worth ${ROUND_POINTS[19]} point in the Wild Card round, ${ROUND_POINTS[20]} in the Divisional round, ${ROUND_POINTS[21]} in the Conference round and ${ROUND_POINTS[22]} in the Super Bowl. Each round opens by itself once ESPN lists its games and lines, and is final once every game has a result.`}
+          {`A win is worth ${ROUND_POINTS[19]} point in the Wild Card round, ${ROUND_POINTS[20]} in the Divisional round, ${ROUND_POINTS[21]} in the Conference round and ${ROUND_POINTS[22]} in the Super Bowl. Each round opens by itself once its games and lines are posted, and is final once every game has a result.`}
         </Item>
         <Item title="Traditional">
           {`A Pick of the Week (POW) is optional each round before the Super Bowl. A winning one adds ${PLAYOFF_POW_BONUS.traditional} points.`}

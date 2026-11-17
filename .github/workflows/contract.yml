@@ -1,8 +1,7 @@
 name: Feed contracts
 
-# ESPN's feeds are unofficial and can change without notice, and the app leans on conventions Kalshi doesn't
-# promise. Once a day, check today's real responses from both against what the app reads
-# (`pnpm test:contract`). A failed scheduled or manual run opens an issue labeled `feed-contract` (or comments
+# ESPN's feeds are unofficial and can change without notice. Once a day, check today's real responses against
+# what the app reads (`pnpm test:contract`). A failed scheduled or manual run opens an issue labeled `feed-contract` (or comments
 # on the open one); the next passing run closes it. Pull requests that touch the parsing run the same checks,
 # without the issue.
 on:
@@ -46,7 +45,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      - name: Check ESPN's and Kalshi's feeds against what the app reads
+      - name: Check ESPN's feeds against what the app reads
         run: >-
           pnpm --filter @picks/api test:contract
           --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/contract.json"
@@ -62,7 +61,7 @@ jobs:
             gh issue comment "$open" --body-file "$RUNNER_TEMP/issue.md"
           else
             gh label create "$ALERT_LABEL" --color D93F0B --force \
-              --description "ESPN or Kalshi no longer matches what the app reads"
+              --description "ESPN no longer matches what the app reads"
             gh issue create --title "A data feed no longer matches what the app reads" \
               --label "$ALERT_LABEL" --body-file "$RUNNER_TEMP/issue.md"
           fi

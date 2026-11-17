@@ -35,8 +35,8 @@ export function HowToPlaySquares() {
           At the end of Q1, at halftime, at the end of Q3 and at the final (overtime included), the winning
           square is the one whose numbers match the last digit of each team's score so far. If nobody holds
           that square, nobody wins that quarter. While the game is on, the board marks the square that would
-          win if the quarter ended now. Scores come from ESPN; an admin can correct one, and a corrected score
-          stays.
+          win if the quarter ended now. Scores fill in automatically; an admin can correct one, and a
+          corrected score stays.
         </Body>
         <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
           Everyone in the league sees the whole board. Tap a taken square to see whose it is, its numbers and
