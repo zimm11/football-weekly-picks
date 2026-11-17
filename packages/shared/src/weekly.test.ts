@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstKickoff, missingLineDue, slateEditable, weeklyOpensAt } from "./weekly";
+import { firstKickoff, missingLineDue, nextRegularWeek, slateEditable, weeklyOpensAt } from "./weekly";
 
 describe("weeklyOpensAt", () => {
   it("opens a Thursday-to-Monday week on its Tuesday at 9 AM Eastern", () => {
@@ -27,6 +27,16 @@ describe("weeklyOpensAt", () => {
     expect(weeklyOpensAt(kickoff).toISOString()).toBe("2026-11-17T14:00:00.000Z");
     // Later on Tuesday: that same morning.
     expect(weeklyOpensAt(new Date("2026-11-25T01:00:00Z")).toISOString()).toBe("2026-11-24T14:00:00.000Z");
+  });
+});
+
+describe("nextRegularWeek", () => {
+  it("suggests the first week whose Thursday night is still ahead", () => {
+    expect(nextRegularWeek(2026, new Date("2026-08-01T12:00:00Z"))).toBe(1);
+    // Tuesday, Nov 17 2026: Week 11 starts Thursday the 19th.
+    expect(nextRegularWeek(2026, new Date("2026-11-17T12:00:00Z"))).toBe(11);
+    expect(nextRegularWeek(2026, new Date("2026-11-20T02:00:00Z"))).toBe(12);
+    expect(nextRegularWeek(2026, new Date("2027-02-01T12:00:00Z"))).toBe(18);
   });
 });
 

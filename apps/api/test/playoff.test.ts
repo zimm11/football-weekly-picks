@@ -49,7 +49,13 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     return found;
   };
   /** Saves picks: every game's home side, the POW on `pow` (a feed id), and an optional guess. */
-  async function pick(user: string, leagueId: string, number: number, pow: string | null, guess: number | null = null) {
+  async function pick(
+    user: string,
+    leagueId: string,
+    number: number,
+    pow: string | null,
+    guess: number | null = null,
+  ) {
     const r = await round(leagueId, number);
     return t.call<WeekView>(user, "PUT", `/weeks/${r.id}/picks`, {
       picks: r.games.map((g) => ({ gameId: g.id, side: "home" })),
@@ -114,7 +120,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     await t.runAutomation("playoff", [leagueId]);
     wc = await round(leagueId, 19);
     expect(wc.status).toBe("final");
-    let dv = await round(leagueId, 20);
+    const dv = await round(leagueId, 20);
     expect(dv.status).toBe("open");
     expect(dv.games.map((g) => g.points)).toEqual([2, 2, 2, 2]);
     let table = await standings(PAT, leagueId);

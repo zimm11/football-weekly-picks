@@ -12,6 +12,7 @@ import {
   hasResult,
   POW_BONUS,
   roundPoints,
+  SUPER_BOWL_ROUND,
   scoreWeek,
   slateEditable,
   submitPicksSchema,
@@ -148,7 +149,8 @@ export async function buildWeekView(
     year: ctx.season.year,
     number: week.number,
     status: week.status,
-    tiebreakerGameId,
+    // A playoff league's one tiebreaker is the Super Bowl's total: the earlier rounds have none.
+    tiebreakerGameId: playoff && week.number < SUPER_BOWL_ROUND ? null : tiebreakerGameId,
     games: gameRows.map(toGame),
     myPicks: pickRows
       .filter((p) => p.userId === userId)

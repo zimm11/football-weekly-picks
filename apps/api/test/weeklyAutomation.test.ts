@@ -45,9 +45,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     at(new Date(Date.parse("2026-11-28T15:00:00Z") + started++ * 5 * 60_000).toISOString());
     const leagueId = await t.createLeague(ADMIN, { name, management: "auto" });
     await t.join(PAT, leagueId);
-    expect((await t.call(ADMIN, "POST", `/leagues/${leagueId}/seasons`, { year: 2026, startWeek: 13 })).status).toBe(
-      201,
-    );
+    expect(
+      (await t.call(ADMIN, "POST", `/leagues/${leagueId}/seasons`, { year: 2026, startWeek: 13 })).status,
+    ).toBe(201);
     return leagueId;
   }
 
@@ -106,9 +106,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
 
     // The admin types Thursday's score in by hand; the feed's own final never replaces it.
     at("2026-12-04T05:00:00Z");
-    expect(
-      (await t.call(ADMIN, "PATCH", `/games/${thu?.id}`, { homeScore: 30, awayScore: 20 })).status,
-    ).toBe(200);
+    expect((await t.call(ADMIN, "PATCH", `/games/${thu?.id}`, { homeScore: 30, awayScore: 20 })).status).toBe(
+      200,
+    );
     t.feed.set("2026:13", [...WEEK_13_FINALS.slice(0, 2), ...WEEK_13.slice(2)]);
     at("2026-12-06T21:00:00Z");
     await t.runAutomation("weekly", [leagueId]);
@@ -149,27 +149,35 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
 
     // The results and the recap: Pat won all three, Monday (BUF +1) as the POW.
     const view = await t.call<WeekView>(PAT, "GET", `/weeks/${w13.id}`);
-    expect(view.body.results?.entries.find((e) => e.userId === PAT)).toMatchObject({ points: 3 + 1 + 3 + 5, wins: 3 });
+    expect(view.body.results?.entries.find((e) => e.userId === PAT)).toMatchObject({
+      points: 3 + 1 + 3 + 5,
+      wins: 3,
+    });
     expect((await t.call<LeagueDetail>(PAT, "GET", `/leagues/${leagueId}`)).body.recapWeekId).toBe(w13.id);
 
     // A final week is corrected in place, without reopening it: standings follow, and the recap shows again.
     await t.call(PAT, "POST", `/weeks/${w13.id}/recap/seen`);
     expect((await t.call<LeagueDetail>(PAT, "GET", `/leagues/${leagueId}`)).body.recapWeekId).toBeNull();
     at("2026-12-08T15:00:00Z");
-    expect((await t.call(ADMIN, "PATCH", `/games/${sun?.id}`, { homeScore: 30, awayScore: 14 })).status).toBe(200);
+    expect((await t.call(ADMIN, "PATCH", `/games/${sun?.id}`, { homeScore: 30, awayScore: 14 })).status).toBe(
+      200,
+    );
     expect((await week(leagueId, 13)).status).toBe("final");
     const standings = await t.call<Standings>(PAT, "GET", `/leagues/${leagueId}/standings?year=2026`);
     expect(standings.body.entries.find((e) => e.userId === PAT)?.points).toBe(3 + 3 + 5);
     expect((await t.call<LeagueDetail>(PAT, "GET", `/leagues/${leagueId}`)).body.recapWeekId).toBe(w13.id);
     // Only scores: a final week's spread stands, and a score can't be cleared.
     expect((await t.call(ADMIN, "PATCH", `/games/${sun?.id}`, { spread: -1 })).status).toBe(409);
-    expect((await t.call(ADMIN, "PATCH", `/games/${sun?.id}`, { homeScore: null, awayScore: null })).status).toBe(
-      409,
-    );
+    expect(
+      (await t.call(ADMIN, "PATCH", `/games/${sun?.id}`, { homeScore: null, awayScore: null })).status,
+    ).toBe(409);
   });
 
   it("tells the admins once about a missing line a day before kickoff, and opens as soon as it is typed in", async () => {
-    t.feed.set("2026:13", [WEEK_13[0], { ...WEEK_13[1], spread: null }, WEEK_13[2]].flatMap((g) => (g ? [g] : [])));
+    t.feed.set(
+      "2026:13",
+      WEEK_13.map((g) => (g.externalId === "w13-sun" ? { ...g, spread: null } : g)),
+    );
     const leagueId = await startedLeague("Missing line");
     at("2026-12-01T15:00:00Z");
     await t.runAutomation("weekly", [leagueId]);
@@ -196,7 +204,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     const [thu, sun, mon] = w13.games;
     expect((await t.call(ADMIN, "PATCH", `/games/${thu?.id}`, { spread: -7 })).status).toBe(200);
     expect((await t.call(ADMIN, "PATCH", `/games/${sun?.id}`, { points: 5 })).status).toBe(200);
-    expect((await t.call(ADMIN, "PATCH", `/weeks/${w13.id}`, { tiebreakerGameId: thu?.id })).status).toBe(200);
+    expect((await t.call(ADMIN, "PATCH", `/weeks/${w13.id}`, { tiebreakerGameId: thu?.id })).status).toBe(
+      200,
+    );
     expect((await t.call(ADMIN, "DELETE", `/games/${mon?.id}`)).status).toBe(200);
 
     // The feed moves every line and Sunday's kickoff.
@@ -284,9 +294,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     expect(w13.status).toBe("open");
     expect(w13.games.every((g) => g.homeScore === null)).toBe(true);
     // A hands-on league starts its season with its first week, not Start season.
-    expect((await t.call(ADMIN, "POST", `/leagues/${leagueId}/seasons`, { year: 2027, startWeek: 1 })).status).toBe(
-      409,
-    );
+    expect(
+      (await t.call(ADMIN, "POST", `/leagues/${leagueId}/seasons`, { year: 2027, startWeek: 1 })).status,
+    ).toBe(409);
   });
 
   it("asks the feed once per NFL week per run, however many leagues wait on it", async () => {
@@ -300,14 +310,14 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
 
   it("refuses Start season twice, without a start week, and in a squares league", async () => {
     const leagueId = await startedLeague("Started");
-    expect((await t.call(ADMIN, "POST", `/leagues/${leagueId}/seasons`, { year: 2026, startWeek: 14 })).status).toBe(
-      409,
-    );
+    expect(
+      (await t.call(ADMIN, "POST", `/leagues/${leagueId}/seasons`, { year: 2026, startWeek: 14 })).status,
+    ).toBe(409);
     const other = await t.createLeague(ADMIN, { name: "No week", management: "auto" });
     expect((await t.call(ADMIN, "POST", `/leagues/${other}/seasons`, { year: 2026 })).status).toBe(400);
-    expect((await t.call(PAT, "POST", `/leagues/${leagueId}/seasons`, { year: 2027, startWeek: 1 })).status).toBe(
-      403,
-    );
+    expect(
+      (await t.call(PAT, "POST", `/leagues/${leagueId}/seasons`, { year: 2027, startWeek: 1 })).status,
+    ).toBe(403);
     const squares = await t.createLeague(ADMIN, { name: "Board", type: "squares" });
     expect((await t.call(ADMIN, "POST", `/leagues/${squares}/seasons`, { year: 2026 })).status).toBe(409);
     // The admin is still a member of everything they made; nothing else was created.

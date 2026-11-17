@@ -11,7 +11,13 @@ import {
 import type { ScoredGame, ScoredPick, Side } from "./rules";
 import { weekLabel } from "./seasons";
 
-const game = (id: string, kickoff: string, spread: number, score?: [number, number], points = 1): ScoredGame => ({
+const game = (
+  id: string,
+  kickoff: string,
+  spread: number,
+  score?: [number, number],
+  points = 1,
+): ScoredGame => ({
   id,
   kickoff: new Date(kickoff),
   spread,

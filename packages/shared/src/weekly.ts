@@ -36,6 +36,19 @@ export function weeklyOpensAt(firstKickoff: Date): Date {
     : opens;
 }
 
+/**
+ * The first regular-season week whose Thursday night is still ahead at `now`: the start week Start season
+ * suggests. The NFL opens on the Thursday after Labor Day (the first Monday of September). Clamped to 1–18.
+ */
+export function nextRegularWeek(year: number, now: Date): number {
+  const firstOfSeptember = new Date(Date.UTC(year, 8, 1)).getUTCDay();
+  const laborDay = 1 + ((1 - firstOfSeptember + 7) % 7);
+  // Thursday 8 PM Eastern of Week 1.
+  const opener = zonedTimeToUtc(year, 9, laborDay + 3, 20, NFL_TIME_ZONE).getTime();
+  const week = Math.floor((now.getTime() - opener) / (7 * 24 * 60 * 60_000)) + 2;
+  return Math.min(18, Math.max(1, now.getTime() < opener ? 1 : week));
+}
+
 /** The earliest kickoff on a slate, or null for an empty one. */
 export function firstKickoff(games: { kickoff: Date }[]): Date | null {
   if (games.length === 0) return null;

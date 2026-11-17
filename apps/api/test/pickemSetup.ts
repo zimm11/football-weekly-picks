@@ -19,7 +19,7 @@ const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: 
 
 export function pickemSetup(names: string[]) {
   const db = createDb(process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:54322/postgres");
-  const users = names.map(() => randomUUID());
+  const users: string[] = names.map(() => randomUUID());
   const feed = new Map<string, ProviderGame[]>();
   const asked: string[] = [];
   const nfl: NflProvider = {
@@ -63,7 +63,10 @@ export function pickemSetup(names: string[]) {
   }
 
   async function join(user: string, leagueId: string) {
-    const [league] = await db.select({ code: leagues.inviteCode }).from(leagues).where(eq(leagues.id, leagueId));
+    const [league] = await db
+      .select({ code: leagues.inviteCode })
+      .from(leagues)
+      .where(eq(leagues.id, leagueId));
     expect((await call(user, "POST", `/invites/${league?.code}/join`)).status).toBe(200);
   }
 
@@ -115,9 +118,13 @@ export function pickemSetup(names: string[]) {
 
   async function setUp() {
     for (const [i, id] of users.entries()) {
-      await db.execute(sql`insert into auth.users (id, email) values (${id}, ${`pickem-${i}-${id}@example.com`})`);
+      await db.execute(
+        sql`insert into auth.users (id, email) values (${id}, ${`pickem-${i}-${id}@example.com`})`,
+      );
     }
-    await db.insert(profiles).values(users.map((userId, i) => ({ userId, displayName: names[i] ?? "Player" })));
+    await db
+      .insert(profiles)
+      .values(users.map((userId, i) => ({ userId, displayName: names[i] ?? "Player" })));
   }
 
   async function tearDown() {
@@ -132,7 +139,22 @@ export function pickemSetup(names: string[]) {
     await db.$close();
   }
 
-  return { db, users, feed, asked, state, app, call, createLeague, join, runAutomation, weeksOf, events, setUp, tearDown };
+  return {
+    db,
+    users,
+    feed,
+    asked,
+    state,
+    app,
+    call,
+    createLeague,
+    join,
+    runAutomation,
+    weeksOf,
+    events,
+    setUp,
+    tearDown,
+  };
 }
 
 /** A provider game. */
