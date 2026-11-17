@@ -1,17 +1,16 @@
-import { ComingSoon } from "../ComingSoon";
 import type { LeagueTypeScreens } from "../leagueTypeScreens";
-import { WeeklyPicks, WeeklyResults, WeeklyStandings } from "../weekly";
-import { WeekRecap } from "../weekly/WeeklyTabs";
+import { WeeklyPicks } from "../weekly";
+import { PlayoffAdminTools } from "./PlayoffAdmin";
+import { PlayoffRecap, PlayoffResults, PlayoffStandings } from "./PlayoffTabs";
 
 /*
- * Playoff pick'em's screens. It has weekly pick'em's five tabs, so it starts from the weekly containers:
- * replace them here as the playoff ones are built (status line, overall standings, round recap).
+ * Playoff pick'em's screens: weekly pick'em's five tabs over the four rounds. Picks is the weekly pick sheet,
+ * which carries the Guillotine status line and goes read-only for a player who is out; Results lists the finished
+ * rounds; Standings is the overall table; the recap is per round, with the champion after the Super Bowl.
  */
 export const playoffScreens: LeagueTypeScreens = {
-  tabs: { picks: WeeklyPicks, results: WeeklyResults, standings: WeeklyStandings },
-  AdminTools: () => (
-    <ComingSoon title="Start the playoffs" detail="Starting a playoff season is still being built." />
-  ),
-  Recap: WeekRecap,
+  tabs: { picks: WeeklyPicks, results: PlayoffResults, standings: PlayoffStandings },
+  AdminTools: PlayoffAdminTools,
+  Recap: PlayoffRecap,
   seasonSelector: true,
 };
