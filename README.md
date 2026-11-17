@@ -469,7 +469,9 @@ that its prices agree with ESPN about who is favored. The daily workflow opens a
 
 E2E always tests the production build in the Workers runtime, as CI does: it starts `pnpm worker:dev` (the
 Expo web build and the API on one origin), or reuses one already running outside CI. It refuses remote
-database and Auth services. Tests create their own data rather than depending on the seed. Traces and
+database and Auth services, and its browsers can reach only this machine (every other host goes to a proxy
+that isn't there), so a link to the live site fails the test instead of signing up a real account. Tests
+create their own data rather than depending on the seed. Traces and
 screenshots are disabled to keep credentials and invite links out of artifacts.
 
 For focused runs, use workspace filters such as `pnpm --filter @picks/shared test` or
@@ -573,8 +575,8 @@ Run these once from `apps/api` (`pnpm exec wrangler login` first):
 Two kinds of email, both sent through [Cloudflare Email Sending](https://developers.cloudflare.com/email-service/)
 from `noreply@pow-pickem.com`:
 
-- **Sign-in emails** (password reset, email-change confirmation, and notices after a password or email
-  change) are sent by Supabase Auth over Cloudflare's SMTP relay. Branded templates live in
+- **Sign-in emails** (sign-up confirmation, password reset, email-change confirmation, and notices after a
+  password or email change) are sent by Supabase Auth over Cloudflare's SMTP relay. Branded templates live in
   `supabase/templates/` and are wired up in `supabase/config.toml`.
 - **Notification emails** (a new message thread; a pick reminder at 7pm league time the evening before a game
   day, to players with games still to pick) are sent by the Worker through its `send_email` binding (`EMAIL`
@@ -615,8 +617,14 @@ One-time setup:
    keeps them inside the room it leaves. Under **Emails**, copy each template's subject and HTML from
    `supabase/config.toml` and `supabase/templates/`. (Don't use `supabase config push`: it would also push
    local settings such as the localhost site URL.) Make sure the redirect URLs include
-   `https://www.pow-pickem.com/reset-password` and `https://www.pow-pickem.com/account`. Leave **Confirm
-   email** off: sign-up stays instant.
+   `https://www.pow-pickem.com/reset-password`, `https://www.pow-pickem.com/auth/callback` and
+   `https://www.pow-pickem.com/account`. Production has **Confirm email** on: a new player opens the
+   confirmation link (`/auth/callback`) before they can sign in. (Locally it is off, so made-up addresses
+   work.) Every sign-up therefore sends an email, which is why the hook below matters. Under **Hooks**, add a **Before User Created** hook of type
+   **Postgres** with the function `public.hook_reject_test_signups` (installed by the migrations): it refuses
+   sign-ups on domains reserved for testing (`example.com`, `.test`, `.invalid` and the like), so a test that
+   reaches production by mistake creates no account and bounces no email. It stays off locally, where E2E
+   signs up `@example.com` users.
 4. **Turn notification email on:** generate a secret and set it on the Worker, from `apps/api`:
    `openssl rand -base64 32 | pnpm exec wrangler secret put UNSUBSCRIBE_SECRET`. Until it is set the Worker
    queues and sends nothing (the cron runs and returns at once). Changing it later breaks the unsubscribe

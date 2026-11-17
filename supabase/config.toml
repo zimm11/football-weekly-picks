@@ -302,9 +302,11 @@ max_frequency = "5s"
 # inactivity_timeout = "8h"
 
 # This hook runs before a new user is created and allows developers to reject the request based on the incoming user object.
+# Production turns this on with `public.hook_reject_test_signups`, which refuses reserved test domains (README,
+# "Email"). It stays off here, because E2E signs up `@example.com` users.
 # [auth.hook.before_user_created]
 # enabled = true
-# uri = "pg-functions://postgres/auth/before-user-created-hook"
+# uri = "pg-functions://postgres/public/hook_reject_test_signups"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
 # [auth.hook.custom_access_token]
