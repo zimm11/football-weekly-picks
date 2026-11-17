@@ -28,9 +28,16 @@ export const awaitingResult = (g: GameRow, at: Date) =>
 /**
  * A game's points when its kickoff moves: a game still worth its old slot's default takes the new slot's (a
  * Sunday afternoon game flexed to Sunday night goes from 1 to 2). Points the admin set by hand are kept.
+ * `pointsFor` is the default by kickoff (a playoff round's is the same for every kickoff).
  */
-export const pointsAfterKickoffChange = (game: Pick<GameRow, "kickoff" | "points">, kickoff: Date) =>
-  game.points === defaultPoints(game.kickoff) ? defaultPoints(kickoff) : game.points;
+export const pointsAfterKickoffChange = (
+  game: Pick<GameRow, "kickoff" | "points">,
+  kickoff: Date,
+  pointsFor: PointsFor = defaultPoints,
+) => (game.points === pointsFor(game.kickoff) ? pointsFor(kickoff) : game.points);
+
+/** What a new game is worth by default: its time slot's points (`defaultPoints`), or its playoff round's. */
+export type PointsFor = (kickoff: Date) => number;
 
 /** A week's games in kickoff order. */
 export const gamesOf = (db: Store, weekId: string) =>
@@ -40,15 +47,16 @@ export const gamesOf = (db: Store, weekId: string) =>
  * Adds the provider's games to a week and refreshes kickoffs and spreads of the ones already there. Meant for
  * drafts: once players have picked, spreads change only when the admin edits them by hand. With
  * `keepAdminSpreads` (automation), a spread the admin typed (`spreadByAdmin`) is never replaced; the admin's own
- * Import replaces it, as it always has. Returns a message for the admin when nothing could be imported.
+ * Import replaces it, as it always has. `pointsFor` gives a new game its points (default: its time slot's).
+ * Returns a message for the admin when nothing could be imported.
  */
 export async function importSlate(
   db: Store,
   nfl: NflProvider,
   week: { id: string; year: number; number: number },
-  options: { requestId?: string; keepAdminSpreads?: boolean } = {},
+  options: { requestId?: string; keepAdminSpreads?: boolean; pointsFor?: PointsFor } = {},
 ): Promise<string | null> {
-  const { requestId, keepAdminSpreads = false } = options;
+  const { requestId, keepAdminSpreads = false, pointsFor = defaultPoints } = options;
   let provided: ProviderGame[];
   try {
     provided = await nfl.getWeek(week.year, week.number);
@@ -66,7 +74,7 @@ export async function importSlate(
         .set({
           kickoff: g.kickoff,
           spread: keepAdminSpreads && current.spreadByAdmin ? current.spread : (g.spread ?? current.spread),
-          points: pointsAfterKickoffChange(current, g.kickoff),
+          points: pointsAfterKickoffChange(current, g.kickoff, pointsFor),
         })
         .where(eq(games.id, current.id));
     } else {
@@ -80,7 +88,7 @@ export async function importSlate(
           awayTeam: g.awayTeam,
           kickoff: g.kickoff,
           spread: g.spread,
-          points: defaultPoints(g.kickoff),
+          points: pointsFor(g.kickoff),
         })
         .onConflictDoNothing({ target: [games.weekId, games.externalId] });
     }

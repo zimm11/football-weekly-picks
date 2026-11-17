@@ -33,6 +33,7 @@ import {
   seasonStandings,
   seasonStats,
   seasonYear,
+  startSeasonSchema,
   updateLeagueSchema,
   updateMemberRoleSchema,
   weekPhase,
@@ -377,6 +378,38 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
           );
         await db.update(leagues).set(changes).where(eq(leagues.id, leagueId));
         return c.json({ ok: true });
+      })
+      /**
+       * Start season: a season with the type's settings, by the type's own `startSeason` hook (an Automatic weekly
+       * season with its start week, a playoff season with its format, a survivor pool). A type without the hook
+       * answers 409: squares has no seasons, and a hands-on weekly season starts with its first week instead. The
+       * league is advanced right after, so the first slate shows up at once.
+       */
+      .post("/leagues/:leagueId/seasons", auth, leagueParam, body(startSeasonSchema), async (c) => {
+        const { leagueId } = c.req.valid("param");
+        const input = c.req.valid("json");
+        const { league, role } = await requireMember(db, leagueId, c.var.user.id);
+        requireAdmin(role);
+        const startSeason = TYPE_HOOKS[league.type].startSeason;
+        if (!startSeason) fail(409, `${leagueTypeInfo(league.type).name} leagues don't start seasons.`);
+        const parsed = leagueTypeInfo(league.type).settings.safeParse({
+          ...input.settings,
+          ...(input.startWeek !== undefined && { startWeek: input.startWeek }),
+        });
+        if (!parsed.success) fail(400, parsed.error.issues[0]?.message ?? "Check the season's settings.");
+        await db.transaction(async (tx) => {
+          const [locked] = await tx.select().from(leagues).where(eq(leagues.id, leagueId)).for("update");
+          if (!locked) fail(404, "League not found");
+          await startSeason(tx, {
+            league: locked,
+            year: input.year,
+            settings: parsed.data,
+            at: now(),
+            actorId: c.var.user.id,
+          });
+        });
+        await services.advanceLeagueOnRead(league, c.get("requestId"), { force: true });
+        return c.json({ ok: true }, 201);
       })
       .patch(
         "/leagues/:leagueId/members/:userId",

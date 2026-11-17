@@ -152,7 +152,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /apps\/api\/src\/((?:automation\/|reminders\/)?(?:accounts|app|auth|context|email|env|index|insights|jobs|leagueEvents|leagues|logging|messages|moderation|moderationJobs|nfl|operator|outbox|playoff|push|pushQueue|pushSender|reminderTargets|screening|services|squares|survivor|templates|typeHooks|unsubscribe|webPush|weekOps|weekly|weeks|worker))\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /apps\/api\/src\/((?:automation\/|reminders\/)?(?:accounts|app|auth|context|email|env|index|insights|jobs|leagueEvents|leagues|logging|messages|moderation|moderationJobs|nfl|operator|outbox|pickem|playoff|push|pushQueue|pushSender|reminderTargets|screening|services|squares|survivor|templates|typeHooks|unsubscribe|webPush|weekOps|weekly|weeks|worker))\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;
