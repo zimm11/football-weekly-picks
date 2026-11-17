@@ -3,7 +3,13 @@
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "noEmit": true
+    "noEmit": true,
+    // Icons are imported one file each (see src/components/Icon.tsx), which resolves to the package's .tsx
+    // source. Type-check against its published declarations instead, so the result doesn't depend on Expo's
+    // generated expo-env.d.ts (absent in CI). Metro still bundles the per-icon source.
+    "paths": {
+      "phosphor-react-native/src/icons/*": ["./node_modules/phosphor-react-native/lib/typescript/icons/*"]
+    }
   },
   "include": [
     "app/**/*.ts",
