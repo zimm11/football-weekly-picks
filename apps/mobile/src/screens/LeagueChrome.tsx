@@ -23,6 +23,7 @@ export function LeagueHeader({
   seasonChoices,
   onSeason,
   selector,
+  seasonWidth,
 }: {
   leagueId: string;
   leagueName: string;
@@ -31,6 +32,8 @@ export function LeagueHeader({
   onSeason?: (year: number | "new") => void;
   /** Another type's selector in the season's place (squares' board). */
   selector?: ReactNode;
+  /** The season selector's width, when its labels are longer than a year. */
+  seasonWidth?: number;
 }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
@@ -69,6 +72,7 @@ export function LeagueHeader({
       {season !== undefined && onSeason && (
         <Select
           compact
+          compactWidth={seasonWidth}
           label="Season"
           value={season}
           choices={seasonChoices ?? [{ value: season, label: String(season) }]}

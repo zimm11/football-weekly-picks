@@ -95,9 +95,9 @@ export function PlayoffStandings({ league, year, userId, header, reload }: Leagu
               label="Playoff standings"
               columns={[
                 { title: "Pts", width: 54 },
+                ...(view.format === "guillotine" ? [{ title: "Status", width: 136 }] : []),
                 { title: "W–L", width: 80 },
                 { title: "POW", width: 54 },
-                ...(view.format === "guillotine" ? [{ title: "Status", width: 150 }] : []),
               ]}
               rows={view.entries.map((entry) => ({
                 id: entry.userId,
@@ -126,9 +126,9 @@ export function PlayoffStandings({ league, year, userId, header, reload }: Leagu
                   >
                     {entry.points}
                   </Text>,
+                  ...(view.format === "guillotine" ? [<StatusCell key="status" entry={entry} />] : []),
                   record(entry),
                   entry.powWins,
-                  ...(view.format === "guillotine" ? [<StatusCell key="status" entry={entry} />] : []),
                 ],
               }))}
             />

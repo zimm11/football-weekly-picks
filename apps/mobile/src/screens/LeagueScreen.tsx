@@ -108,6 +108,7 @@ export function LeagueScreen({ leagueId, path = "" }: { leagueId: string; path?:
           ...(detail.role === "admin" ? [{ value: "new" as const, label: "New season…" }] : []),
         ]}
         onSeason={chooseYear}
+        seasonWidth={detail.type === "playoff" ? 156 : undefined}
         selector={
           tab !== "messages" && screens.HeaderSelector ? (
             <screens.HeaderSelector league={detail} />
