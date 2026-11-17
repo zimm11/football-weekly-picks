@@ -154,6 +154,10 @@ a password of at least six characters. To join the seeded league, open `/join/lo
 URL, sign in, and press **Join league**. In the main checkout, that URL is
 `http://localhost:8081/join/local-invite`.
 
+[`supabase/seeds/survivor.sql`](supabase/seeds/survivor.sql) adds **Last One Standing**, a survivor pool for
+the same four accounts (invite `/join/local-survivor`): two lives from Week 8, Weeks 8–10 closed with Commish
+and Pat still in, Sam and Alex out, and an empty Week 11 that the first read imports from ESPN and opens.
+
 Use a normal browser window for the admin and a private window or different browser profile for a player.
 Sessions are stored per browser profile, so both accounts can stay signed in side by side.
 
@@ -270,6 +274,34 @@ show, and whether it runs itself. Every type is open to every player. A weekly l
 week, as before, and every league from before types); an admin can switch in **League → League settings**.
 **Start with members from** on New league copies the current members of a league you are an admin of
 into the new one as members, each told once (a league event); anyone already in 25 leagues is skipped and named.
+
+### Survivor
+
+A survivor pool runs itself. New league (or **Start season** in the League tab) sets the **lives** (1–3) and the
+**start week** (any week with no kickoff yet; the next one by default); both are fixed once the start week's
+first game kicks off. Starting the season creates the start week empty, and the next read of the league (or
+the next cron run) imports its slate from ESPN and opens it: there are no spreads to wait for.
+
+1. **Pick:** each week a player still in taps one team to win outright and presses **Save pick**. A team picked
+   earlier in the season is disabled ("Used in Week 3"); the used teams reset at the Wild Card round, and a
+   player with no unused team left on a playoff slate may pick any. A pick can change until its team kicks off,
+   and only to a team still to kick off. Above the cards: lives left and teams used.
+2. **Reveal:** nobody else, admins included, learns anything about a pick (not even that one exists) until its
+   team's game kicks off. Then it shows on **Standings**, the survivor grid.
+3. **Strikes:** a loss, a tie, or no pick when the week's last game kicks off is a strike; a player is out when
+   their strikes reach the lives, and a player who leaves is out from that week on. A week that would put out
+   everyone still in puts out nobody.
+4. **The week closes itself:** kickoffs follow flexed games, scores fill in (never over one an admin typed), and
+   when every game has a result the week is final, its players are recorded, a "Week 7 is final" league event
+   goes out, and the next week is imported. A recap shows each player whether they're in, who went out and how
+   many are left.
+5. **The end:** one player left after a final week wins (a "pool over" league event). With several still in
+   after Week 18 the pool plays on through the playoffs; several still in after the Super Bowl share the title.
+
+Admins, in the League tab, can enter a pick for a player (it records that an admin did), correct a score at any
+time (everyone's status is worked out again; nothing is stored), and remove a cancelled game, which deletes the
+picks on it so those players can pick again. Reminders at 7pm the evening before a game day go to players still
+in with no pick yet.
 
 ### Leaving, removal, and limits
 
