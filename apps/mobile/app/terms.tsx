@@ -1,23 +1,32 @@
-import { SUPPORT_EMAIL } from "@picks/shared";
-import { Linking, Pressable, Text, View } from "react-native";
-import { BackLink } from "../src/components/BackLink";
-import { Icon } from "../src/components/Icon";
-import { Body, Card, colors, fonts, Screen, Title } from "../src/components/ui";
+import { DELETED_PLAYER_NAME, MINIMUM_AGE } from "@picks/shared";
+import { LegalPage, type LegalSection } from "../src/components/LegalPage";
 
-/** The Terms of use. Works signed out, like How to play. */
-const sections: [string, string[]][] = [
+/*
+ * The Terms of use. Works signed out, like How to play; the App Store listing links here. It describes what the
+ * app does today: when a rule, a limit or the moderation flow changes, change this text and `UPDATED` with it.
+ */
+const UPDATED = "November 17, 2026";
+
+const sections: LegalSection[] = [
   [
     "What POW Pick'em is",
     [
-      "A free pick'em game for private leagues of friends: you pick NFL games against the spread and compare results with your league. No money changes hands through the app.",
+      "Free NFL games for private leagues of friends: weekly and playoff pick'em against the spread, survivor, and squares. These terms cover the iPhone app and www.pow-pickem.com. By creating an account you agree to them.",
+      "It is for fun only. There are no entry fees, no prizes and no betting in the app, and no money changes hands through it. Spreads and win predictions are shown as information about the games, not as an offer to bet. Don't use POW Pick'em for gambling that is illegal where you live.",
     ],
   ],
   [
-    "League commissioners",
+    "Who can use it",
     [
-      "Every league is run by one or more commissioners: players in the league, starting with whoever created it, not the people who run POW Pick'em. A commissioner can make another member a commissioner, and a league always keeps at least one.",
-      "Commissioners set up the league's weeks and boards, can change spreads, point values and scores, close weeks, enter a survivor pick for a player and give back a square before a board locks. They manage the invite link, can remove a player from the league, and review reports about their league's members: they can remove messages and mute a member in their league. They never see your picks before the rest of the league does.",
-      "Reports about a commissioner, and about a league's name, go to the people who run POW Pick'em instead.",
+      `You must be ${MINIMUM_AGE} or older. Sign up with an email address that is yours, keep your password to yourself, and use one account per person. You're responsible for what happens on your account.`,
+    ],
+  ],
+  [
+    "Your league and its commissioners",
+    [
+      "Each league is run by its commissioners: players like you, starting with whoever created the league, not the people who run POW Pick'em. A league can have several, all with the same powers, and always keeps at least one; a commissioner can make another member a commissioner. In a league set to run itself, the app does the weekly chores.",
+      "Commissioners can edit spreads, point values and scores, close weeks, enter a survivor pick for a player, put a guest's name on a square, manage the invite link, remove members, and add a league's members to a new league they start. They review reports about their league's members and can remove messages and mute a member in their league. They never see your picks before the rest of the league does. We don't settle disagreements inside a league.",
+      "Pick'em picks stay private until the week is final; after that, everyone in the league sees them, with the results and the standings. A survivor pick shows once its game kicks off, and a squares board is open to the whole league.",
     ],
   ],
   [
@@ -30,71 +39,66 @@ const sections: [string, string[]][] = [
   [
     "How posts are checked",
     [
-      "Every new thread, reply, display name and league name is checked automatically before it is saved. What breaks these rules is refused.",
-      "Anyone can report a message or a name from its ⋯ menu, and block a player so their messages no longer show. We review reports within 24 hours. League commissioners can remove messages in their league.",
+      "Every new thread, reply, display name, league name and guest name is checked automatically before it is saved. What breaks these rules is refused.",
+      "Anyone can report a message or a name from its ⋯ menu, and block a player so their messages no longer show. We review reports within 24 hours. League commissioners can remove messages in their league; reports about a commissioner, or about a league's name, come to us instead.",
     ],
   ],
   [
     "What happens when the rules are broken",
     [
-      "Content that breaks these rules is removed. A player whose messages are removed twice in 30 days is muted for a day, and for a week after a third. The people who run POW Pick'em can turn posting off for an account.",
-      "None of this ever affects picking: a muted or suspended player keeps their picks, results and standings.",
+      "Content that breaks these rules is removed. A player whose messages are removed twice in 30 days is muted for a day, and for a week after a third. The people who run POW Pick'em can turn posting off for an account, and can close an account for serious or repeated abuse.",
+      "A mute or a posting suspension never affects picking: the player keeps their picks, results and standings.",
       "If you think a removal was a mistake, use Ask for a review on the removed message.",
+    ],
+  ],
+  [
+    "What you post",
+    [
+      "What you write stays yours. By posting it you let us store it, show it to the members of your league, and include it in the emails and notifications the league gets. Only post what you have the right to share.",
     ],
   ],
   [
     "Your account",
     [
-      "You're responsible for what you post. Picks stay private until the week is final. Email and notifications can be turned off in Settings.",
-      "You can delete your account any time from Settings → Delete account. Your email, name, devices and messages are deleted at once; picks from weeks already played stay in the results as Deleted player, so other players' standings don't change.",
+      "Email and notifications can be turned off in Settings. The Privacy policy says what we keep and who else handles it.",
+      `You can delete your account any time from Settings → Delete account. Your email, name, devices and messages are deleted at once; picks from weeks already played stay in the results as ${DELETED_PLAYER_NAME}, so other players' standings don't change.`,
+    ],
+  ],
+  [
+    "Schedules, scores and odds",
+    [
+      "Schedules, spreads, scores, stats, news and win predictions fill in automatically from an outside sports-data source. They can be late, missing or wrong, and league commissioners can change spreads and scores. Don't rely on them for anything beyond the game.",
+      "POW Pick'em is not affiliated with or endorsed by the NFL, its teams or the company whose data it shows. Team names and logos belong to their owners.",
+    ],
+  ],
+  [
+    "No guarantees",
+    [
+      "POW Pick'em is free and provided as it is. We work to keep it running and the results right, but we don't promise it will always be available or free of mistakes, and we may change it or shut it down.",
+      "As far as the law allows, we aren't liable for losses that come from using it or from not being able to use it. Nothing here takes away rights the law gives you that can't be waived.",
+    ],
+  ],
+  [
+    "The iPhone app and Apple",
+    [
+      "These terms are between you and POW Pick'em, not Apple. Apple isn't responsible for the app or what is in it, has no obligation to maintain or support it, and isn't a sponsor of anything in it. Apple's standard license agreement for App Store apps applies to the iPhone app as well, and Apple may enforce these terms as they relate to it.",
+    ],
+  ],
+  [
+    "Changes to these terms",
+    [
+      "When these terms change, we update this page and the date at the top, and tell you in the app or by email if the change matters. Using POW Pick'em after a change means you accept the new terms. You can stop at any time by deleting your account.",
     ],
   ],
 ];
 
 export default function TermsPage() {
   return (
-    <Screen narrow>
-      <BackLink />
-      <Title>Terms of use</Title>
-      <Card>
-        {sections.map(([heading, paragraphs], index) => (
-          <View
-            key={heading}
-            style={{
-              gap: 8,
-              paddingTop: index ? 16 : 0,
-              borderTopWidth: index ? 1 : 0,
-              borderTopColor: colors.border,
-            }}
-          >
-            <Text
-              accessibilityRole="header"
-              aria-level={2}
-              style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
-            >
-              {heading}
-            </Text>
-            {paragraphs.map((text) => (
-              <Body key={text} muted>
-                {text}
-              </Body>
-            ))}
-          </View>
-        ))}
-      </Card>
-      <Card>
-        <Body>Questions, or something we should know about?</Body>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
-          style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}
-        >
-          <Icon name="email" size={18} color={colors.primary} />
-          <Text style={{ fontFamily: fonts.medium, fontSize: 16, color: colors.primary }}>
-            {SUPPORT_EMAIL}
-          </Text>
-        </Pressable>
-      </Card>
-    </Screen>
+    <LegalPage
+      title="Terms of use"
+      updated={UPDATED}
+      sections={sections}
+      other={{ label: "Privacy policy", href: "/privacy" }}
+    />
   );
 }

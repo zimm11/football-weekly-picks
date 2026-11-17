@@ -401,7 +401,7 @@ Settings → **Delete account** (required by the App Store, guideline 5.1.1(v)) 
 past picks and rewrite everyone's standings. Instead one transaction clears what's personal: devices, queued email,
 blocks, reactions, read markers, picks in weeks that aren't final (survivor picks included), squares on boards
 that haven't locked, and the text of their messages (threads they
-started keep everyone's replies, titled "Thread from a deleted player"). They leave every league, and a league they
+started keep everyone's replies, titled "Thread from a deleted player"). Feedback they sent is kept without its sender. They leave every league, and a league they
 were the only member of is deleted. The profile becomes "Deleted player". Then Supabase Auth soft-deletes the user: the
 row stays as an anonymous anchor with a scrambled email and no sign-in, and the same email can sign up again as a new
 account. Picks from final weeks stay, so results and standings don't change. The account is refused from the moment
@@ -410,6 +410,25 @@ retries it. A league's only commissioner must make someone else a commissioner f
 
 It needs `SUPABASE_SECRET_KEY` (the project's secret key, for the Auth admin call); without it the app says deletion
 isn't available and points to support. `pnpm env:local` writes the local stack's key.
+
+Supabase Auth can also write an audit log to the database (`auth.audit_log_entries`), and a soft delete doesn't clear
+it: sign-ups, sign-ins and the deletion itself stay there with the email address. Production has that turned off
+(the table is empty); keep it off, or clear the deleted user's rows as part of deletion, because the Terms and the
+Privacy policy say the email is deleted at once. The local stack writes it.
+
+### Terms of use and Privacy policy
+
+`/terms` ([`apps/mobile/app/terms.tsx`](apps/mobile/app/terms.tsx)) and `/privacy`
+([`apps/mobile/app/privacy.tsx`](apps/mobile/app/privacy.tsx)) work signed out, in the app and on the website. The
+sign-in form, the name step and Settings link to both, and the App Store listing uses
+`https://www.pow-pickem.com/privacy` as its privacy policy URL. Players must be 18 or older (`MINIMUM_AGE` in
+`packages/shared`); the name step's checkbox says so.
+
+Both pages describe what the code does, so they change with it. Update the Privacy policy and its **Last updated**
+date whenever the app starts keeping something new about a player, adds a provider or an external host, sends a new
+kind of email or notification, changes how long something is kept (backups included), or changes what account deletion
+clears. The App Store's App Privacy answers ([`apps/mobile/README.md`](apps/mobile/README.md)) must match it. Neither
+page has been reviewed by a lawyer.
 
 ### Testing locks and inspecting data
 
@@ -449,8 +468,9 @@ thread and show the original author and text with a link back. You can remove a 
 
 Required for the App Store (guideline 1.2), and the same on the website:
 
-- **Terms of use** (`/terms`, works signed out). The first name step has an "I agree" checkbox; players who joined before
-  get a one-time sheet before their next post, reply or reaction. Settings links the Terms and `support@pow-pickem.com`.
+- **Terms of use** (`/terms`, works signed out). The first name step has an "I'm 18 or older and I agree" checkbox;
+  players who joined before get a one-time sheet before their next post, reply or reaction. Settings links the Terms, the
+  Privacy policy and `support@pow-pickem.com`.
 - **Screening.** Every new thread, reply, display name and league name goes to Cloudflare's Clef-flash model on Workers
   AI before it is saved ([`src/screening.ts`](apps/api/src/screening.ts)). The policy is plain English, so the repository
   holds no list of offensive words. There are two outcomes: block refuses it ("That doesn't meet the league's

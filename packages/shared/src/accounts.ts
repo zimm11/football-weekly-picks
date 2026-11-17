@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+/**
+ * How old a player must be, as the Terms of use, the Privacy policy and the sign-up checkbox say. Keep the App
+ * Store age rating in step with it.
+ */
+export const MINIMUM_AGE = 18;
+
 /*
  * Deleting an account (App Store guideline 5.1.1(v)). Personal data goes; results from weeks already played stay
  * under this name, so nobody else's standings change.
