@@ -569,9 +569,9 @@ app, a Hono API, and Supabase Auth + PostgreSQL.
 ```text
 Browser ── /api/* ──> Hono API ── Drizzle ──> PostgreSQL
    │                     │
-   ├── Supabase Auth     ├── verifies Supabase access tokens
-   └── ESPN image CDN    ├── ESPN scoreboard (imports and results)
-       (team logos)      └── ESPN game summary and news (matchup sheet)
+   └── Supabase Auth     ├── verifies Supabase access tokens
+                         ├── ESPN scoreboard (imports and results)
+                         └── ESPN game summary and news (matchup sheet)
 ```
 
 In development the Expo web preview calls the API directly (CORS limited to this checkout's Metro origin, and
@@ -606,7 +606,8 @@ each team's chance to win (ESPN's Matchup Predictor) come from ESPN's game summa
 news. Neither needs a key, both are cached in memory, and each section is read on its own: the sheet shows
 whatever arrived. A game added by hand has no ESPN stats. The sheet contains public background only, never
 this league's picks.
-Team logos are loaded by the browser from ESPN's image CDN (`a.espncdn.com`).
+Team badges are the app's own drawings (`apps/mobile/src/lib/teamBadges.ts`): a disc in the team's colors with a
+generic glyph, never a team's logo, so the browser loads no images from anyone else.
 
 The website has a manifest and icons so it can be installed to a home screen. A push-only service worker
 (`apps/mobile/public/push-sw.js`, served with `Cache-Control: no-cache` from `_headers`) shows notifications
@@ -652,7 +653,7 @@ starting Supabase, generating `.env`, and installing the browsers.
 | End-to-end                          | Playwright in `e2e/tests/`                                | Local Supabase, generated `.env`, Chromium, and WebKit                              |
 | Feed contracts                      | Vitest in `apps/api/test/contract/`                       | Network access to ESPN; run daily by `.github/workflows/contract.yml`               |
 
-ESPN's scoreboard, game summary, news and logo feeds are unofficial. The app reads them leniently, so a
+ESPN's scoreboard, game summary and news feeds are unofficial. The app reads them leniently, so a
 change empties part of the matchup sheet rather than breaking it, which also means nothing in the app
 notices. `pnpm test:contract` runs the app's own URLs, schemas and parsers against today's responses and
 fails on anything that would quietly empty or misread what players see: a missing field, an unknown team

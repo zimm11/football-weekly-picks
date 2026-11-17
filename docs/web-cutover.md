@@ -43,7 +43,7 @@ own origin (the CSP's `connect-src` allows only `'self'` and Supabase).
 
 - `curl -sI https://www.pow-pickem.com/` shows the CSP and HSTS; an `/_expo/static/js/web/entry-*.js` URL shows
   `Cache-Control: public, max-age=31536000, immutable`; `/push-sw.js` shows `no-cache`.
-- Sign in, open a week (team logos from `a.espncdn.com`), and check the browser console for CSP reports. One
+- Sign in, open a week, and check the browser console for CSP reports. One
   `script-src 'unsafe-eval'` report per load is expected and harmless: Zod probes `new Function("")` once to
   decide whether to compile its parsers, catches the refusal and falls back. apps/web's bundle did the same.
 - Request a password reset and a sign-up confirmation; both links must land on `www.pow-pickem.com`.

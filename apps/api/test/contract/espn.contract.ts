@@ -7,7 +7,7 @@
  * notices. These checks run the app's own URLs, schemas and parsers against today's real responses and fail
  * on anything that would quietly empty or corrupt what players see.
  */
-import { seasonYear, TEAM_ABBRS, teamLogoUrl } from "@picks/shared";
+import { seasonYear, TEAM_ABBRS } from "@picks/shared";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -405,23 +405,5 @@ describe("ESPN team news", () => {
       tags.some((a) => a.categories.some((c) => c.teamId === ids.home)),
       `No article in team ${ids.home}'s news is tagged with that team`,
     ).toBe(true);
-  });
-});
-
-// ---------- Team logos ----------
-
-describe("ESPN team logos", () => {
-  it("has a logo for every team at the address TeamLogo uses", async () => {
-    const missing: string[] = [];
-    await Promise.all(
-      TEAM_ABBRS.map(async (abbr) => {
-        const res = await fetchWithRetry(teamLogoUrl(abbr, 28));
-        const type = res.headers.get("content-type") ?? "";
-        await res.body?.cancel();
-        if (!res.ok || !type.startsWith("image/"))
-          missing.push(`${abbr} (HTTP ${res.status}, ${type || "no type"})`);
-      }),
-    );
-    expectNone(missing.sort(), "Teams whose logo doesn't load");
   });
 });
