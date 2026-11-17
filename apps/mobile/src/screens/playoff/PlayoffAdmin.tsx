@@ -74,8 +74,8 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
       <Card label="Playoff season">
         <Heading>{year} playoffs</Heading>
         <Label>
-          Rounds set themselves up from ESPN: the Wild Card round once the regular season ends, each round
-          open as soon as every game has a line, final once every game has a result.
+          Rounds set themselves up from the NFL schedule: the Wild Card round once the regular season ends,
+          each round open as soon as every game has a line, final once every game has a result.
         </Label>
         <ChoiceList
           label="Format"
@@ -110,7 +110,7 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
       <Card label="Rounds">
         <Heading>Rounds</Heading>
         {league.weeks.length === 0 && (
-          <Label>No round yet. The Wild Card round shows up once ESPN lists it.</Label>
+          <Label>No round yet. The Wild Card round shows up once its games are scheduled.</Label>
         )}
         <View>
           {[...league.weeks]
@@ -139,7 +139,9 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
               </Pressable>
             ))}
         </View>
-        <Label>If ESPN's feed fails, create a round by hand and run it from its manage screen.</Label>
+        <Label>
+          If the schedule doesn't come through, create a round by hand and run it from its manage screen.
+        </Label>
         <Select
           label="Round"
           value={round}
@@ -175,7 +177,7 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
             </Action>
             <PreferenceToggle
               small
-              label="Import games and spreads from ESPN"
+              label="Auto-fill games and spreads"
               checked={importGames}
               onChange={setImportGames}
               disabled={!!busy}

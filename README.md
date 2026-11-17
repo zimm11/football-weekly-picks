@@ -6,7 +6,7 @@ A league admin prepares each slate and publishes the results.
 
 The app supports regular-season weeks 1–18, invite-only leagues with shared administration, multiple
 seasons, private picks until finalization, and season standings with a week-by-week history. Each game has
-a matchup sheet with team stats, injuries, news, and prediction-market prices. Finalized weeks hand out
+a matchup sheet with team stats, injuries, news, and each team's chance to win. Finalized weeks hand out
 awards and name a Low Point Loser, and each league has a message board. The interface is phone-first and
 dark, and the website can be added to a phone's home screen. One Expo (React Native) app is both the website
 and the iPhone app.
@@ -239,7 +239,7 @@ tab for each.
    and 6 by itself (see "Automatic weekly pick'em" under League types).
 2. Open **League**, select an unused week, and press **Create week**. To prepare another year, choose
    **Start a new season** in the season selector; the season is created with its first week. Existing
-   weeks open with **Manage week**. With **Import games and spreads from ESPN** checked, creation
+   weeks open with **Manage week**. With **Auto-fill games and spreads** checked, creation
    fetches the slate from ESPN and opens the draft's management screen. Imports need internet access.
 3. Review kickoffs, spreads, point values, and the tiebreaker game. Add or remove games as needed and
    press **Save changes** after edits. Kickoffs you type are in the league's time zone, and a game whose
@@ -248,14 +248,14 @@ tab for each.
    message announcing it; you can edit the draft or skip it.
 4. Follow **Make your own picks**, or open **Picks**. Select teams, mark one POW, enter a guess for the
    tiebreaker game's combined score, and press **Save picks**. A partial sheet can be saved and completed
-   later. **Stats, news & market** on a game opens its matchup sheet. Then try the player account. The
+   later. **Stats & news** on a game opens its matchup sheet. Then try the player account. The
    admin's management screen shows submission counts and whether a POW was chosen; other players'
    choices remain private.
 5. As each game ends, its result fills in on its own from ESPN the next time anyone opens the week
    (checked at most once a minute), and each player's sheet marks their pick **Won** (with the points
    earned), **Lost**, or **Push** and keeps a **Your week so far** tally. An open pick sheet refreshes
-   itself every minute while games are in progress. To fetch results right away, press **Pull results
-   from ESPN** in **Manage week**; it replaces any hand-entered score. Or enter both scores for
+   itself every minute while games are in progress. To fetch results right away, press **Auto-fill
+   results** in **Manage week**; it replaces any hand-entered score. Or enter both scores for
    each game and press **Save changes**; automatic results never overwrite a score typed in by hand. Score boxes appear once a game kicks off; before that, press
    **Enter score** on the game to record a result early. Results imports update games originally imported from ESPN;
    manually added games need manually entered scores. Recording a result closes that game to picks
@@ -340,8 +340,8 @@ guess the Super Bowl's total; a player who joins after a round locked has no POW
 has the most points, then most wins, then the closest Super Bowl total guess (on equal distance, the one that
 didn't go over; players still level share it). There's no round winner or Low Point Loser. Standings show the overall table (a status column
 in Guillotine, "In" or "Out: Divisional") and the champion after the Super Bowl; each round has its recap. If
-ESPN's feed fails, the League tab's **Rounds** card creates a round by hand, and its manage screen keeps Import,
-Open and Finalize.
+ESPN's feed fails, the League tab's **Rounds** card creates a round by hand, and its manage screen keeps
+Auto-fill, Open and Finalize.
 
 #### Survivor
 
@@ -547,7 +547,7 @@ Browser ── /api/* ──> Hono API ── Drizzle ──> PostgreSQL
    │                     │
    ├── Supabase Auth     ├── verifies Supabase access tokens
    └── ESPN image CDN    ├── ESPN scoreboard (imports and results)
-       (team logos)      └── ESPN game summary + Kalshi markets (matchup sheet)
+       (team logos)      └── ESPN game summary and news (matchup sheet)
 ```
 
 In development the Expo web preview calls the API directly (CORS limited to this checkout's Metro origin, and
@@ -577,10 +577,11 @@ contracts live in `packages/shared`. Keep Hono routes chained so the client reta
 ESPN imports use a public, unofficial scoreboard feed with no API key. It may omit spreads or change shape;
 the admin can enter games, spreads, and scores manually. Imports and score pulls are explicit admin actions.
 
-The matchup sheet loads on demand from `GET /api/games/:gameId/insights`. Team form, injuries, leaders, and
-news come from ESPN's game summary; win and cover prices come from Kalshi's public market API. Neither needs
-a key, both are cached in memory, and either can fail on its own: the sheet shows whatever arrived. A game
-added by hand has no ESPN stats. The sheet contains public background only, never this league's picks.
+The matchup sheet loads on demand from `GET /api/games/:gameId/insights`. Team form, injuries, leaders and
+each team's chance to win (ESPN's Matchup Predictor) come from ESPN's game summary, and headlines from its team
+news. Neither needs a key, both are cached in memory, and each section is read on its own: the sheet shows
+whatever arrived. A game added by hand has no ESPN stats. The sheet contains public background only, never
+this league's picks.
 Team logos are loaded by the browser from ESPN's image CDN (`a.espncdn.com`).
 
 The website has a manifest and icons so it can be installed to a home screen. A push-only service worker
@@ -607,7 +608,7 @@ Run workspace commands from the repository root:
 | `pnpm test:e2e`      | Run full-stack Playwright tests against the local Worker                                  |
 | `pnpm test:e2e:ui`   | Open Playwright's interactive test runner                                                 |
 | `pnpm test:all`      | Run `pnpm test` followed by E2E tests                                                     |
-| `pnpm test:contract` | Check ESPN's and Kalshi's live feeds against what the app reads                           |
+| `pnpm test:contract` | Check ESPN's live feeds against what the app reads                                        |
 | `pnpm mobile:check`  | Type-check and test the Expo app                                                          |
 | `pnpm mobile:export` | Export the iOS JavaScript bundle (catches native-only bundling errors)                    |
 | `pnpm icons`         | Redraw the app icons in `apps/mobile/public` after changing `scripts/icons.mjs`           |
@@ -625,17 +626,14 @@ starting Supabase, generating `.env`, and installing the browsers.
 | API                                 | Vitest + `app.request()` in `apps/api/test/`              | Database suites require local Supabase and `DATABASE_URL`; they skip if it is unset |
 | App logic                           | Vitest (Node) in `apps/mobile/src/**/*.test.ts`           | No running services                                                                 |
 | End-to-end                          | Playwright in `e2e/tests/`                                | Local Supabase, generated `.env`, Chromium, and WebKit                              |
-| Feed contracts                      | Vitest in `apps/api/test/contract/`                       | Network access to ESPN and Kalshi; run daily by `.github/workflows/contract.yml`    |
+| Feed contracts                      | Vitest in `apps/api/test/contract/`                       | Network access to ESPN; run daily by `.github/workflows/contract.yml`               |
 
 ESPN's scoreboard, game summary, news and logo feeds are unofficial. The app reads them leniently, so a
 change empties part of the matchup sheet rather than breaking it, which also means nothing in the app
 notices. `pnpm test:contract` runs the app's own URLs, schemas and parsers against today's responses and
 fails on anything that would quietly empty or misread what players see: a missing field, an unknown team
-abbreviation, a spread with the wrong sign, an empty week. Kalshi's API is documented, but the app relies on
-conventions it doesn't promise (event tickers built from the kickoff date and team codes, spread strikes on
-the half point), and a ticker it doesn't list comes back as an empty list rather than an error. So the same
-checks look up the games kicking off in the next three days on Kalshi exactly as the app does, and check
-that its prices agree with ESPN about who is favored. The daily workflow opens a GitHub issue (label
+abbreviation, a spread with the wrong sign, an empty week, a win prediction that no longer names the game's
+teams. The daily workflow opens a GitHub issue (label
 `feed-contract`) when a check fails and closes it when they pass again.
 
 E2E always tests the production build in the Workers runtime, as CI does: it starts `pnpm worker:dev` (the
@@ -873,7 +871,7 @@ What alerts you:
 | Worker errors and exceptions              | Cloudflare Notifications, "POW Pick'em: Worker issues" (Workers Observability real-time issues)                |
 | HTTP DDoS mitigations, certificate events | Cloudflare Notifications, "POW Pick'em: HTTP DDoS" and "POW Pick'em: certificate"                              |
 | Spend reaching $10 (then error 1103)      | Cloudflare's budget alert; the Workers spend limit blocks `/api/*` and the cron at $10                         |
-| ESPN or Kalshi changing shape             | [`contract.yml`](.github/workflows/contract.yml) opens a `feed-contract` issue                                 |
+| ESPN changing shape                       | [`contract.yml`](.github/workflows/contract.yml) opens a `feed-contract` issue                                 |
 | Vulnerable dependencies                   | Dependabot alerts and security-update PRs ([`dependabot.yml`](.github/dependabot.yml))                         |
 
 Cloudflare Notifications email the account address; manage them under **Manage account → Notifications**.
@@ -951,7 +949,7 @@ pbpaste | node scripts/check-db-url.mjs
 | A new week has no import or a missing spread            | ESPN may have no schedule or odds for that week. Retry the import while still in draft, or add/edit games manually.   |
 | Picks are locked in an imported week                    | Locks follow actual kickoffs. Use manually added future games to test picking.                                        |
 | Finalize week is unavailable                            | Every game needs both final scores. Enter scores for manually added games; ESPN results only update imported games.   |
-| The matchup sheet is empty or missing a section         | ESPN or Kalshi had nothing for the game or didn't answer. Manually added games have no ESPN stats.                    |
+| The matchup sheet is empty or missing a section         | ESPN had nothing for the game or didn't answer. Manually added games have no ESPN stats.                              |
 | A password reset email never arrives locally            | Local Auth doesn't send real email. Open the test inbox URL from `pnpm ports`.                                        |
 | Production health or migration connection check fails   | Check the session pooler URL, verified TLS, and Supabase SSL enforcement. Use the connection diagnostic above.        |
 

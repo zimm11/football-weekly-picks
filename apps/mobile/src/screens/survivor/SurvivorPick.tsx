@@ -238,7 +238,7 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
           </View>
         </View>
       )}
-      <MatchupSheet game={insight} timeZone={view.timeZone} winOnly onClose={() => setInsight(null)} />
+      <MatchupSheet game={insight} timeZone={view.timeZone} onClose={() => setInsight(null)} />
     </View>
   );
 }
@@ -348,7 +348,7 @@ function GameCard({
         style={({ pressed }) => [st.insights, pressed && { backgroundColor: colors.raised }]}
       >
         <Icon name="chart" size={16} color={colors.mutedForeground} filled />
-        <Text style={[st.disclosure, { flex: 1 }]}>Stats, news & market</Text>
+        <Text style={[st.disclosure, { flex: 1 }]}>Stats & news</Text>
         <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
       </Pressable>
     </View>

@@ -109,7 +109,7 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
         <Heading>No {unit} is open</Heading>
         <Label>
           {league.type === "playoff"
-            ? "Each round opens by itself once ESPN lists its games and lines, starting with the Wild Card round after the regular season ends."
+            ? "Each round opens by itself once its games and lines are posted, starting with the Wild Card round after the regular season ends."
             : automatic
               ? league.weeks.length
                 ? "The next week opens by itself on Tuesday at 9 AM Eastern, with that morning's lines."

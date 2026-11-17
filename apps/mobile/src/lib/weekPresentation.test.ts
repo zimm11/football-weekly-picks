@@ -107,7 +107,7 @@ describe("native week presentation behavior", () => {
       needsTotal: false,
     });
   });
-  it("expresses a home-stored market line as the favorite without reversing its meaning", () => {
+  it("expresses a home-stored line as the favorite without reversing its meaning", () => {
     expect(favoriteLine(game("a"), 3.5)).toBe("Cowboys -3.5");
     expect(favoriteLine(game("a"), -3.5)).toBe("Eagles -3.5");
     expect(favoriteLine(game("a"), 0)).toBe("Pick'em");

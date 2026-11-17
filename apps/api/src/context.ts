@@ -37,7 +37,7 @@ export type AppDeps = {
   publicConfig: PublicConfig;
   /** Source of schedules, spreads and results. */
   nfl: NflProvider;
-  /** Source of team stats, news and prediction-market prices. Without one, games carry no insights. */
+  /** Source of team stats, news and win predictions. Without one, games carry no insights. */
   insights?: InsightsProvider;
   /** Injected so tests can pin the clock that pick locks are measured against. */
   now?: () => Date;

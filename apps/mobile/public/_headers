@@ -11,7 +11,7 @@
 # - connect-src *.supabase.co: Supabase Auth. Local Supabase (127.0.0.1/localhost) is listed so `pnpm worker:dev`
 #   and the E2E tests against the Worker work with the same file.
 # - worker-src 'self': the push service worker (push-sw.js).
-# Links out (ESPN, Kalshi) are plain navigations, which the policy doesn't restrict.
+# Links out (ESPN) are plain navigations, which the policy doesn't restrict.
 # HSTS without includeSubDomains or preload, by choice.
 /*
   Strict-Transport-Security: max-age=15552000

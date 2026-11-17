@@ -21,7 +21,7 @@ import { HowToPlaySurvivor } from "../src/screens/survivor/HowToPlaySurvivor";
 const playerSteps = [
   [
     "Open Picks and choose your sides",
-    "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. Stats, news & market under a game opens team form, injuries, news, and prediction-market prices for it. If there is no open week, the next one opens on Tuesday morning in a league that runs itself, or when your admin opens it.",
+    "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. Stats & news under a game opens team form, injuries, news, and each team's chance of winning. If there is no open week, the next one opens on Tuesday morning in a league that runs itself, or when your admin opens it.",
   ],
   [
     "Choose your POW and tiebreaker",
@@ -40,7 +40,7 @@ const playerSteps = [
 const adminSteps = [
   [
     "Set up a draft week",
-    "Choose the Season above the league tabs. To begin another year, select Start a new season and enter its starting year. In the League tab, select a week (1–18) and press Create week; existing weeks open with Manage week instead. The season choice carries across Picks, Results, Standings, and League. Leave Import games and spreads from ESPN checked to load the slate, or add games by hand. You land on Manage week; drafts are visible only to admins.",
+    "Choose the Season above the league tabs. To begin another year, select Start a new season and enter its starting year. In the League tab, select a week (1–18) and press Create week; existing weeks open with Manage week instead. The season choice carries across Picks, Results, Standings, and League. Leave Auto-fill games and spreads checked to load the slate, or add games by hand. You land on Manage week; drafts are visible only to admins.",
   ],
   [
     "Review the slate, then open picks",
@@ -52,11 +52,11 @@ const adminSteps = [
   ],
   [
     "Record scores and finalize the week",
-    "Results for games imported from ESPN fill in on their own as each game ends, whenever someone has the week open. To fetch them right away, press Pull results from ESPN in Manage week; it replaces any score typed in by hand. Or enter scores and press Save changes; a score you type is never overwritten automatically. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Pulling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
+    "Results for auto-filled games fill in on their own as each game ends, whenever someone has the week open. To fetch them right away, press Auto-fill results in Manage week; it replaces any score typed in by hand. Or enter scores and press Save changes; a score you type is never overwritten automatically. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Auto-filling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
   ],
   [
     "Correct results when needed",
-    "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't pulled from ESPN again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, other players' picks are hidden and the week is excluded from standings.",
+    "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't auto-filled again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, other players' picks are hidden and the week is excluded from standings.",
   ],
 ];
 /** What every league shares, whatever its game. */
