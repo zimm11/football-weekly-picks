@@ -56,8 +56,14 @@ test("a board locks itself at kickoff and pays four quarters, an empty square's 
 
   // Numbers read "?" until the draw. Claim one square.
   await expect(page.getByLabel("Seahawks ?", { exact: true })).toHaveCount(10);
+  // The square shows as yours at once (optimistically), so wait for the API's answer before moving the clock:
+  // a claim still in flight when the clock passes kickoff would be refused.
+  const saved = page.waitForResponse(
+    (res) => res.request().method() === "PUT" && /\/squares\/0\/0$/.test(new URL(res.url()).pathname),
+  );
   await page.getByRole("button", { name: "Open square, row 1, column 1", exact: true }).click();
   await expect(page.getByRole("button", { name: "Your square, row 1, column 1", exact: true })).toBeVisible();
+  expect((await saved).ok()).toBe(true);
   await expect(page.getByRole("region", { name: "Your squares" })).toContainText("1 of 10");
 
   // Kickoff, and nobody locked the board: reading it locks it and draws the numbers.

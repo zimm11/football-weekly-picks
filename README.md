@@ -395,7 +395,8 @@ address (a change is confirmed from both the old and the new address).
 Settings → **Delete account** (required by the App Store, guideline 5.1.1(v)) asks for the password and deletes at once
 (`DELETE /api/me`, `src/accounts.ts`). Every table points at `auth.users`, so a plain delete would erase the player's
 past picks and rewrite everyone's standings. Instead one transaction clears what's personal: devices, queued email,
-blocks, reactions, read markers, picks in weeks that aren't final, and the text of their messages (threads they
+blocks, reactions, read markers, picks in weeks that aren't final (survivor picks included), squares on boards
+that haven't locked, and the text of their messages (threads they
 started keep everyone's replies, titled "Thread from a deleted player"). They leave every league, and a league they
 were the only member of is deleted. The profile becomes "Deleted player". Then Supabase Auth soft-deletes the user: the
 row stays as an anonymous anchor with a scrambled email and no sign-in, and the same email can sign up again as a new

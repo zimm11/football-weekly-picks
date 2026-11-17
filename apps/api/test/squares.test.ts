@@ -10,7 +10,13 @@ import {
   squareClaims,
   squareScores,
 } from "@picks/db";
-import type { BoardSummary, BoardView, CreateLeagueResult, RandomSource } from "@picks/shared";
+import {
+  type BoardSummary,
+  type BoardView,
+  type CreateLeagueResult,
+  MODERATION_MESSAGES,
+  type RandomSource,
+} from "@picks/shared";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
@@ -21,6 +27,7 @@ import { type EmailDeps, queueReminders } from "../src/outbox";
 import { queuePickPush } from "../src/pushQueue";
 import type { PushSender } from "../src/pushSender";
 import { reminderStillApplies } from "../src/reminderTargets";
+import type { Screener } from "../src/screening";
 import { providerWeeks } from "../src/weekOps";
 
 const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: "test" };
@@ -85,9 +92,15 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
     limits: { daily: 10_000, monthly: 100_000 },
   };
   const push: PushSender = { publicKey: `B${"a".repeat(86)}`, send: vi.fn(async () => "sent" as const) };
+  /** Screening, faked: the placeholder `forbiddenword` is blocked, everything else allowed. */
+  const screener: Screener = {
+    screen: async ({ text }) =>
+      text.includes("forbiddenword") ? { allow: 0.05, block: 0.95 } : { allow: 0.95, block: 0.05 },
+  };
   // Nothing is sent after the response: the tests read what was queued.
   const build = () =>
     createApp({
+      screener,
       db,
       verifyToken,
       publicConfig,
@@ -318,6 +331,24 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
     expect((await call(PAT, "DELETE", `/boards/${boardId}/squares/2/0`)).status).toBe(200);
     expect((await call(ADMIN, "DELETE", `/boards/${boardId}/squares/0/2`)).status).toBe(200);
     expect((await call(PAT, "DELETE", `/boards/${boardId}/squares/0/2`)).status).toBe(409);
+  });
+
+  it("screens a guest's name like any name players see, and only for an admin", async () => {
+    const leagueId = await squaresLeague("Guest names");
+    const boardId = await manualBoard(leagueId);
+    const refused = await claim(ADMIN, boardId, 0, 0, "forbiddenword");
+    expect(refused.status).toBe(400);
+    expect((refused.body as unknown as { error: string }).error).toBe(MODERATION_MESSAGES.rejectedName);
+    expect(await db.select().from(squareClaims).where(eq(squareClaims.boardId, boardId))).toEqual([]);
+    // A member is turned away before anything is screened.
+    expect((await claim(PAT, boardId, 0, 0, "forbiddenword")).status).toBe(403);
+    expect((await claim(ADMIN, boardId, 0, 0, "Uncle Ray")).status).toBe(200);
+    // A suspended admin can't put a name in front of the league.
+    await db.update(profiles).set({ suspendedAt: now }).where(eq(profiles.userId, ADMIN));
+    expect((await claim(ADMIN, boardId, 1, 1, "Aunt May")).status).toBe(403);
+    await db.update(profiles).set({ suspendedAt: null }).where(eq(profiles.userId, ADMIN));
+    // Their own square needs no name, so nothing is screened.
+    expect((await claim(ADMIN, boardId, 1, 1)).status).toBe(200);
   });
 
   it("draws once, however many admins press Lock and draw", async () => {

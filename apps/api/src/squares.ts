@@ -16,6 +16,7 @@ import {
   cryptoRandom,
   currentSquare,
   drawDigits,
+  MODERATION_MESSAGES,
   type RandomSource,
   SQUARE_PERIOD_LABEL,
   SQUARE_PERIODS,
@@ -45,6 +46,7 @@ import {
   type Tx,
 } from "./context";
 import { deliverLeagueEventsSoon, type LeagueEventDeps, queueLeagueEvent } from "./leagueEvents";
+import { requireNotSuspended, screen } from "./moderation";
 import type { ProviderGame } from "./nfl";
 import type { AppServices } from "./services";
 import type { LeagueTypeHooks } from "./typeHooks";
@@ -491,6 +493,17 @@ export function squaresRoutes(deps: AppDeps, services: AppServices) {
         const { guestName } = c.req.valid("json");
         const userId = c.var.user.id;
         const now = clock();
+        if (guestName !== undefined) {
+          // A guest's name is a name every member sees, so it is screened like one, before the board is locked
+          // (the model is a network call). Admins only, checked first so nobody else can spend a screening.
+          requireAdmin((await requireBoard(db, boardId, userId)).role);
+          await requireNotSuspended(db, userId);
+          await screen(
+            deps.screener,
+            { kind: "display_name", text: guestName },
+            MODERATION_MESSAGES.rejectedName,
+          );
+        }
         const view = await db.transaction(async (tx) => {
           const ctx = await lockedBoard(tx, boardId, userId);
           if (guestName !== undefined) requireAdmin(ctx.role);
