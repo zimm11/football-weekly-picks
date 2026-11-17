@@ -17,6 +17,7 @@ import {
   type LeagueDetail,
   MAX_LEAGUE_MEMBERS,
   MAX_LEAGUES_PER_USER,
+  MESSAGE_BODY_MAX,
   type Me,
   type MessageReaction,
   type MessageThread,
@@ -386,7 +387,9 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     const base = `/leagues/${leagueId}/messages`;
     expect((await call(OUTSIDER, "GET", base)).status).toBe(404);
     expect((await call(PLAYER, "POST", base, { title: " ", body: "hello" })).status).toBe(400);
-    expect((await call(PLAYER, "POST", base, { title: "Hi", body: "x".repeat(5001) })).status).toBe(400);
+    expect(
+      (await call(PLAYER, "POST", base, { title: "Hi", body: "x".repeat(MESSAGE_BODY_MAX + 1) })).status,
+    ).toBe(400);
     const created = await call<{ id: string }>(PLAYER, "POST", base, {
       title: "  Discussion  ",
       body: "Hello league",

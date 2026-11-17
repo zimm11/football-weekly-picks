@@ -1,6 +1,10 @@
+import { createThreadSchema, MESSAGE_BODY_MAX, THREAD_TITLE_MAX } from "@picks/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   clefScreener,
+  MAX_CONTEXT_ITEM,
+  MAX_CONTEXT_ITEMS,
+  MAX_SCREEN_TEXT,
   parseScreening,
   REPORT_MODEL,
   SCREENING_CRITERIA,
@@ -44,8 +48,23 @@ describe("screeningRequest", () => {
   });
 
   it("caps what it sends", () => {
-    const request = screeningRequest({ kind: "reply", text: "a".repeat(10_000) }, SCREENING_MODEL);
-    expect(JSON.parse(request.state).text).toHaveLength(6000);
+    const request = screeningRequest(
+      { kind: "reply", text: "a".repeat(10_000), context: Array(10).fill("b".repeat(5000)) },
+      SCREENING_MODEL,
+    );
+    const state = JSON.parse(request.state);
+    expect(state.text).toHaveLength(MAX_SCREEN_TEXT);
+    expect(state.context).toHaveLength(MAX_CONTEXT_ITEMS);
+    for (const item of state.context) expect(item).toHaveLength(MAX_CONTEXT_ITEM);
+  });
+
+  it("sends the longest thread the API accepts whole", () => {
+    const thread = createThreadSchema.parse({
+      title: "t".repeat(THREAD_TITLE_MAX),
+      body: "b".repeat(MESSAGE_BODY_MAX),
+    });
+    const text = `${thread.title}\n\n${thread.body}`;
+    expect(JSON.parse(screeningRequest({ kind: "thread", text }, SCREENING_MODEL).state).text).toBe(text);
   });
 });
 

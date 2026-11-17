@@ -28,7 +28,7 @@ import { weekRoutes } from "./weeks";
 
 export type { AppDeps } from "./context";
 
-/** Largest request body accepted. The biggest real one, a 5,000-character message, is well under it. */
+/** Largest request body accepted. The biggest real one, a 2,000-character message (`MESSAGE_BODY_MAX`), is well under it. */
 export const MAX_BODY_BYTES = 64 * 1024;
 
 /**

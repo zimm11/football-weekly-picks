@@ -1,4 +1,4 @@
-import type { ScreeningScores } from "@picks/shared";
+import { MESSAGE_BODY_MAX, type ScreeningScores, THREAD_TITLE_MAX } from "@picks/shared";
 import { z } from "zod";
 import { logError } from "./logging";
 
@@ -31,8 +31,15 @@ export const SCREENING_MODEL = "@cf/cloudflare/clef-flash";
 export const REPORT_MODEL = "@cf/cloudflare/clef";
 /** A post waits at most this long for the model before it is saved unchecked. */
 export const SCREENING_TIMEOUT_MS = 1500;
-/** Generous cap on what is sent; a message is at most 5,000 characters. */
-const MAX_TEXT = 6000;
+/*
+ * The most text one check sends, since the model is paid per token. The API already refuses anything longer
+ * (`MESSAGE_BODY_MAX` and friends in `packages/shared`); these also bound posts saved under an older, longer limit.
+ * The longest text is a new thread: its title, a blank line, then its first message.
+ */
+export const MAX_SCREEN_TEXT = THREAD_TITLE_MAX + 2 + MESSAGE_BODY_MAX;
+/** Context is for meaning only, so a little of each earlier message is enough. */
+export const MAX_CONTEXT_ITEM = 500;
+export const MAX_CONTEXT_ITEMS = 6;
 
 const KIND_WORDS: Record<ScreenKind, string> = {
   thread: "a new thread (its title, then its first message)",
@@ -55,8 +62,10 @@ export function screeningRequest(input: ScreenInput, model: string) {
     model: model.split("/").at(-1),
     state: JSON.stringify({
       kind: input.kind,
-      text: input.text.slice(0, MAX_TEXT),
-      ...(input.context?.length && { context: input.context.map((c) => c.slice(0, 1000)) }),
+      text: input.text.slice(0, MAX_SCREEN_TEXT),
+      ...(input.context?.length && {
+        context: input.context.slice(0, MAX_CONTEXT_ITEMS).map((c) => c.slice(0, MAX_CONTEXT_ITEM)),
+      }),
     }),
     questions: {
       verdict: {
