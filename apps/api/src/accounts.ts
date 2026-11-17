@@ -214,6 +214,7 @@ async function deleteAccountData(tx: Tx, userId: string, deletedLeagues: string[
 
   const anonymous = {
     displayName: DELETED_PLAYER_NAME,
+    avatarId: null,
     emailNewThreads: false,
     emailPickReminders: false,
     emailLeagueEvents: false,

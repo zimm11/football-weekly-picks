@@ -52,7 +52,7 @@ export function BoardRows({
           ]}
           onPress={() => onOpen(thread.id)}
         >
-          <Avatar name={thread.authorName} />
+          <Avatar avatarId={thread.avatarId} name={thread.authorName} />
           <View style={p.boardContent}>
             <View style={p.titleRow}>
               <Text style={[p.rowTitle, { fontFamily: thread.unread ? fonts.semibold : fonts.medium }]}>

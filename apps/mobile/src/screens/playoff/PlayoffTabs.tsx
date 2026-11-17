@@ -109,7 +109,7 @@ export function PlayoffStandings({ league, year, userId, header, reload }: Leagu
                     >
                       {entry.rank}
                     </Text>
-                    <Avatar name={entry.displayName} size={28} />
+                    <Avatar avatarId={entry.avatarId} name={entry.displayName} size={28} />
                     <Text
                       numberOfLines={2}
                       style={[s.text, { flex: 1, fontSize: 14, lineHeight: 18, fontFamily: fonts.medium }]}

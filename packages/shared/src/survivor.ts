@@ -392,6 +392,7 @@ export type SurvivorView = {
   players: {
     userId: string;
     displayName: string;
+    avatarId?: number | null;
     /** No longer in the league. */
     removed: boolean;
     alive: boolean;

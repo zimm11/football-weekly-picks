@@ -14,7 +14,13 @@ function TabBoard({ boardId, userId }: { boardId: string; userId: string }) {
   const board = useBoard(boardId);
   const { me } = useAuth();
   return (
-    <BoardPanel boardId={boardId} board={board} userId={userId} displayName={me?.displayName ?? "You"} />
+    <BoardPanel
+      boardId={boardId}
+      board={board}
+      userId={userId}
+      avatarId={me?.avatarId}
+      displayName={me?.displayName ?? "You"}
+    />
   );
 }
 

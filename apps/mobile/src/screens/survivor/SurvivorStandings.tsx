@@ -145,7 +145,7 @@ function CellContent({ cell }: { cell: GridCell }) {
 function PlayerName({ view, player, mine }: { view: SurvivorView; player: SurvivorPlayer; mine: boolean }) {
   return (
     <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flex: 1 }}>
-      <Avatar name={player.displayName} size={28} />
+      <Avatar avatarId={player.avatarId} name={player.displayName} size={28} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text
           numberOfLines={1}

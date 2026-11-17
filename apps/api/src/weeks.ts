@@ -127,6 +127,7 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at
         ...e,
         ...(playoff && { isWinner: false }),
         displayName: participants.get(e.userId)?.displayName ?? "Player",
+        avatarId: participants.get(e.userId)?.avatarId,
         removed: participants.get(e.userId)?.removedAt != null,
       })),
       picks: pickRows
@@ -158,6 +159,7 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at
             return {
               userId: m.userId,
               displayName: m.displayName,
+              avatarId: m.avatarId,
               pickCount: mine.length,
               hasPow: mine.some((p) => p.isPow),
             };

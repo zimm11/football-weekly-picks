@@ -257,6 +257,7 @@ export function playoffRoutes(
           const entries = playoffStandings({ rounds, userIds, format, now: now() }).map((e) => ({
             ...e,
             displayName: memberOf.get(e.userId)?.displayName ?? "Player",
+            avatarId: memberOf.get(e.userId)?.avatarId,
             removed: memberOf.get(e.userId)?.removedAt != null,
           }));
           const superBowl = rounds.find((r) => r.number === SUPER_BOWL_ROUND);

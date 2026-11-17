@@ -281,6 +281,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(ADMIN, "GET", "/me")).body).toEqual({
       id: ADMIN,
       displayName: null,
+      avatarId: null,
       isOperator: false,
       notifications: { newThreads: true, pickReminders: true, leagueEvents: true },
       moderation: { termsAccepted: false, mutedUntil: null, suspended: false },
@@ -340,6 +341,18 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(detail.body).toMatchObject({ role: "member", inviteCode: null });
     expect(detail.body.members.map((m) => m.displayName)).toEqual(["Commish", "Pat"]);
     expect((await call(PLAYER, "GET", "/invites/bogus")).status).toBe(404);
+  });
+
+  it("keeps a player's logo through name edits, shares it with members and restores initials", async () => {
+    const save = (avatarId: unknown) => call(PLAYER, "PUT", "/me/avatar", { avatarId });
+    expect((await save(100)).status).toBe(200);
+    for (const invalid of [0, 101, 1.5, "1"]) expect((await save(invalid)).status).toBe(400);
+    expect((await call<Me>(PLAYER, "PUT", "/me", { displayName: "Pat" })).body.avatarId).toBe(100);
+    const members = (await call<LeagueDetail>(ADMIN, "GET", `/leagues/${leagueId}`)).body.members;
+    expect(members.find((m) => m.userId === PLAYER)?.avatarId).toBe(100);
+    expect(members.find((m) => m.userId === ADMIN)?.avatarId).toBeNull();
+    expect((await save(null)).status).toBe(200);
+    expect((await call<Me>(PLAYER, "GET", "/me")).body.avatarId).toBeNull();
   });
 
   it("uses the injected clock for joins and rejoins while enforcing membership limits", async () => {
@@ -1194,8 +1207,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     const adminView = (await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body;
     expect(adminView.results).toBeNull();
     expect(adminView.submissions).toEqual([
-      { userId: ADMIN, displayName: "Commish", pickCount: 2, hasPow: true },
-      { userId: PLAYER, displayName: "Pat", pickCount: 2, hasPow: true },
+      { userId: ADMIN, displayName: "Commish", avatarId: null, pickCount: 2, hasPow: true },
+      { userId: PLAYER, displayName: "Pat", avatarId: null, pickCount: 2, hasPow: true },
     ]);
 
     const standings = (await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings`)).body;

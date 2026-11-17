@@ -380,7 +380,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }}
                 >
                   <View role="cell" style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Avatar name={entry.displayName} size={24} />
+                    <Avatar avatarId={entry.avatarId} name={entry.displayName} size={24} />
                     <Text style={[s.text, { flex: 1, fontSize: 14, fontFamily: fonts.medium }]}>
                       {entry.displayName}
                     </Text>

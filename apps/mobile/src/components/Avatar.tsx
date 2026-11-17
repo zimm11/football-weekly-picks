@@ -1,4 +1,5 @@
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
+import { logoById } from "../lib/profileLogos";
 import { colors, fonts } from "./theme";
 
 /** A player's initials, as their avatar shows them. */
@@ -16,8 +17,26 @@ export function avatarColor(name: string) {
   return colors.avatars[Math.abs(hash) % colors.avatars.length];
 }
 
-export function Avatar({ name, size = 32 }: { name: string; size?: number | "sm" | "md" }) {
+export function Avatar({
+  name,
+  avatarId,
+  size = 32,
+}: {
+  name: string;
+  avatarId?: number | null;
+  size?: number | "sm" | "md";
+}) {
   const diameter = typeof size === "number" ? size : size === "sm" ? 24 : 32;
+  const logo = avatarId == null ? undefined : logoById.get(avatarId);
+  if (logo)
+    return (
+      <Image
+        accessible={false}
+        aria-hidden
+        source={logo.source}
+        style={{ width: diameter, height: diameter, borderRadius: diameter / 2, flexShrink: 0 }}
+      />
+    );
   return (
     <View
       accessible={false}

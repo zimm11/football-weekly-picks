@@ -140,6 +140,7 @@ export function messageRoutes({
         thread: messageThreads,
         position: sql<string>`${updatedAtMicros}::text`,
         authorName: profiles.displayName,
+        avatarId: profiles.avatarId,
         readVersion: messageReads.version,
       })
       .from(messageThreads)
@@ -152,12 +153,13 @@ export function messageRoutes({
       .orderBy(desc(messageThreads.pinned), desc(messageThreads.updatedAt), desc(messageThreads.id));
     const rows = await (limit === undefined ? query : query.limit(limit));
     return rows.map(
-      ({ thread: t, position, authorName, readVersion }): MessageThread & { position: string } => ({
+      ({ thread: t, position, authorName, avatarId, readVersion }): MessageThread & { position: string } => ({
         position,
         id: t.id,
         title: t.title,
         pinned: t.pinned,
         authorName: authorName ?? "Player",
+        avatarId,
         version: t.version,
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
@@ -312,6 +314,7 @@ export function messageRoutes({
           .select({
             post: messagePosts,
             authorName: profiles.displayName,
+            avatarId: profiles.avatarId,
             authorDeleted: sql<boolean>`${profiles.deletedAt} is not null`,
           })
           .from(messagePosts)
@@ -346,7 +349,7 @@ export function messageRoutes({
         canModerate: t.role === "admin",
         postingBlocked: postingBlocked(poster, now()),
         needsTerms: !poster?.termsAcceptedAt,
-        posts: rows.map(({ post, authorName, authorDeleted }) => {
+        posts: rows.map(({ post, authorName, avatarId, authorDeleted }) => {
           const view = postView(post, reader, authorDeleted);
           const original = post.quotedPostId ? postsById.get(post.quotedPostId) : undefined;
           const quoted = original && postView(original.post, reader, original.authorDeleted);
@@ -371,6 +374,7 @@ export function messageRoutes({
                 : null,
             position: post.position,
             authorName: authorName ?? "Player",
+            avatarId,
             createdAt: post.createdAt.toISOString(),
           };
         }),

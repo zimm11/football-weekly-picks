@@ -165,6 +165,7 @@ describe.skipIf(!process.env.DATABASE_URL)("account deletion (requires `pnpm db:
       USERS.map((userId, i) => ({
         userId,
         displayName: NAMES[i] ?? "Player",
+        avatarId: 41,
         termsAcceptedAt: new Date(),
       })),
     );
@@ -191,7 +192,7 @@ describe.skipIf(!process.env.DATABASE_URL)("account deletion (requires `pnpm db:
     const res = await call<Standings>(user, "GET", `/leagues/${leagueId}/standings`);
     expect(res.status).toBe(200);
     return {
-      entries: res.body.entries.map(({ displayName: _, removed: __, ...entry }) => entry),
+      entries: res.body.entries.map(({ displayName: _, avatarId: _avatar, removed: __, ...entry }) => entry),
       weeks: res.body.weeks.map(({ winners: _, lowPointLosers: __, ...week }) => week),
     };
   };
@@ -256,7 +257,11 @@ describe.skipIf(!process.env.DATABASE_URL)("account deletion (requires `pnpm db:
     expect(squares.map((sq) => sq.boardId)).toEqual([drawn.id]);
     expect(await db.select().from(squareClaims).where(eq(squareClaims.boardId, open.id))).toHaveLength(1);
     const [profile] = await db.select().from(profiles).where(eq(profiles.userId, PAT));
-    expect(profile).toMatchObject({ displayName: DELETED_PLAYER_NAME, emailLeagueEvents: false });
+    expect(profile).toMatchObject({
+      displayName: DELETED_PLAYER_NAME,
+      avatarId: null,
+      emailLeagueEvents: false,
+    });
   });
 
   it("locks the account out at once, even with a token that hasn't expired", async () => {

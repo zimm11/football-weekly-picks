@@ -190,6 +190,7 @@ export async function listMemberRecords(db: Store, leagueId: string): Promise<Me
   return db
     .select({
       userId: leagueMembers.userId,
+      avatarId: profiles.avatarId,
       displayName: sql<string>`coalesce(${profiles.displayName}, 'Player')`,
       role: leagueMembers.role,
       joinedAt: leagueMembers.joinedAt,
@@ -208,9 +209,10 @@ export async function listMemberRecords(db: Store, leagueId: string): Promise<Me
 export const isActive = (member: MemberRecord) => member.removedAt === null;
 
 /** Current members, in the shape the API returns. */
-export const toMember = ({ userId, displayName, role }: MemberRecord): Member => ({
+export const toMember = ({ userId, displayName, avatarId, role }: MemberRecord): Member => ({
   userId,
   displayName,
+  avatarId,
   role,
 });
 

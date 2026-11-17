@@ -30,7 +30,7 @@ const sections: LegalSection[] = [
     [
       [
         "Your account: your email address and a password. The password is stored only in scrambled form, which we can't read.",
-        "Your profile: the display name you choose, when you agreed to the Terms of use, and your notification choices.",
+        "Your profile: your display name, the profile logo you choose, when you agreed to the Terms of use, and your notification choices.",
         "Your play: the leagues you create or join, your role in each, when you joined or left, your picks, Pick of the Week and tiebreaker guesses, your survivor picks, and the squares you claim.",
         "The message board: the threads and replies you write, your reactions, which threads you have read, players you have blocked, reports you send (the reason and any note), and reviews you ask for.",
         "Moderation records: the automatic check's result for each message, whether a message or name of yours was reported or removed, and any mute or posting suspension.",
@@ -66,7 +66,7 @@ const sections: LegalSection[] = [
     "Who can see what",
     [
       [
-        "Members of your leagues see your display name, your messages and reactions, and your results. They never see your email address.",
+        "Members of your leagues see your display name and profile picture, your messages and reactions, and your results. They never see your email address.",
         "In pick'em leagues, nobody else sees your picks until the week is final, including league commissioners, who can see only whether you have picked. After that the whole league sees them.",
         "In a survivor league, your pick shows to the league once its game kicks off. A squares board is open to the whole league, so a square shows your name as soon as you claim it.",
         "A commissioner of a league you are in can add you to a new league they start. You are told, and you can leave it.",
@@ -108,7 +108,7 @@ const sections: LegalSection[] = [
     [
       "Settings → Delete account deletes your account at once, from the app or the website. If you can't sign in, use Forgot password? on the sign-in screen first; if that doesn't work, write to us.",
       [
-        "Deleted: your email address and password, your display name, your devices, the text of your messages and the titles of your threads, your reactions, read markers and blocks, your picks in weeks that aren't final, your squares on boards that haven't locked, and any email waiting to be sent to you.",
+        "Deleted: your email address and password, your display name and profile logo choice, your devices, the text of your messages and the titles of your threads, your reactions, read markers and blocks, your picks in weeks that aren't final, your squares on boards that haven't locked, and any email waiting to be sent to you.",
         `Kept, without your name or email: your picks and results from weeks already played and your squares on locked boards, shown as ${DELETED_PLAYER_NAME} so other players' results don't change; replies other players wrote in your threads; reports and feedback you sent; and moderation records.`,
         "A league you were the only member of is deleted with you.",
       ],

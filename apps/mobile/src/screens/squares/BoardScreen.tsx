@@ -78,6 +78,7 @@ export function BoardScreen({ boardId }: { boardId: string }) {
         boardId={boardId}
         board={board}
         userId={me?.id ?? ""}
+        avatarId={me?.avatarId}
         displayName={me?.displayName ?? "You"}
       />
     </BoardFrame>

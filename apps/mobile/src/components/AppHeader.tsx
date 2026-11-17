@@ -111,7 +111,7 @@ export function AppHeader() {
               onPress={() => setMenu(true)}
               style={{ flexDirection: "row", alignItems: "center", gap: 7, minHeight: 44, paddingLeft: 4 }}
             >
-              <Avatar name={auth.me?.displayName ?? "Account"} />
+              <Avatar avatarId={auth.me?.avatarId} name={auth.me?.displayName ?? "Account"} />
               <Icon name="chevron-down" size={14} color={colors.mutedForeground} />
             </Pressable>
           ) : (

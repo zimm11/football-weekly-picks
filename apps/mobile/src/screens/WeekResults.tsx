@@ -143,7 +143,7 @@ function PlayerResult({
             <Text style={s.rank}>{entry.rank}</Text>
           </View>
           <View style={[w.row, { flex: 1, minWidth: 0 }]}>
-            <Avatar name={entry.displayName} size={28} />
+            <Avatar avatarId={entry.avatarId} name={entry.displayName} size={28} />
             <View style={{ flex: 1, gap: 3 }}>
               <View style={[w.row, { gap: 6, flexWrap: "wrap" }]}>
                 <Text style={[s.playerName, mine && { fontFamily: fonts.bold }]}>{entry.displayName}</Text>

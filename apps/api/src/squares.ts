@@ -188,18 +188,19 @@ const boardRules = (board: BoardRow) => ({
   drawnAt: board.drawnAt,
 });
 
-type Named = ClaimRow & { name: string };
+type Named = ClaimRow & { name: string; avatarId: number | null };
 
 async function claimsOf(db: Store, boardIds: string[]): Promise<Named[]> {
   if (!boardIds.length) return [];
   const rows = await db
-    .select({ claim: squareClaims, displayName: profiles.displayName })
+    .select({ claim: squareClaims, displayName: profiles.displayName, avatarId: profiles.avatarId })
     .from(squareClaims)
     .leftJoin(profiles, eq(profiles.userId, squareClaims.userId))
     .where(inArray(squareClaims.boardId, boardIds))
     .orderBy(asc(squareClaims.row), asc(squareClaims.col));
-  return rows.map(({ claim, displayName }) => ({
+  return rows.map(({ claim, displayName, avatarId }) => ({
     ...claim,
+    avatarId,
     name: claim.guestName ?? displayName ?? "Player",
   }));
 }
@@ -222,7 +223,12 @@ function summaryOf(board: BoardRow, claims: ClaimRow[], scores: ScoreRow[], user
   } satisfies BoardSummary;
 }
 
-const owner = (c: Named) => ({ userId: c.userId, name: c.name, guest: c.userId === null });
+const owner = (c: Named) => ({
+  userId: c.userId,
+  name: c.name,
+  avatarId: c.avatarId,
+  guest: c.userId === null,
+});
 
 /** One board as every member sees it. Re-reads the board, since the caller may have just changed it. */
 export async function buildBoardView(
