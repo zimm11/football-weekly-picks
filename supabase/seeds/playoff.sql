@@ -5,7 +5,7 @@
 --     (admin@example.com) is its admin, Pat and Sam are members. Alex isn't in it, so you can join from the link.
 --   * Its 2025 playoffs, all four rounds final (one or two games each, typed in by hand). Sam's Wild Card POW
 --     lost, so Sam is "Out: Wild Card"; Pat's Divisional POW lost, so Pat is "Out: Divisional"; Commish won
---     every POW and is the champion with 14 points (Pat 3, Sam 0). The Super Bowl total was 42.
+--     every POW and is the champion with 13 points (Pat 3, Sam 0). The Super Bowl total was 42.
 --   * Its 2026 playoffs, Guillotine, with no rounds yet: automation asks ESPN for the Wild Card round from
 --     Week 18's Sunday (2027-01-10). Before then, the League tab's Rounds card creates a round by hand.
 -- Pat and Sam haven't seen the Super Bowl recap yet, so it opens for them on the league.
@@ -51,9 +51,9 @@ insert into picks (week_id, game_id, user_id, side, is_pow) values
   -- Divisional: Commish's POW (DEN) wins, Pat's (BUF) loses. Sam is out of picking.
   ('9a9a9a9a-0000-4000-8000-000000000120', '9a9a9a9a-0000-4000-8000-000000002001', '11111111-1111-4111-8111-000000000001', 'home', true),
   ('9a9a9a9a-0000-4000-8000-000000000120', '9a9a9a9a-0000-4000-8000-000000002001', '11111111-1111-4111-8111-000000000002', 'away', true),
-  -- Conference and Super Bowl: only Commish is still picking, and wins both POWs.
+  -- Conference and Super Bowl: only Commish is still picking, and wins both (the Super Bowl has no POW).
   ('9a9a9a9a-0000-4000-8000-000000000121', '9a9a9a9a-0000-4000-8000-000000002101', '11111111-1111-4111-8111-000000000001', 'home', true),
-  ('9a9a9a9a-0000-4000-8000-000000000122', '9a9a9a9a-0000-4000-8000-000000002201', '11111111-1111-4111-8111-000000000001', 'home', true);
+  ('9a9a9a9a-0000-4000-8000-000000000122', '9a9a9a9a-0000-4000-8000-000000002201', '11111111-1111-4111-8111-000000000001', 'home', false);
 
 -- Everyone guessed the Super Bowl's total, eliminated or not.
 insert into tiebreaker_guesses (week_id, user_id, total) values

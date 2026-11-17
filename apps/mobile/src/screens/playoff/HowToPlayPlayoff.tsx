@@ -76,17 +76,17 @@ export function HowToPlayPlayoff() {
           {`A win is worth ${ROUND_POINTS[19]} point in the Wild Card round, ${ROUND_POINTS[20]} in the Divisional round, ${ROUND_POINTS[21]} in the Conference round and ${ROUND_POINTS[22]} in the Super Bowl. Each round opens by itself once ESPN lists its games and lines, and is final once every game has a result.`}
         </Item>
         <Item title="Traditional">
-          {`A Pick of the Week (POW) is optional each round. A winning one adds ${PLAYOFF_POW_BONUS.traditional} points.`}
+          {`A Pick of the Week (POW) is optional each round before the Super Bowl. A winning one adds ${PLAYOFF_POW_BONUS.traditional} points.`}
         </Item>
         <Item title="Guillotine">
-          {`A POW is required every round, and a winning one adds ${PLAYOFF_POW_BONUS.guillotine} point. If your POW loses, or you have none when the round's last game kicks off, you're out of picking from the next round. A push keeps you in. Your picks that round still count, you keep your points and your place, and you can still guess the Super Bowl's total. You see your own POW result as soon as its game ends; everyone else learns who is out when the round is final. Joining after a round has locked means no POW for it, so you're out of picking. The Super Bowl's one pick is your POW.`}
+          {`A POW is required every round before the Super Bowl, and a winning one adds ${PLAYOFF_POW_BONUS.guillotine} point. If your POW loses, or you have none when the round's last game kicks off, you're out of picking from the next round. A push keeps you in. Your picks that round still count, you keep your points and your place, and you can still guess the Super Bowl's total. You see your own POW result as soon as its game ends; everyone else learns who is out when the round is final. Joining after a round has locked means no POW for it, so you're out of picking. The Super Bowl has one game and no POW, so nobody goes out in it.`}
         </Item>
         <Item title="The champion">
           Most points after the Super Bowl, then most games won, then the closest guess at the Super Bowl's
-          combined score without going over. Players still level share the title. If nobody survives the
-          guillotine, points decide it. There is no weekly winner or Low Point Loser; perfect round, lone wolf
-          and bullseye awards stay. The admin picks the format when starting the season, and it can't change
-          after the first Wild Card kickoff.
+          combined score (on equal distance, the guess that didn't go over). Players still level share the
+          title. If nobody survives the guillotine, points decide it. There is no weekly winner or Low Point
+          Loser; perfect round, lone wolf and bullseye awards stay. The admin picks the format when starting
+          the season, and it can't change after the first Wild Card kickoff.
         </Item>
       </Card>
     </View>

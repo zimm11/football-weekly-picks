@@ -5,7 +5,6 @@ import {
   type GuillotineStatus,
   guillotineStatus,
   mayPickRound,
-  PLAYOFF_POW_BONUS,
   type PlayoffFormat,
   type PlayoffRound,
   type PlayoffSettings,
@@ -13,7 +12,9 @@ import {
   type PlayoffWeekInfo,
   playoffStandings,
   readSeasonSettings,
+  roundHasPow,
   roundPoints,
+  roundPowBonus,
   SUPER_BOWL_ROUND,
   type SubmitPicks,
   WILD_CARD_ROUND,
@@ -94,7 +95,7 @@ export async function guillotineStatuses(
   return new Map(statuses.map((s) => [s.userId, s]));
 }
 
-/** What a playoff round's week view adds: the format's POW bonus, and the viewer's own guillotine status. */
+/** What a playoff round's week view adds: the round's POW bonus, and the viewer's own guillotine status. */
 export async function playoffWeekInfo(
   db: Store,
   ctx: Pick<WeekContext, "season" | "week">,
@@ -108,15 +109,15 @@ export async function playoffWeekInfo(
       ? ((await guillotineStatuses(db, ctx.season.id, [userId], at)).get(userId) ?? null)
       : null;
   return {
-    powBonus: PLAYOFF_POW_BONUS[format],
-    info: { format, me, mayPick: mayPickRound(me, ctx.week.number) },
+    powBonus: roundPowBonus(format, ctx.week.number),
+    info: { format, me, mayPick: mayPickRound(me, ctx.week.number), pow: roundHasPow(ctx.week.number) },
   };
 }
 
 /**
- * The playoff side of a pick save, inside its transaction. A player the guillotine put out in an earlier round
- * can change nothing but their Super Bowl guess. In Guillotine the Super Bowl's one pick is the POW, so it is made
- * the POW here. Returns an error to refuse the save with, or the POW to save.
+ * The playoff side of a pick save, inside its transaction. The Super Bowl round has no POW, in either format. A
+ * player the guillotine put out in an earlier round can change nothing but their Super Bowl guess. Returns an
+ * error to refuse the save with, or the POW to save.
  */
 export async function playoffSubmission(
   tx: Store,
@@ -130,7 +131,12 @@ export async function playoffSubmission(
   },
 ): Promise<{ error: string | null; powGameId: string | null }> {
   const { season, week, userId, submission, existing, at } = input;
-  if (playoffFormatOf(season) !== "guillotine") return { error: null, powGameId: submission.powGameId };
+  if (!roundHasPow(week.number) && submission.powGameId) {
+    return { error: "The Super Bowl has no POW: your pick is worth the round's points.", powGameId: null };
+  }
+  if (playoffFormatOf(season) !== "guillotine") {
+    return { error: null, powGameId: roundHasPow(week.number) ? submission.powGameId : null };
+  }
   const status = (await guillotineStatuses(tx, season.id, [userId], at, week.number)).get(userId) ?? null;
   const currentPow = existing.find((p) => p.isPow)?.gameId ?? null;
   if (!mayPickRound(status, week.number)) {
@@ -144,11 +150,7 @@ export async function playoffSubmission(
       powGameId: currentPow,
     };
   }
-  if (week.number === SUPER_BOWL_ROUND && !submission.powGameId) {
-    const picked = submission.picks[0]?.gameId ?? existing[0]?.gameId ?? null;
-    return { error: null, powGameId: picked };
-  }
-  return { error: null, powGameId: submission.powGameId };
+  return { error: null, powGameId: roundHasPow(week.number) ? submission.powGameId : null };
 }
 
 export const playoffHooks: LeagueTypeHooks = {

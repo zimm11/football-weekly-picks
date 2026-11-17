@@ -25,7 +25,7 @@ export function PlayoffStatusLine({ view }: { view: WeekView }) {
       : `you had no POW in the ${weekLabel(me.outIn ?? view.number)} round`;
   const detail = !out
     ? superBowl
-      ? "Your Super Bowl pick is your POW."
+      ? "No POW in the Super Bowl: nobody goes out now. Your pick and your total guess decide the rest."
       : "Choose a POW: if it loses, or you skip it, you're out from the next round."
     : mayPick
       ? `${how[0]?.toUpperCase()}${how.slice(1)}. Finish this round's picks: they still count.`

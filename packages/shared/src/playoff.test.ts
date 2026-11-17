@@ -5,7 +5,9 @@ import {
   mayPickRound,
   type PlayoffRound,
   playoffStandings,
+  roundHasPow,
   roundPoints,
+  roundPowBonus,
   wildCardPollingStarts,
 } from "./playoff";
 import type { ScoredGame, ScoredPick, Side } from "./rules";
@@ -144,6 +146,23 @@ describe("playoffStandings", () => {
     expect(standings("guillotine").find((e) => e.userId === "pat")?.points).toBe(2);
     expect(standings("guillotine").find((e) => e.userId === "lee")?.status).toMatchObject({ state: "out" });
     expect(standings("traditional").every((e) => e.status === null && !e.champion)).toBe(true);
+  });
+
+  it("has no POW in the Super Bowl: a POW saved there scores as a plain pick", () => {
+    expect([19, 20, 21, 22].map(roundHasPow)).toEqual([true, true, true, false]);
+    expect(roundPowBonus("traditional", 21)).toBe(3);
+    expect(roundPowBonus("guillotine", 22)).toBe(0);
+    const legacy = { ...superBowl, picks: [pick("pat", "sb", "home", true), pick("sam", "sb", "home")] };
+    for (const format of ["traditional", "guillotine"] as const) {
+      const table = playoffStandings({
+        rounds: [legacy],
+        userIds: ["pat", "sam", "lee"],
+        format,
+        now: after,
+      });
+      expect(table.find((e) => e.userId === "pat")).toMatchObject({ points: 4, powWins: 0 });
+      expect(table.find((e) => e.userId === "sam")?.points).toBe(4);
+    }
   });
 
   it("crowns the champion after the Super Bowl: points, wins, then the closest guess that didn't go over", () => {

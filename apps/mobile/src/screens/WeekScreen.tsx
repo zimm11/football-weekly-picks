@@ -47,7 +47,7 @@ import {
   savedDraft,
 } from "../lib/pickDraft";
 import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
-import { formatRecord, gameDays, kickoffTime, pickStatus } from "../lib/weekPresentation";
+import { formatRecord, gameDays, kickoffTime, pickStatus, weekHasPow } from "../lib/weekPresentation";
 import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
 import { MatchupSheet } from "./MatchupSheet";
 import { PlayoffStatusLine } from "./playoff/PlayoffStatus";
@@ -268,8 +268,8 @@ export function WeekScreen({
   const automatic = view.management === "auto";
   const closed = view.playoff?.mayPick === false;
   const powBonus = view.powBonus ?? 5;
-  // In Guillotine the Super Bowl's one pick is the POW: saving makes it so.
-  const superBowlPow = view.playoff?.format === "guillotine" && view.number === 22;
+  // A playoff league's Super Bowl has no POW: its one pick is worth the round's points.
+  const hasPow = weekHasPow(view);
   const picked = view.games.filter((game) => draft.sides[game.id]).length;
   const phase = weekPhase(view.status, view.games, now);
   const tab = view.status === "final" ? "results" : "picks";
@@ -365,17 +365,23 @@ export function WeekScreen({
                     compact
                   />
                   <WeekStat label="Record" value={formatRecord(score)} style={s.runningStat} compact />
-                  <WeekStat
-                    label="POW"
-                    value={
-                      score.pow
-                        ? ({ won: "Won", lost: "Lost", push: "Push", pending: "To play" } as const)[score.pow]
-                        : "None"
-                    }
-                    tone={score.pow === "won" ? colors.win : score.pow === "pending" ? colors.pow : undefined}
-                    style={s.runningStat}
-                    compact
-                  />
+                  {hasPow && (
+                    <WeekStat
+                      label="POW"
+                      value={
+                        score.pow
+                          ? ({ won: "Won", lost: "Lost", push: "Push", pending: "To play" } as const)[
+                              score.pow
+                            ]
+                          : "None"
+                      }
+                      tone={
+                        score.pow === "won" ? colors.win : score.pow === "pending" ? colors.pow : undefined
+                      }
+                      style={s.runningStat}
+                      compact
+                    />
+                  )}
                 </View>
                 <Text style={w.small}>
                   {automatic
@@ -400,10 +406,9 @@ export function WeekScreen({
               </Pressable>
               {showLocks && (
                 <Text style={[w.muted, { paddingBottom: 4 }]}>
-                  Each game locks at kickoff. Until then you can change your pick and put your POW on it or
-                  take it off. Once your POW's game kicks off, your POW stays there. It is worth {powBonus}{" "}
-                  extra {powBonus === 1 ? "point" : "points"} if it wins. If you don't choose a POW, you don't
-                  get one.
+                  {hasPow
+                    ? `Each game locks at kickoff. Until then you can change your pick and put your POW on it or take it off. Once your POW's game kicks off, your POW stays there. It is worth ${powBonus} extra ${powBonus === 1 ? "point" : "points"} if it wins. If you don't choose a POW, you don't get one.`
+                    : "The game locks at kickoff. Until then you can change your pick. The Super Bowl has no POW."}
                 </Text>
               )}
             </View>
@@ -496,29 +501,33 @@ export function WeekScreen({
                             </Pressable>
                           );
                         })}
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`POW: ${matchup(game)}`}
-                          accessibilityState={{
-                            selected: draft.pow === game.id,
-                            disabled: locked || powFrozen || !draft.sides[game.id] || saving,
-                          }}
-                          aria-pressed={draft.pow === game.id}
-                          disabled={locked || powFrozen || !draft.sides[game.id] || saving}
-                          onPress={() => togglePow(game)}
-                          style={({ pressed }) => [
-                            s.pow,
-                            draft.pow === game.id && s.powSelected,
-                            (locked || powFrozen || !draft.sides[game.id]) &&
-                              draft.pow !== game.id &&
-                              s.disabled,
-                            pressed && s.pressed,
-                          ]}
-                        >
-                          <Text style={[s.powText, draft.pow === game.id && { color: colors.powForeground }]}>
-                            POW
-                          </Text>
-                        </Pressable>
+                        {hasPow && (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`POW: ${matchup(game)}`}
+                            accessibilityState={{
+                              selected: draft.pow === game.id,
+                              disabled: locked || powFrozen || !draft.sides[game.id] || saving,
+                            }}
+                            aria-pressed={draft.pow === game.id}
+                            disabled={locked || powFrozen || !draft.sides[game.id] || saving}
+                            onPress={() => togglePow(game)}
+                            style={({ pressed }) => [
+                              s.pow,
+                              draft.pow === game.id && s.powSelected,
+                              (locked || powFrozen || !draft.sides[game.id]) &&
+                                draft.pow !== game.id &&
+                                s.disabled,
+                              pressed && s.pressed,
+                            ]}
+                          >
+                            <Text
+                              style={[s.powText, draft.pow === game.id && { color: colors.powForeground }]}
+                            >
+                              POW
+                            </Text>
+                          </Pressable>
+                        )}
                       </View>
                       <Pressable
                         accessibilityRole="button"
@@ -554,7 +563,7 @@ export function WeekScreen({
                 />
               </View>
             )}
-            {!draft.pow && !closed && !superBowlPow && (
+            {!draft.pow && !closed && hasPow && (
               <Text style={w.muted}>
                 {needsPow
                   ? "No POW chosen. Tap POW on a pick whose game hasn't locked yet; if you don't, you won't have one this week."
@@ -632,7 +641,7 @@ function PickStatusBanner({ view, dirty, now }: { view: WeekView; dirty: boolean
   const detail = dirty
     ? `You've made changes. Press Save to keep them. ${savedLine} so far.`
     : complete
-      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : " No POW this week."} Nothing more to do. You can still change a pick until kickoff.`
+      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : weekHasPow(view) ? " No POW this week." : ""} Nothing more to do. You can still change a pick until kickoff.`
       : `${savedLine}.${needsPow ? " Choose your POW." : ""}${needsTotal ? " Add your tiebreaker guess." : ""}`;
   const tone = dirty ? colors.destructive : complete ? colors.win : colors.primary;
   return (

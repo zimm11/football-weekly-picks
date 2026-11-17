@@ -160,11 +160,14 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect(sb.status).toBe("open");
     expect(sb.games.map((g) => g.points)).toEqual([4]);
 
-    // The Super Bowl: Pat's one pick is the POW. Eliminated players still guess the total.
+    // The Super Bowl has no POW: Pat's one pick is a plain pick. Eliminated players still guess the total.
     at("2027-02-10T12:00:00Z");
+    expect((await pick(PAT, leagueId, 22, "sb", 45)).status).toBe(409);
     const patSb = await pick(PAT, leagueId, 22, null, 45);
     expect(patSb.status).toBe(200);
-    expect(patSb.body.myPicks).toEqual([expect.objectContaining({ isPow: true })]);
+    expect(patSb.body.myPicks).toEqual([expect.objectContaining({ isPow: false })]);
+    expect(patSb.body.playoff?.pow).toBe(false);
+    expect(patSb.body.powBonus).toBe(0);
     for (const [user, guess] of [
       [SAM, 51],
       [LEE, 52],
@@ -187,8 +190,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect(table.champions).toEqual(["Pat"]);
     expect(table.superBowlTotal).toBe(51);
     expect(table.entries.map((e) => [e.displayName, e.points, e.wins])).toEqual([
-      // Wild Card 5 + 1, Divisional 6 + 1, Conference 6 + 1, Super Bowl 4 + 1.
-      ["Pat", 25, 11],
+      // Wild Card 5 + 1, Divisional 6 + 1, Conference 6 + 1, Super Bowl 4 (no POW).
+      ["Pat", 24, 11],
       ["Sam", 11, 8],
       ["Lee", 5, 5],
       ["Commish", 0, 0],
@@ -206,6 +209,32 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect({ rounds: await t.weeksOf(leagueId), events: await t.events(leagueId) }).toEqual(before);
     // The recap points at the Super Bowl.
     expect((await t.call<LeagueDetail>(PAT, "GET", `/leagues/${leagueId}`)).body.recapWeekId).toBe(sb.id);
+  });
+
+  it("has no POW in a Traditional Super Bowl: one saved anyway scores as a plain pick", async () => {
+    at("2026-11-22T12:00:00Z");
+    const leagueId = await t.createLeague(ADMIN, { name: "Plain bracket", type: "playoff" });
+    await t.join(PAT, leagueId);
+    t.feed.set("2026:19", wildCard());
+    t.feed.set("2026:22", superBowl());
+    for (const number of [19, 22]) {
+      const made = await t.call(ADMIN, "POST", `/leagues/${leagueId}/playoff/rounds`, { year: 2026, number });
+      expect(made.status).toBe(201);
+    }
+    // Both rounds have every line, so automation opens them.
+    await t.runAutomation("playoff", [leagueId]);
+    expect((await round(leagueId, 22)).status).toBe("open");
+    at("2027-01-12T12:00:00Z");
+    // Earlier rounds keep the format's optional POW, worth 3.
+    const wc = await pick(PAT, leagueId, 19, "wc1");
+    expect(wc.body).toMatchObject({ powBonus: 3, playoff: { format: "traditional", pow: true } });
+    expect(wc.body.myPicks.some((p) => p.isPow)).toBe(true);
+
+    expect((await pick(PAT, leagueId, 22, "sb", 44)).status).toBe(409);
+    const sb = await pick(PAT, leagueId, 22, null, 44);
+    expect(sb.status).toBe(200);
+    expect(sb.body).toMatchObject({ powBonus: 0, playoff: { pow: false } });
+    expect(sb.body.myPicks).toEqual([expect.objectContaining({ isPow: false })]);
   });
 
   it("keeps the format until the first Wild Card kickoff, and guards its routes by type", async () => {

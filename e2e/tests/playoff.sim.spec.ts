@@ -88,6 +88,8 @@ test("a Guillotine playoff league runs from Wild Card to champion by itself", as
   await expect(page.getByRole("heading", { name: /^Super Bowl/ })).toBeVisible();
   await expect(page.getByText("You're out of picking")).toBeVisible();
   await expect(page.getByRole("button", { name: "Eagles -3, home" })).toBeDisabled();
+  // The Super Bowl has no POW.
+  await expect(page.getByRole("button", { name: /^POW:/ })).toHaveCount(0);
   await page.getByLabel(/^Tiebreaker: total points scored in/).fill("41");
   await page.getByRole("button", { name: "Save picks" }).click();
   await expect(page.getByText("Picks saved.")).toBeVisible();

@@ -28,14 +28,26 @@ export type PlayoffSettings = z.infer<typeof playoffSettingsSchema>;
 /** Extra points for a winning POW, by format. Weekly pick'em's is `POW_BONUS` in rules.ts. */
 export const PLAYOFF_POW_BONUS: Record<PlayoffFormat, number> = { traditional: 3, guillotine: 1 };
 
+/**
+ * Whether a round has a POW. The Super Bowl doesn't: with one game, a POW would be no choice, only extra points
+ * on the same pick, and in Guillotine there is no round after it to be put out of.
+ */
+export const roundHasPow = (number: number) => number !== SUPER_BOWL_ROUND;
+
+/** What a winning POW adds in `round`: the format's bonus, or nothing in the Super Bowl. */
+export const roundPowBonus = (format: PlayoffFormat, round: number) =>
+  roundHasPow(round) ? PLAYOFF_POW_BONUS[format] : 0;
+
 export const PLAYOFF_FORMAT_INFO: Record<PlayoffFormat, { name: string; description: string }> = {
   traditional: {
     name: "Traditional",
-    description: "A Pick of the Week is optional each round. A winning one adds 3 points.",
+    description:
+      "A Pick of the Week is optional each round before the Super Bowl. A winning one adds 3 points.",
   },
   guillotine: {
     name: "Guillotine",
-    description: "A Pick of the Week every round. Lose it, or skip it, and you're out of picking.",
+    description:
+      "A Pick of the Week every round before the Super Bowl. Lose it, or skip it, and you're out of picking.",
   },
 };
 
@@ -179,15 +191,19 @@ export type PlayoffEntry = {
   status: GuillotineStatus | null;
 };
 
-/** One round scored: each participant's points, wins and POW (scoreWeek with the format's POW bonus). */
+/**
+ * One round scored: each participant's points, wins and POW (scoreWeek with the round's POW bonus). A POW saved
+ * on a Super Bowl pick before the round lost its POW counts as a plain pick.
+ */
 export function scoreRound(round: PlayoffRound, format: PlayoffFormat): WeekEntry[] {
+  const hasPow = roundHasPow(round.number);
   return scoreWeek({
     games: round.games,
-    picks: round.picks,
+    picks: hasPow ? round.picks : round.picks.map((p) => ({ ...p, isPow: false })),
     guesses: round.guesses,
     userIds: round.userIds,
     tiebreakerGameId: round.tiebreakerGameId,
-    powBonus: PLAYOFF_POW_BONUS[format],
+    powBonus: roundPowBonus(format, round.number),
   });
 }
 
@@ -288,4 +304,6 @@ export type PlayoffWeekInfo = {
   me: GuillotineStatus | null;
   /** False for a player the guillotine put out in an earlier round: the sheet is read-only but the Super Bowl guess. */
   mayPick: boolean;
+  /** False in the Super Bowl round, which has no POW (`roundHasPow`). Optional for older API responses. */
+  pow?: boolean;
 };

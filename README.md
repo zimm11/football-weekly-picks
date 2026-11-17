@@ -325,11 +325,11 @@ is created once ESPN lists all six games with real teams (polling starts on Week
 as soon as every game has a line and finalizes once every game has a result, and the next is prepared. The admin
 chooses the format with **Start season** (or on New league): **Traditional** (an optional POW, a win adds 3) or
 **Guillotine** (a POW every round, a win adds 1; a losing POW, or none by the round's last kickoff, puts the
-player out of picking from the next round, while a push keeps them in). The format can't change after the first
-Wild Card kickoff. An eliminated player keeps their points and place, sees the sheet read-only, and can still
+player out of picking from the next round, while a push keeps them in). The Super Bowl has one game and no POW in
+either format, so nobody goes out in it. The format can't change after the first Wild Card kickoff. An eliminated player keeps their points and place, sees the sheet read-only, and can still
 guess the Super Bowl's total; a player who joins after a round locked has no POW for it, so is out. The champion
-has the most points, then most wins, then the closest Super Bowl total guess without going over (players still
-level share it). There's no round winner or Low Point Loser. Standings show the overall table (a status column
+has the most points, then most wins, then the closest Super Bowl total guess (on equal distance, the one that
+didn't go over; players still level share it). There's no round winner or Low Point Loser. Standings show the overall table (a status column
 in Guillotine, "In" or "Out: Divisional") and the champion after the Super Bowl; each round has its recap. If
 ESPN's feed fails, the League tab's **Rounds** card creates a round by hand, and its manage screen keeps Import,
 Open and Finalize.
