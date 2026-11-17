@@ -1,6 +1,6 @@
 /*
- * Background on a game for the player deciding how to pick it: team form from the schedule provider and
- * prices from a national prediction market. None of it comes from this league's picks.
+ * Background on a game for the player deciding how to pick it: team form, news and a win prediction from the
+ * schedule provider. None of it comes from this league's picks.
  */
 
 export type TeamInsights = {
@@ -23,27 +23,17 @@ export type MatchupInsights = {
   stats: { label: string; home: string; away: string }[];
   /** The posted total for the game's combined score. */
   overUnder: number | null;
+  /**
+   * ESPN's Matchup Predictor: each team's chance (0–1) of winning outright, from its pregame simulations.
+   * The two needn't add up to 1; the rest is the chance of a tie. Null when ESPN publishes none, as for a
+   * finished game.
+   */
+  prediction: { home: number; away: number } | null;
   /** The provider's own page for the game. */
   url: string | null;
-};
-
-/** Probabilities are 0–1, taken from what contracts are trading at. */
-export type MarketInsights = {
-  source: "Kalshi";
-  /** Chance the home team wins the game outright. */
-  homeWin: number | null;
-  /**
-   * Chance each side beats the league's spread. On a whole-number line the two don't add up to 1:
-   * the remainder is the chance of a push.
-   */
-  cover: { home: number; away: number } | null;
-  /** The home team's line at which the market is closest to even, to compare with the league's. */
-  spread: number | null;
 };
 
 export type GameInsights = {
   /** Null for a game the admin added by hand, or when the provider can't be reached. */
   matchup: MatchupInsights | null;
-  /** Null when the market doesn't list the game or can't be reached. */
-  market: MarketInsights | null;
 };

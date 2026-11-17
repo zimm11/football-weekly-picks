@@ -363,8 +363,8 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
           <View style={{ flexDirection: "row", gap: 12 }}>
             <Icon name="trophy" color={colors.primary} />
             <Body muted style={{ fontSize: 14, lineHeight: 20, flex: 1 }}>
-              Running the league? Let it run itself from ESPN, or run each week by hand. The guide covers
-              both.
+              Running the league? Let it run itself from the NFL schedule, or run each week by hand. The guide
+              covers both.
             </Body>
           </View>
           <Button

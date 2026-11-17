@@ -56,4 +56,3 @@ export function ordinal(n: number) {
 }
 export const formatRecord = (record: { wins: number; losses: number; pushes: number }) =>
   `${record.wins}–${record.losses}${record.pushes > 0 ? `–${record.pushes}` : ""}`;
-export const percent = (value: number | null) => (value === null ? "—" : `${Math.round(value * 100)}%`);

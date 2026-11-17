@@ -399,7 +399,7 @@ export function weekRoutes(
         if (ctx.week.status === "final") await markRecapSeen(db, ctx.week.id, c.var.user.id, now());
         return c.json({ ok: true });
       })
-      // Public background on a game (team form, market prices). Nothing here is drawn from anyone's picks.
+      // Public background on a game (team form, news, ESPN's prediction). Nothing here comes from anyone's picks.
       .get("/games/:gameId/insights", auth, gameParam, async (c) => {
         const [game] = await db
           .select()
@@ -409,22 +409,15 @@ export function weekRoutes(
         // The matchup sheet opens from survivor game cards too. Nothing in it comes from this league's picks.
         requireLeagueType((await requireWeek(db, game.weekId, c.var.user.id)).league, ...PICKEM, "survivor");
         const requestId = c.get("requestId");
-        // Each source fails on its own: the sheet shows whatever arrived.
-        const [matchup, market] = await Promise.all([
+        // A failure shows as nothing to show, never as an error.
+        const matchup =
           game.externalId && insights
-            ? insights.getMatchup(game.externalId).catch((err) => {
+            ? await insights.getMatchup(game.externalId).catch((err) => {
                 logError("matchup_insights", err, requestId);
                 return null;
               })
-            : null,
-          insights
-            ? insights.getMarket(game).catch((err) => {
-                logError("market_insights", err, requestId);
-                return null;
-              })
-            : null,
-        ]);
-        const result: GameInsights = { matchup, market };
+            : null;
+        const result: GameInsights = { matchup };
         return c.json(result);
       })
       .put("/weeks/:weekId/picks", auth, weekParam, body(submitPicksSchema), async (c) => {

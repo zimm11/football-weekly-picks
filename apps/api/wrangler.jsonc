@@ -25,7 +25,7 @@
   "placement": { "region": "aws:us-east-1" },
   // Workers Paid allows 30 s of CPU per invocation by default. Requests and cron runs use well under 200 ms
   // (Workers Logs), so a lower cap stops a runaway loop quickly instead of billing for it. Waiting on the
-  // database, ESPN or Kalshi doesn't count toward this.
+  // database or ESPN doesn't count toward this.
   "limits": { "cpu_ms": 2000 },
   "hyperdrive": [
     {

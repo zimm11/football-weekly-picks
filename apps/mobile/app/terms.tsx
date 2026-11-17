@@ -12,7 +12,7 @@ const sections: LegalSection[] = [
     "What POW Pick'em is",
     [
       "Free NFL games for private leagues of friends: weekly and playoff pick'em against the spread, survivor, and squares. These terms cover the iPhone app and www.pow-pickem.com. By creating an account you agree to them.",
-      "It is for fun only. There are no entry fees, no prizes and no betting in the app, and no money changes hands through it. Spreads and prediction-market prices are shown as information about the games, not as an offer to bet. Don't use POW Pick'em for gambling that is illegal where you live.",
+      "It is for fun only. There are no entry fees, no prizes and no betting in the app, and no money changes hands through it. Spreads and win predictions are shown as information about the games, not as an offer to bet. Don't use POW Pick'em for gambling that is illegal where you live.",
     ],
   ],
   [
@@ -66,8 +66,8 @@ const sections: LegalSection[] = [
   [
     "Schedules, scores and odds",
     [
-      "Schedules, spreads, scores, stats and news come from ESPN, and market prices from Kalshi. They can be late, missing or wrong, and league admins can change spreads and scores. Don't rely on them for anything beyond the game.",
-      "POW Pick'em is not affiliated with or endorsed by the NFL, its teams, ESPN or Kalshi. Team names and logos belong to their owners.",
+      "Schedules, spreads, scores, stats, news and win predictions fill in automatically from an outside sports-data source. They can be late, missing or wrong, and league admins can change spreads and scores. Don't rely on them for anything beyond the game.",
+      "POW Pick'em is not affiliated with or endorsed by the NFL, its teams or the company whose data it shows. Team names and logos belong to their owners.",
     ],
   ],
   [

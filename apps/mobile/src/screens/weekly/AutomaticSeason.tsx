@@ -63,8 +63,8 @@ export function AutomaticSeasonCard({
       <Heading>Start the {year} season</Heading>
       <Label>
         Pick the week to start with. Each Tuesday at 9 AM Eastern the week's games and that morning's lines
-        come in from ESPN and it opens for picks; it finalizes after its last game. That repeats through Week
-        18.
+        fill in automatically and it opens for picks; it finalizes after its last game. That repeats through
+        Week 18.
       </Label>
       <View style={{ gap: 12 }}>
         <Select

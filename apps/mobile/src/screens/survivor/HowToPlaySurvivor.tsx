@@ -6,7 +6,7 @@ import { Body, Card, colors, fonts, Title } from "../../components/ui";
 const rules: [string, string][] = [
   [
     "One team a week, straight up",
-    "Each week, pick one team to win its game outright. There are no spreads and no points. Open the Pick tab, tap a team, and press Save pick. Your pick can change until your team kicks off, and only to a team whose game hasn't kicked off either. Stats, news & market under a game shows the market's chance of each team winning.",
+    "Each week, pick one team to win its game outright. There are no spreads and no points. Open the Pick tab, tap a team, and press Save pick. Your pick can change until your team kicks off, and only to a team whose game hasn't kicked off either. Stats & news under a game shows each team's chance of winning.",
   ],
   [
     "Never the same team twice",

@@ -1,9 +1,7 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: A fixed last-five list can repeat opponents and scores.
 import {
-  formatLine,
   type Game,
   type GameInsights,
-  type MarketInsights,
   type MatchupInsights,
   type TeamInsights,
   teamName,
@@ -14,20 +12,17 @@ import { Icon } from "../components/Icon";
 import { TeamLogo } from "../components/TeamLogo";
 import { colors, fonts, Sheet } from "../components/ui";
 import { request } from "../lib/api";
-import { favoriteLine, kickoffDay, kickoffTime, percent } from "../lib/weekPresentation";
+import { favoriteLine, kickoffDay, kickoffTime } from "../lib/weekPresentation";
 import { WeekAction, w } from "./weekUi";
 
 export function MatchupSheet({
   game,
   timeZone = "America/New_York",
   onClose,
-  winOnly = false,
 }: {
   game: Game | null;
   timeZone?: string;
   onClose: () => void;
-  /** Survivor picks straight up: show the market's win prices only, no spread lines. */
-  winOnly?: boolean;
 }) {
   const [state, setState] = useState<{ gameId: string; data?: GameInsights; error?: string }>();
   const [attempt, setAttempt] = useState(0);
@@ -94,17 +89,17 @@ export function MatchupSheet({
               {linkError}
             </Text>
           )}
-          {data && !data.market && !data.matchup && (
+          {data && !data.matchup && (
             <View style={s.empty}>
               <Icon name="chart" size={40} color={colors.mutedForeground} />
               <Text style={s.emptyTitle}>No stats are available for this game right now.</Text>
               <Text style={[w.muted, { textAlign: "center" }]}>
-                Form, injuries and market prices usually show up closer to kickoff. Check back later in the
+                Form, injuries and win chances usually show up closer to kickoff. Check back later in the
                 week.
               </Text>
             </View>
           )}
-          {data?.market && <Market game={game} market={data.market} winOnly={winOnly} />}
+          {data?.matchup?.prediction && <Prediction game={game} prediction={data.matchup.prediction} />}
           {data?.matchup && (
             <Matchup game={game} data={data.matchup} timeZone={timeZone} openNews={openNews} />
           )}
@@ -133,67 +128,37 @@ function TeamHeading({ team, reverse = false }: { team: string; reverse?: boolea
     </View>
   );
 }
-function Market({ game, market, winOnly }: { game: Game; market: MarketInsights; winOnly: boolean }) {
+function Prediction({ game, prediction }: { game: Game; prediction: { home: number; away: number } }) {
   const home = teamName(game.homeTeam);
   const away = teamName(game.awayTeam);
-  const push = market.cover ? Math.max(0, 1 - market.cover.home - market.cover.away) : 0;
-  const edge = market.spread !== null && game.spread !== null ? game.spread - market.spread : 0;
-  const homePct = market.homeWin === null ? 0 : Math.round(market.homeWin * 100);
-  const awayPct = 100 - homePct;
-  const rows: { label: string; value: string }[] = [];
-  if (market.cover && game.spread !== null) {
-    rows.push(
-      {
-        label: `${formatLine(away, game.spread === 0 ? 0 : -game.spread)} covers`,
-        value: percent(market.cover.away),
-      },
-      { label: `${formatLine(home, game.spread)} covers`, value: percent(market.cover.home) },
-    );
-    if (push >= 0.005) rows.push({ label: "Push", value: percent(push) });
-  }
-  if (market.spread !== null && !winOnly)
-    rows.push({ label: "Market's line", value: favoriteLine(game, market.spread) });
+  const homePct = Math.round(prediction.home * 100);
+  const awayPct = Math.round(prediction.away * 100);
   return (
-    <Section title="Prediction market">
-      {market.homeWin !== null && (
-        <View style={{ gap: 6 }}>
-          <View style={w.between}>
-            <Text style={[s.marketTeam, { flex: 1 }]}>
-              {away.toUpperCase()} {awayPct}%
-            </Text>
-            <Text style={w.small}>To win</Text>
-            <Text style={[s.marketTeam, { flex: 1, textAlign: "right" }]}>
-              {homePct}% {home.toUpperCase()}
-            </Text>
-          </View>
-          <View
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel={`Chance to win: ${away} ${awayPct}%, ${home} ${homePct}%`}
-            style={s.probability}
-          >
-            <View style={[s.segment, { flex: awayPct, backgroundColor: `${colors.mutedForeground}99` }]} />
-            <View style={[s.segment, { flex: homePct, backgroundColor: colors.foreground }]} />
-          </View>
+    <Section title="Win probability">
+      <View style={{ gap: 6 }}>
+        <View style={w.between}>
+          <Text style={[s.predictionTeam, { flex: 1 }]}>
+            {away.toUpperCase()} {awayPct}%
+          </Text>
+          <Text style={w.small}>To win</Text>
+          <Text style={[s.predictionTeam, { flex: 1, textAlign: "right" }]}>
+            {homePct}% {home.toUpperCase()}
+          </Text>
         </View>
-      )}
-      <View>
-        {rows.map((row) => (
-          <View key={row.label} style={s.marketRow}>
-            <Text style={[w.muted, { flex: 1 }]}>{row.label}</Text>
-            <Text style={s.value}>{row.value}</Text>
-          </View>
-        ))}
+        <View
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel={`Chance to win: ${away} ${awayPct}%, ${home} ${homePct}%`}
+          style={s.probability}
+        >
+          <View
+            style={[s.segment, { flex: prediction.away, backgroundColor: `${colors.mutedForeground}99` }]}
+          />
+          <View style={[s.segment, { flex: prediction.home, backgroundColor: colors.foreground }]} />
+        </View>
       </View>
-      {edge !== 0 && (
-        <Text style={w.body}>
-          {edge > 0 ? home : away} get {Math.abs(edge)} {Math.abs(edge) === 1 ? "point" : "points"} more here
-          than at the market's line.
-        </Text>
-      )}
       <Text style={w.muted}>
-        Prices from {market.source}, a national prediction market. They show what traders expect, not how this
-        league picked.
+        A projection from simulations of the game. It picks winners outright and isn't how this league picked.
       </Text>
     </Section>
   );
@@ -357,7 +322,7 @@ function Matchup({
               <Pressable
                 key={story.url}
                 accessibilityRole="link"
-                accessibilityLabel={`${story.headline}. Opens ESPN.`}
+                accessibilityLabel={`${story.headline}. Opens the full story.`}
                 onPress={() => void openNews(story.url)}
                 style={({ pressed }) => [s.news, pressed && { opacity: 0.7 }]}
               >
@@ -374,11 +339,7 @@ function Matchup({
         </Section>
       )}
       {data.url && (
-        <WeekAction
-          label="Full game page on ESPN ↗"
-          secondary
-          onPress={() => void openNews(data.url as string)}
-        />
+        <WeekAction label="Full game page ↗" secondary onPress={() => void openNews(data.url as string)} />
       )}
     </>
   );
@@ -399,17 +360,9 @@ const s = StyleSheet.create({
     color: colors.foreground,
     fontVariant: ["tabular-nums"],
   },
-  marketTeam: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 21, color: colors.foreground },
+  predictionTeam: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 21, color: colors.foreground },
   probability: { height: 10, flexDirection: "row", gap: 2, borderRadius: 3, overflow: "hidden" },
   segment: { height: 10 },
-  marketRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 16,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
   comparison: {
     flexDirection: "row",
     alignItems: "center",

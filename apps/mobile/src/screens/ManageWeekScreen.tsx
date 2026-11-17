@@ -231,7 +231,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                     ? "Players can't see this round yet. It opens by itself as soon as every game has a line, and spreads freeze then. Open it now if you'd rather not wait."
                     : view.games.length
                       ? "Players can't see this week yet. It opens by itself on Tuesday at 9 AM Eastern, or as soon as every game has a line after that, and spreads freeze then. Open it now if you'd rather not wait."
-                      : "Players can't see this week yet. On Tuesday at 9 AM Eastern its games and that morning's lines come in from ESPN and it opens for picks, all at once. Import it now only if you'd rather set it up by hand."}
+                      : "Players can't see this week yet. On Tuesday at 9 AM Eastern its games and that morning's lines fill in automatically and it opens for picks, all at once. Fill it in now only if you'd rather set it up by hand."}
               </Label>
               <Action
                 disabled={!!busy || !view.games.length}
@@ -250,7 +250,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   };
                   if (view.games.length)
                     confirm(
-                      "Refresh from ESPN?",
+                      "Refresh games and spreads?",
                       "Kickoffs and spreads changed by hand will be replaced.",
                       "Refresh",
                       run,
@@ -259,10 +259,10 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                 }}
               >
                 {busy === "import"
-                  ? "Importing…"
+                  ? "Filling in…"
                   : view.games.length
-                    ? "Refresh from ESPN"
-                    : "Import from ESPN"}
+                    ? "Refresh games and spreads"
+                    : "Auto-fill games and spreads"}
               </Action>
             </>
           )}
@@ -280,8 +280,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                     ? "All final scores are entered. It finalizes by itself in a few minutes, or finalize it now."
                     : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}{" "}
                 {automatic
-                  ? "Results fill in from ESPN as games end, never over a score you typed."
-                  : "Pulling results updates scores only; spreads stay as they were when the week opened."}
+                  ? "Results fill in automatically as games end, never over a score you typed."
+                  : "Auto-filling results updates scores only; spreads stay as they were when the week opened."}
               </Label>
               <Action
                 disabled={!!busy || missing > 0 || view.games.length === 0}
@@ -305,16 +305,16 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                 disabled={!!busy}
                 onPress={() =>
                   confirm(
-                    "Pull results from ESPN?",
-                    "Provider results replace any final scores entered by hand. Spreads stay fixed.",
-                    "Pull results",
+                    "Auto-fill results?",
+                    "Automatic results replace any final scores entered by hand. Spreads stay fixed.",
+                    "Auto-fill results",
                     () => {
                       void act("results", `/weeks/${weekId}/results`);
                     },
                   )
                 }
               >
-                {busy === "results" ? "Pulling…" : "Pull results from ESPN"}
+                {busy === "results" ? "Filling in…" : "Auto-fill results"}
               </Action>
             </>
           )}

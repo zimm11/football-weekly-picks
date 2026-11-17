@@ -130,7 +130,14 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
   let providerDown = false;
   let providerCalls = 0;
   const emptyTeam = { record: null, venueRecord: null, lastFive: [], injuries: [], leaders: [], news: [] };
-  const emptyMatchup = { home: emptyTeam, away: emptyTeam, stats: [], overUnder: null, url: null };
+  const emptyMatchup = {
+    home: emptyTeam,
+    away: emptyTeam,
+    stats: [],
+    overUnder: null,
+    prediction: { home: 0.6, away: 0.39 },
+    url: null,
+  };
   let provided: ProviderGame[] = [
     {
       externalId: "t1",
@@ -202,10 +209,6 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       getMatchup: async (externalId) => {
         if (insightsDown) throw new Error("offline");
         return { ...emptyMatchup, url: `https://example.test/${externalId}` };
-      },
-      getMarket: async ({ spread }) => {
-        if (insightsDown) throw new Error("offline");
-        return { source: "Kalshi", homeWin: 0.6, cover: null, spread };
       },
     },
     now: () => now,
@@ -1037,13 +1040,16 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     tiebreakerTotal: input.total ?? null,
   });
 
-  it("gives members a game's stats and market prices, and nothing when the sources are down", async () => {
+  it("gives members a game's stats and prediction, and nothing when the source is down", async () => {
     const path = `/games/${game.thu}/insights`;
     const res = await call<GameInsights>(PLAYER, "GET", path);
     expect(res.status).toBe(200);
-    expect(res.body.matchup?.url).toBe("https://example.test/t1");
-    // The market is read against the league's own spread for the game.
-    expect(res.body.market).toEqual({ source: "Kalshi", homeWin: 0.6, cover: null, spread: -2.5 });
+    expect(res.body).toEqual({
+      matchup: expect.objectContaining({
+        url: "https://example.test/t1",
+        prediction: { home: 0.6, away: 0.39 },
+      }),
+    });
     expect((await call(OUTSIDER, "GET", path)).status).toBe(404);
 
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -1051,8 +1057,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     const down = await call<GameInsights>(PLAYER, "GET", path);
     insightsDown = false;
     expect(down.status).toBe(200);
-    expect(down.body).toEqual({ matchup: null, market: null });
-    expect(log).toHaveBeenCalledTimes(2);
+    expect(down.body).toEqual({ matchup: null });
+    expect(log).toHaveBeenCalledTimes(1);
     log.mockRestore();
   });
 

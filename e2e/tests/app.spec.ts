@@ -208,7 +208,7 @@ test("admins have equal authority and can step down while keeping one admin", as
     }
     const pat = contexts[0]?.pages()[0];
     if (!pat) throw new Error("Missing Pat's page");
-    await pat.getByLabel("Import games and spreads from ESPN").uncheck();
+    await pat.getByLabel("Auto-fill games and spreads").uncheck();
     await pat.getByRole("button", { name: "Create week" }).click();
     await expect(pat.getByRole("heading", { name: /Week 1 · / })).toBeVisible();
 
@@ -257,7 +257,7 @@ test("admins choose one season across tabs and manage existing weeks without dup
   await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
-  await page.getByLabel("Import games and spreads from ESPN").uncheck();
+  await page.getByLabel("Auto-fill games and spreads").uncheck();
   await page.getByRole("button", { name: "Create week" }).click();
   await expect(page.getByRole("heading", { name: new RegExp(`Week 1 · ${originalYear}`) })).toBeVisible();
   await page.getByRole("link", { name: "League", exact: true }).click();
@@ -271,7 +271,7 @@ test("admins choose one season across tabs and manage existing weeks without dup
   await page.getByLabel("New season year").fill(nextYear);
   await page.getByRole("button", { name: "Use season" }).click();
   await expect(page.getByRole("combobox", { name: "Week", exact: true })).toHaveValue("1");
-  await page.getByLabel("Import games and spreads from ESPN").uncheck();
+  await page.getByLabel("Auto-fill games and spreads").uncheck();
   await page.getByRole("button", { name: "Create week" }).click();
   await expect(page.getByRole("heading", { name: new RegExp(`Week 1 · ${nextYear}`) })).toBeVisible();
   for (const tab of ["Standings", "Results", "League"]) {
@@ -294,7 +294,7 @@ test("upcoming picks take priority over unfinished past weeks and season changes
   const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
 
   for (const days of [-3, 3]) {
-    await page.getByLabel("Import games and spreads from ESPN").uncheck();
+    await page.getByLabel("Auto-fill games and spreads").uncheck();
     await page.getByRole("button", { name: "Create week" }).click();
     await page.getByLabel("Away team").selectOption("KC");
     await page.getByLabel("Home team").selectOption("ATL");
@@ -344,7 +344,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(page.getByRole("heading", { name: "E2E League" })).toBeVisible();
   const inviteUrl = await page.getByLabel(/Invite link/).inputValue();
 
-  await page.getByLabel("Import games and spreads from ESPN").uncheck();
+  await page.getByLabel("Auto-fill games and spreads").uncheck();
   await page.getByRole("button", { name: "Create week" }).click();
   await expect(page.getByRole("heading", { name: /Week 1 · / })).toBeVisible();
 

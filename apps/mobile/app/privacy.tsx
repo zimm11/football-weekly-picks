@@ -7,6 +7,9 @@ import { LegalPage, type LegalSection } from "../src/components/LegalPage";
  * today, so change this text and `UPDATED` whenever that changes: a new column holding something about a player,
  * a new provider or external host, a new kind of email or notification, a retention period, or what account
  * deletion clears (`apps/api/src/accounts.ts`).
+ *
+ * The sports-data company is ESPN. Players' copy never names the data provider (AGENTS.md, "Copy"), so this page
+ * describes it instead; the companies that hold players' data for us are named.
  */
 const UPDATED = "November 17, 2026";
 
@@ -82,9 +85,9 @@ const sections: LegalSection[] = [
         "Supabase stores the database and runs sign-in, in the United States.",
         "Cloudflare hosts the app and its network, delivers our email, and runs the automatic check on posts and names. The check receives the text being checked, with a few earlier messages from the same thread for context; Cloudflare says it doesn't keep that text after answering or use it to train AI models.",
         "Push services deliver notifications: Apple, Google, Mozilla or Microsoft for browsers, and Expo and Apple for the iPhone app. A notification carries a league name and a thread title, a reminder or a league update, never your picks or the text of a message.",
-        "ESPN serves the team logos straight to your device, so ESPN receives your IP address and browser type, as any site does when it sends you an image.",
+        "The sports-data company we use serves the team logos straight to your device, so it receives your IP address and browser type, as any site does when it sends you an image.",
       ],
-      "Schedules, scores, stats and news come from ESPN and market prices from Kalshi. Our server fetches them; nothing about you is sent to either.",
+      "Schedules, scores, stats, news and win predictions come from the same company. Our server fetches them; nothing about you is sent with those requests.",
       "We don't sell personal information and don't share it for advertising. We would disclose information only if the law required it, or to protect someone's safety.",
     ],
   ],
