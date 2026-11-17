@@ -184,6 +184,8 @@ describe("ESPN postseason scoreboard", () => {
       const name = `${g.awayTeam} @ ${g.homeTeam}`;
       const q = g.periodScores;
       if (g.status !== "final") problems.push(`${name}: not marked final`);
+      // A live score is read only while the feed says the game is in progress (state "in").
+      if (g.liveScore) problems.push(`${name}: finished but read as still under way`);
       if ((g.period ?? 0) < 4) problems.push(`${name}: finished in period ${g.period}, before the 4th`);
       if (!q?.q1 || !q.half || !q.q3 || !q.final) {
         problems.push(`${name}: missing a quarter (${Object.keys(q ?? {}).join(", ") || "none"})`);
