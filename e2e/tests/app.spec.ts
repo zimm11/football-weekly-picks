@@ -20,6 +20,18 @@ async function memberAction(page: Page, member: string, action: string) {
   await page.getByRole("menuitem", { name: action, exact: true }).click();
 }
 
+test("the browser can't leave this machine, so no test touches production", async ({ browser, page }) => {
+  await expect(page.goto("https://www.pow-pickem.com/")).rejects.toThrow();
+  const context = await browser.newContext();
+  try {
+    await expect((await context.newPage()).goto("https://www.pow-pickem.com/join/x")).rejects.toThrow();
+  } finally {
+    await context.close();
+  }
+  // Local servers are still reachable.
+  await expect((await page.goto("/"))?.ok()).toBe(true);
+});
+
 test("signed-out visitors can explore the landing page and public guide", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "POW Pick'em", exact: true })).toBeVisible();

@@ -21,6 +21,10 @@ export default defineConfig({
   reporter: isCI ? [["github"], ["html", { open: "never" }]] : [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: workerUrl,
+    // The browsers can reach this machine and nothing else. Every other host goes to a proxy that isn't
+    // there, so a link that points at the live site (an invite link, an emailed link) fails the test instead
+    // of signing up a real account in production. Covers every context, including `browser.newContext()`.
+    launchOptions: { proxy: { server: "http://127.0.0.1:9", bypass: "localhost,127.0.0.1,[::1]" } },
     // Auth requests/responses and invite capabilities must not enter uploaded artifacts.
     trace: "off",
     screenshot: "off",
