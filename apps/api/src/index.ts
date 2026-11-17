@@ -75,18 +75,20 @@ async function main() {
     console.log(`API listening on http://localhost:${info.port}`);
   });
 
-  // Production runs the scheduled jobs from the Worker's Cron Trigger; locally a timer stands in for it.
+  // Production runs the scheduled jobs from the Worker's Cron Trigger; locally a timer stands in for it. Node has
+  // no Workers AI binding, so nothing is screened here (README, "Content moderation").
   let running = false;
-  const jobs =
-    email || push || nativePush
-      ? setInterval(async () => {
-          if (running) return;
-          running = true;
-          await runScheduledJobs(db, { email, push, nativePush }, now()).finally(() => {
-            running = false;
-          });
-        }, LOCAL_JOB_INTERVAL_MS)
-      : undefined;
+  const jobs = setInterval(async () => {
+    if (running) return;
+    running = true;
+    await runScheduledJobs(
+      db,
+      { email, push, nativePush, operatorUserIds: env.OPERATOR_USER_IDS },
+      now(),
+    ).finally(() => {
+      running = false;
+    });
+  }, LOCAL_JOB_INTERVAL_MS);
 
   const shutdown = async () => {
     clearInterval(jobs);

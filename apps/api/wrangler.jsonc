@@ -39,11 +39,15 @@
   // Notification email through Cloudflare Email Sending (README, "Email"). No API key: the binding is the
   // credential. Only the app's own sender may be used. Sending is off until the UNSUBSCRIBE_SECRET secret is set.
   "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["noreply@pow-pickem.com"] }],
-  // The scheduled jobs (src/jobs.ts): queue pick reminders due at 7pm league time and send or retry what's waiting,
-  // by email and by push. They're idempotent, so a late or doubled run is harmless.
+  // Workers AI, for screening posts and names with Cloudflare's Clef models (src/screening.ts). MODERATION_MODE=off
+  // switches it off without a deploy of new code (`wrangler secret put` or a var), for an outage or wrong blocks.
+  "ai": { "binding": "AI" },
+  // The scheduled jobs (src/jobs.ts): recheck posts saved while screening was down, clear removed messages' text after
+  // 30 days and queue the operator's daily digest; then queue pick reminders due at 7pm league time and send or
+  // retry what's waiting, by email and by push. They're idempotent, so a late or doubled run is harmless.
   "triggers": { "crons": ["*/5 * * * *"] },
   // Secrets (`wrangler secret put`): SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, optionally OPERATOR_USER_IDS, and
-  // UNSUBSCRIBE_SECRET to turn email on, and VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT to turn push on. Optional vars: EMAIL_FROM, EMAIL_DAILY_LIMIT, EMAIL_MONTHLY_LIMIT.
+  // UNSUBSCRIBE_SECRET to turn email on, and VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT to turn push on. Optional vars: EMAIL_FROM, EMAIL_DAILY_LIMIT, EMAIL_MONTHLY_LIMIT, MODERATION_MODE.
   "vars": { "NODE_ENV": "production", "APP_URL": "https://www.pow-pickem.com" },
   "observability": {
     "enabled": true,

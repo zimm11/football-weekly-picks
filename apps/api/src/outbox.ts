@@ -3,11 +3,13 @@ import {
   emailOutbox,
   emailUsage,
   leagueMembers,
+  messagePosts,
   messageThreads,
   type OutboxMessage,
   profiles,
+  userBlocks,
 } from "@picks/db";
-import { and, asc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { type EmailKind, EmailSendError, type Mailer, unsubscribeToken } from "./email";
 import { knownErrorCode, logError, logWarning } from "./logging";
 import { dueReminderTargets, reminderStillDue } from "./reminderTargets";
@@ -105,6 +107,15 @@ export async function queueThreadEmails(
         isNull(leagueMembers.removedAt),
         ne(leagueMembers.userId, input.authorId),
         wants("new_thread"),
+        // Nobody hears about threads from a player they blocked.
+        notExists(
+          tx
+            .select({ one: sql`1` })
+            .from(userBlocks)
+            .where(
+              and(eq(userBlocks.blockerId, leagueMembers.userId), eq(userBlocks.blockedId, input.authorId)),
+            ),
+        ),
       ),
     );
   if (!recipients.length) return 0;
@@ -275,8 +286,10 @@ type ClaimedRow = typeof emailOutbox.$inferSelect;
 
 /**
  * Rechecks claimed rows just before sending, as push does: a thread email only while its recipient is still a
- * current member of the thread's league; a reminder only while it is still due (`reminderStillDue`), re-rendered
- * with the games still to pick. Returns the message to send, or the reason the row is skipped.
+ * current member of the thread's league, hasn't blocked its author since, and the thread's opening message hasn't
+ * been hidden or removed; a reminder only while it is still due (`reminderStillDue`), re-rendered with the games
+ * still to pick. The operator's moderation emails go as they are. Returns the message to send, or the reason the
+ * row is skipped.
  */
 async function stillWorthSending(
   db: Db,
@@ -302,6 +315,29 @@ async function stillWorthSending(
           and(
             inArray(messageThreads.id, [...new Set(threads.map((t) => t.threadId))]),
             inArray(leagueMembers.userId, [...new Set(threads.map((t) => t.userId))]),
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(messagePosts)
+                .where(
+                  and(
+                    eq(messagePosts.threadId, messageThreads.id),
+                    eq(messagePosts.position, 1),
+                    or(isNotNull(messagePosts.hiddenAt), isNotNull(messagePosts.removedAt)),
+                  ),
+                ),
+            ),
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(userBlocks)
+                .where(
+                  and(
+                    eq(userBlocks.blockerId, leagueMembers.userId),
+                    eq(userBlocks.blockedId, messageThreads.authorId),
+                  ),
+                ),
+            ),
           ),
         )
     : [];
@@ -310,6 +346,10 @@ async function stillWorthSending(
   const result = new Map<string, OutboxMessage | "NOT_A_MEMBER" | "NO_LONGER_DUE">();
   for (const row of claimed) {
     const key = keys.get(row.id);
+    if (row.kind === "moderation") {
+      result.set(row.id, row.message as OutboxMessage);
+      continue;
+    }
     if (row.kind === "new_thread") {
       const ok = key?.kind === "new_thread" && current.has(`${key.threadId}:${row.userId}`);
       result.set(row.id, ok ? (row.message as OutboxMessage) : "NOT_A_MEMBER");
@@ -425,7 +465,13 @@ export async function drainOutbox(db: Db, email: EmailDeps, now: Date): Promise<
         continue;
       }
       const recipient = byUser.get(row.userId);
-      const wanted = row.kind === "new_thread" ? recipient?.newThreads : recipient?.pickReminders;
+      // Moderation emails go only to operators, who can't switch them off.
+      const wanted =
+        row.kind === "moderation"
+          ? true
+          : row.kind === "new_thread"
+            ? recipient?.newThreads
+            : recipient?.pickReminders;
       if (!recipient?.address || !wanted) {
         await finish(db, row.id, {
           status: "skipped",

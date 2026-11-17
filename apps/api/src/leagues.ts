@@ -10,6 +10,7 @@ import {
   weeks,
 } from "@picks/db";
 import {
+  activeMute,
   createLeagueSchema,
   effectiveTiebreakerId,
   type InvitePreview,
@@ -18,6 +19,7 @@ import {
   lowPointLosers,
   MAX_LEAGUE_MEMBERS,
   MAX_LEAGUES_PER_USER,
+  MODERATION_MESSAGES,
   type PlayerSeasonStats,
   preferredSeasonYear,
   type Role,
@@ -52,6 +54,7 @@ import {
   toMember,
   weekParticipants,
 } from "./context";
+import { blockedBy, openReportCount, requireNotSuspended, screen } from "./moderation";
 
 const memberParam = param(z.object({ leagueId: z.uuid(), userId: z.uuid() }));
 
@@ -66,7 +69,13 @@ const newInviteCode = () => randomBytes(9).toString("base64url");
 
 const defaultLimits = { membersPerLeague: MAX_LEAGUE_MEMBERS, leaguesPerUser: MAX_LEAGUES_PER_USER };
 
-export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits = defaultLimits }: AppDeps) {
+export function leagueRoutes({
+  db,
+  verifyToken,
+  screener,
+  now = () => new Date(),
+  limits = defaultLimits,
+}: AppDeps) {
   const auth = requireAuth(verifyToken);
 
   /** Active members of a league, or active leagues of a user, depending on the filter. */
@@ -143,6 +152,8 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
       .post("/leagues", auth, body(createLeagueSchema), async (c) => {
         const { name, timeZone } = c.req.valid("json");
         await requireDisplayName(db, c.var.user.id);
+        await requireNotSuspended(db, c.var.user.id);
+        await screen(screener, { kind: "league_name", text: name }, MODERATION_MESSAGES.rejectedName);
         const id = await db.transaction(async (tx) => {
           await requireRoomForAnotherLeague(tx, c.var.user.id);
           const [league] = await tx
@@ -213,7 +224,25 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
           timeZone: league.timeZone,
           role,
           inviteCode: role === "admin" ? league.inviteCode : null,
-          members: (await listMemberRecords(db, leagueId)).filter(isActive).map(toMember),
+          members: await (async () => {
+            const [records, blocked, mutes] = await Promise.all([
+              listMemberRecords(db, leagueId),
+              blockedBy(db, c.var.user.id),
+              role === "admin"
+                ? db
+                    .select({ userId: leagueMembers.userId, mutedUntil: leagueMembers.mutedUntil })
+                    .from(leagueMembers)
+                    .where(and(eq(leagueMembers.leagueId, leagueId), isNotNull(leagueMembers.mutedUntil)))
+                : [],
+            ]);
+            const muteOf = new Map(mutes.map((m) => [m.userId, activeMute(clock, m.mutedUntil)]));
+            return records.filter(isActive).map((m) => ({
+              ...toMember(m),
+              ...(blocked.has(m.userId) && { blocked: true }),
+              ...(role === "admin" && { mutedUntil: muteOf.get(m.userId)?.toISOString() ?? null }),
+            }));
+          })(),
+          openReports: role === "admin" ? await openReportCount(db, leagueId) : null,
           weeks: weekRows
             .filter((w) => role === "admin" || w.status !== "draft")
             .map(({ finalizedAt: _, ...w }) => {
@@ -235,8 +264,18 @@ export function leagueRoutes({ db, verifyToken, now = () => new Date(), limits =
       })
       .patch("/leagues/:leagueId", auth, leagueParam, body(updateLeagueSchema), async (c) => {
         const { leagueId } = c.req.valid("param");
-        requireAdmin((await requireMember(db, leagueId, c.var.user.id)).role);
-        await db.update(leagues).set(c.req.valid("json")).where(eq(leagues.id, leagueId));
+        const { league, role } = await requireMember(db, leagueId, c.var.user.id);
+        requireAdmin(role);
+        const changes = c.req.valid("json");
+        const renaming = changes.name !== undefined && changes.name !== league.name;
+        if (renaming) await requireNotSuspended(db, c.var.user.id);
+        if (renaming && changes.name)
+          await screen(
+            screener,
+            { kind: "league_name", text: changes.name },
+            MODERATION_MESSAGES.rejectedName,
+          );
+        await db.update(leagues).set(changes).where(eq(leagues.id, leagueId));
         return c.json({ ok: true });
       })
       .patch(

@@ -2,12 +2,14 @@ import {
   type Db,
   leagueMembers,
   leagues,
+  messagePosts,
   messageThreads,
   pushDeliveries,
   pushSubscriptions,
+  userBlocks,
 } from "@picks/db";
 import type { PushPayload } from "@picks/shared";
-import { and, asc, eq, inArray, isNull, lt, lte, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { logError } from "./logging";
 import type { PushSender } from "./pushSender";
 import { dueReminderTargets, reminderStillDue } from "./reminderTargets";
@@ -34,7 +36,21 @@ export async function queueThreadPush(
         isNull(leagueMembers.removedAt),
       ),
     )
-    .where(and(ne(pushSubscriptions.userId, authorId), eq(pushSubscriptions.newThreads, true)));
+    .where(
+      and(
+        ne(pushSubscriptions.userId, authorId),
+        eq(pushSubscriptions.newThreads, true),
+        // Nobody hears about threads from a player they blocked.
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(userBlocks)
+            .where(
+              and(eq(userBlocks.blockerId, pushSubscriptions.userId), eq(userBlocks.blockedId, authorId)),
+            ),
+        ),
+      ),
+    );
   if (devices.length)
     await db
       .insert(pushDeliveries)
@@ -182,11 +198,39 @@ async function claimPush(
       return skip();
     let payload: PushPayload;
     if (delivery.kind === "new_thread") {
+      // Rechecked now: the opening message may have been hidden or removed, or its author blocked, since.
       const [thread] = delivery.threadId
         ? await tx
             .select({ title: messageThreads.title })
             .from(messageThreads)
-            .where(eq(messageThreads.id, delivery.threadId))
+            .where(
+              and(
+                eq(messageThreads.id, delivery.threadId),
+                notExists(
+                  tx
+                    .select({ one: sql`1` })
+                    .from(messagePosts)
+                    .where(
+                      and(
+                        eq(messagePosts.threadId, messageThreads.id),
+                        eq(messagePosts.position, 1),
+                        or(isNotNull(messagePosts.hiddenAt), isNotNull(messagePosts.removedAt)),
+                      ),
+                    ),
+                ),
+                notExists(
+                  tx
+                    .select({ one: sql`1` })
+                    .from(userBlocks)
+                    .where(
+                      and(
+                        eq(userBlocks.blockerId, device.userId),
+                        eq(userBlocks.blockedId, messageThreads.authorId),
+                      ),
+                    ),
+                ),
+              ),
+            )
         : [];
       if (!thread) return skip();
       payload = {

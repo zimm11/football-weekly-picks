@@ -139,7 +139,10 @@ describe.skipIf(!process.env.DATABASE_URL)("thread list pages (requires `pnpm db
   });
 
   it("limits how many threads one player can start in a league in a day", async () => {
-    await db.insert(profiles).values({ userId: member, displayName: "Poster" }).onConflictDoNothing();
+    await db
+      .insert(profiles)
+      .values({ userId: member, displayName: "Poster", termsAcceptedAt: new Date() })
+      .onConflictDoNothing();
     const post = (league = leagueId) =>
       app.request(`/api/leagues/${league}/messages`, {
         method: "POST",

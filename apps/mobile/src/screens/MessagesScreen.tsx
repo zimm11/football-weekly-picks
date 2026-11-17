@@ -36,8 +36,9 @@ import {
   PinnedBadge,
   QuotedMessage,
 } from "../components/MessageParts";
+import { ReportSheet, type ReportTarget, setBlocked, useTermsGate } from "../components/Moderation";
 import { type Anchor, Menu, MenuItem, Popover, useAnchor } from "../components/Popover";
-import { colors, fonts, Notice } from "../components/ui";
+import { Badge, colors, fonts, Notice } from "../components/ui";
 import { request } from "../lib/api";
 import { now as clockNow } from "../lib/clock";
 import { showConfirm } from "../lib/dialogs";
@@ -50,6 +51,7 @@ import {
   takeMessageNotice,
   useUnreadThreads,
 } from "../lib/messageUnread";
+import { postActions, postPlaceholder } from "../lib/moderation";
 import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
 import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
 
@@ -360,6 +362,7 @@ function NewThread({ leagueId, header }: { leagueId: string; header?: ReactNode 
   const [busy, setBusy] = useState(false);
   const [createdId, setCreatedId] = useState<string>();
   const submitting = useRef(false);
+  const terms = useTermsGate();
   useDraftGuard(!createdId && !!(title || body), busy, () => {
     setTitle("");
     setBody("");
@@ -380,6 +383,10 @@ function NewThread({ leagueId, header }: { leagueId: string; header?: ReactNode 
       return;
     }
     submitting.current = true;
+    if (!(await terms.ensure())) {
+      submitting.current = false;
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -448,6 +455,7 @@ function NewThread({ leagueId, header }: { leagueId: string; header?: ReactNode 
           />
         </View>
       </ScrollView>
+      {terms.sheet}
     </KeyboardAvoidingView>
   );
 }
@@ -464,6 +472,17 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
   const [replyHeight, setReplyHeight] = useState(44);
   const [deleted, setDeleted] = useState(false);
   const options = useAnchor();
+  const terms = useTermsGate();
+  // Messages the reader chose to show: a blocked player's, or (for admins) one hidden for review.
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
+  const [reporting, setReporting] = useState<{
+    target: ReportTarget;
+    subject: string;
+    block?: { name: string; userId: string };
+  }>();
+  // The message whose ⋯ menu is open, and where its button is.
+  const [postMenu, setPostMenu] = useState<{ postId: string; anchor: Anchor }>();
+  const postMenuButtons = useRef(new Map<string, ComponentRef<typeof View>>());
   const [reactionPost, setReactionPost] = useState<string>();
   // The "Add reaction" button the picker opened from, so it appears beside it as on the web.
   const [reactionAnchor, setReactionAnchor] = useState<Anchor>();
@@ -575,12 +594,13 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
       if (alive.current) setBusy(undefined);
     }
   }
-  function submitReply() {
+  async function submitReply() {
     const parsed = replySchema.safeParse({ body, quotedPostId: quote?.id });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Check your reply.");
       return;
     }
+    if (!(await terms.ensure())) return;
     void mutate("reply", async () => {
       await request(`${path}/replies`, { method: "POST", body: parsed.data });
       setBody("");
@@ -596,9 +616,10 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
       }
     });
   }
-  function toggleReaction(post: MessagePost, emoji: MessageEmoji) {
+  async function toggleReaction(post: MessagePost, emoji: MessageEmoji) {
     setReactionPost(undefined);
     const active = !post.reactions.find((reaction) => reaction.emoji === emoji)?.reacted;
+    if (!(await terms.ensure())) return;
     void mutate(`reaction:${post.id}:${emoji}`, async () => {
       const reactions = await request<MessageReaction[]>(`${path}/posts/${post.id}/reactions`, {
         method: "PUT",
@@ -646,6 +667,77 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
       setDeleted(true);
     });
   }
+  /** Blocks or unblocks a message's author, then reloads the thread so their messages fold or unfold. */
+  async function block(post: MessagePost, blocked: boolean) {
+    if (
+      blocked &&
+      !(await showConfirm({
+        title: `Block ${post.authorName}?`,
+        message:
+          "Their threads, replies and reactions are hidden from you everywhere, and you won't be notified about their threads. Picks and standings don't change, and they aren't told.",
+        confirmLabel: `Block ${post.authorName}`,
+        destructive: true,
+      }))
+    )
+      return;
+    void mutate(
+      "block",
+      async () => {
+        await setBlocked(post.authorId, blocked);
+        setThread(await request<ThreadDetail>(path));
+      },
+      blocked ? `${post.authorName} is blocked.` : `${post.authorName} is unblocked.`,
+    );
+  }
+  async function moderate(post: MessagePost, action: "remove" | "restore") {
+    if (
+      action === "remove" &&
+      !(await showConfirm({
+        title: `Remove ${post.authorName}'s message?`,
+        message:
+          post.position === 1
+            ? "This is the thread's first message, so the whole thread leaves the board. It counts against the author, who can ask for a review."
+            : "Everyone sees “Message removed” in its place. It counts against the author, who can ask for a review.",
+        confirmLabel: "Remove message",
+        destructive: true,
+      }))
+    )
+      return;
+    void mutate(
+      action,
+      async () => {
+        await request(`${path}/posts/${post.id}/moderation`, { method: "PUT", body: { action } });
+        announceMessagesChanged();
+        if (action === "remove" && post.position === 1) {
+          setMessageNotice(leagueId, "Thread removed.");
+          setDeleted(true);
+          return;
+        }
+        setThread(await request<ThreadDetail>(path));
+      },
+      action === "remove" ? "Message removed." : "Message restored.",
+    );
+  }
+  async function appeal(post: MessagePost) {
+    if (
+      !(await showConfirm({
+        title: "Ask for a review?",
+        message:
+          "The people who run POW Pick'em will look at this message again and put it back if it shouldn't have been removed. You can ask once.",
+        confirmLabel: "Ask for a review",
+      }))
+    )
+      return;
+    void mutate(
+      "appeal",
+      async () => {
+        await request(`${path}/posts/${post.id}/appeal`, { method: "POST", body: {} });
+        setThread(await request<ThreadDetail>(path));
+      },
+      "Thanks. We'll take another look.",
+    );
+  }
+  const menuPost = thread?.posts.find((post) => post.id === postMenu?.postId);
   const selectedPost = thread?.posts.find((post) => post.id === reactionPost);
   return (
     <KeyboardAvoidingView
@@ -707,114 +799,194 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
                 />
               </View>
             )}
-            {thread.posts.map((post) => (
-              <View
-                key={post.id}
-                style={[s.card, scrollToId === post.id && s.highlight]}
-                ref={(node) => {
-                  if (node) postCards.current.set(post.id, node);
-                  else postCards.current.delete(post.id);
-                }}
-                onLayout={(event) => {
-                  positions.current.set(post.id, event.nativeEvent.layout.y);
-                }}
-                role="region"
-                aria-label={`Message ${post.position} by ${post.authorName}`}
-                // Focusable on the web, so "View original" can move focus to it.
-                tabIndex={Platform.OS === "web" ? -1 : undefined}
-              >
-                <View style={s.postHeader}>
-                  <Avatar name={post.authorName} />
-                  <Text style={s.author}>{post.authorName}</Text>
-                  <MessageTimestamp value={post.createdAt} now={clockNow()} />
-                </View>
-                {post.quote && (
-                  <QuotedMessage
-                    quote={post.quote}
-                    onOriginal={() => {
-                      setScrollToId(undefined);
-                      requestAnimationFrame(() => setScrollToId(post.quote?.id));
-                    }}
-                  />
-                )}
-                <Text
-                  selectable
+            {thread.posts.map((post) => {
+              const placeholder = postPlaceholder(post.state, revealed.has(post.id), thread.canModerate);
+              // Removed and hidden messages take no reactions or quotes; a blocked player's do once shown.
+              const interactive = !placeholder && post.state !== "removed" && post.state !== "hidden";
+              const actions = postActions(post, {
+                canModerate: thread.canModerate,
+                blockedAuthor: post.state === "blocked",
+              });
+              return (
+                <View
+                  key={post.id}
+                  style={[s.card, scrollToId === post.id && s.highlight]}
                   ref={(node) => {
-                    if (node) postBodies.current.set(post.id, node);
-                    else postBodies.current.delete(post.id);
+                    if (node) postCards.current.set(post.id, node);
+                    else postCards.current.delete(post.id);
                   }}
-                  accessibilityLabel={`Message ${post.position} by ${post.authorName}: ${post.body}`}
-                  style={s.text}
+                  onLayout={(event) => {
+                    positions.current.set(post.id, event.nativeEvent.layout.y);
+                  }}
+                  role="region"
+                  aria-label={`Message ${post.position} by ${post.authorName}`}
+                  // Focusable on the web, so "View original" can move focus to it.
+                  tabIndex={Platform.OS === "web" ? -1 : undefined}
                 >
-                  {post.body}
-                </Text>
-                <View style={s.postActions}>
-                  <View role="group" aria-label="Message reactions" style={s.reactions}>
-                    {MESSAGE_REACTIONS.flatMap(({ emoji }) => {
-                      const reaction = post.reactions.find((value) => value.emoji === emoji);
-                      return reaction && reaction.count > 0 ? [reaction] : [];
-                    }).map((reaction) => (
+                  <View style={s.postHeader}>
+                    <Avatar name={post.authorName} />
+                    <Text style={s.author}>{post.authorName}</Text>
+                    <MessageTimestamp value={post.createdAt} now={clockNow()} />
+                    {actions.length > 0 && (
                       <Pressable
-                        key={reaction.emoji}
-                        disabled={!!busy}
+                        ref={(node) => {
+                          if (node) postMenuButtons.current.set(post.id, node);
+                          else postMenuButtons.current.delete(post.id);
+                        }}
                         accessibilityRole="button"
-                        accessibilityLabel={`${MESSAGE_REACTIONS.find((value) => value.emoji === reaction.emoji)?.label ?? reaction.emoji}, ${reaction.count} reactions`}
-                        // A toggle: pressed while it is your reaction.
-                        aria-pressed={reaction.reacted}
-                        accessibilityState={{ disabled: !!busy }}
-                        onPress={() => toggleReaction(post, reaction.emoji)}
-                        style={s.reactionTarget}
+                        accessibilityLabel={`Options for message ${post.position} by ${post.authorName}`}
+                        disabled={!!busy}
+                        style={[s.iconButton, { marginLeft: "auto", marginVertical: -8 }]}
+                        onPress={() =>
+                          postMenuButtons.current
+                            .get(post.id)
+                            ?.measureInWindow((x, y, width, height) =>
+                              setPostMenu({ postId: post.id, anchor: { x, y, width, height } }),
+                            )
+                        }
                       >
-                        <View style={[s.reactionPill, reaction.reacted && s.selected]}>
-                          <Text style={s.reactionEmoji}>{reaction.emoji}</Text>
-                          <Text style={[s.reactionCount, reaction.reacted && s.text]}>
-                            {busy === `reaction:${post.id}:${reaction.emoji}` ? "Saving…" : reaction.count}
-                          </Text>
-                        </View>
+                        <Icon name="more" size={20} color={colors.mutedForeground} />
                       </Pressable>
-                    ))}
-                    <Pressable
-                      ref={(node) => {
-                        if (node) addReactionButtons.current.set(post.id, node);
-                        else addReactionButtons.current.delete(post.id);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Add reaction"
-                      disabled={!!busy}
-                      style={s.reactionTarget}
-                      onPress={() =>
-                        addReactionButtons.current.get(post.id)?.measureInWindow((x, y, width, height) => {
-                          setReactionAnchor({ x, y, width, height });
-                          setReactionPost(post.id);
-                        })
-                      }
-                    >
-                      <View style={s.reactionPill}>
-                        <Icon name="smile" size={20} color={colors.mutedForeground} />
-                        <Icon name="plus" size={12} color={colors.mutedForeground} />
-                      </View>
-                    </Pressable>
+                    )}
                   </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Quote message ${post.position} by ${post.authorName}`}
-                    disabled={!!busy}
-                    style={s.quoteReply}
-                    onPress={() => {
-                      setQuote({ id: post.id, authorName: post.authorName, body: post.body });
-                      input.current?.focus();
-                    }}
-                  >
-                    <Icon name="quote" size={16} color={colors.mutedForeground} />
-                    <Text style={s.quoteReplyText}>Quote reply</Text>
-                  </Pressable>
+                  {post.state === "review" && <Badge>Under review</Badge>}
+                  {placeholder ? (
+                    <View style={s.placeholder}>
+                      <Text
+                        ref={(node) => {
+                          if (node) postBodies.current.set(post.id, node);
+                          else postBodies.current.delete(post.id);
+                        }}
+                        style={s.placeholderText}
+                      >
+                        {placeholder.text}
+                      </Text>
+                      {placeholder.canShow && (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Show message ${post.position} by ${post.authorName}`}
+                          style={s.quoteReply}
+                          onPress={() => setRevealed((previous) => new Set(previous).add(post.id))}
+                        >
+                          <Icon name="eye" size={16} color={colors.mutedForeground} />
+                          <Text style={s.quoteReplyText}>Show</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  ) : (
+                    <>
+                      {post.quote && (
+                        <QuotedMessage
+                          quote={post.quote}
+                          onOriginal={() => {
+                            setScrollToId(undefined);
+                            requestAnimationFrame(() => setScrollToId(post.quote?.id));
+                          }}
+                        />
+                      )}
+                      <Text
+                        selectable
+                        ref={(node) => {
+                          if (node) postBodies.current.set(post.id, node);
+                          else postBodies.current.delete(post.id);
+                        }}
+                        accessibilityLabel={`Message ${post.position} by ${post.authorName}: ${post.body}`}
+                        style={s.text}
+                      >
+                        {post.body}
+                      </Text>
+                    </>
+                  )}
+                  {interactive && (
+                    <View style={s.postActions}>
+                      <View role="group" aria-label="Message reactions" style={s.reactions}>
+                        {MESSAGE_REACTIONS.flatMap(({ emoji }) => {
+                          const reaction = post.reactions.find((value) => value.emoji === emoji);
+                          return reaction && reaction.count > 0 ? [reaction] : [];
+                        }).map((reaction) => (
+                          <Pressable
+                            key={reaction.emoji}
+                            disabled={!!busy || !!thread.postingBlocked}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${MESSAGE_REACTIONS.find((value) => value.emoji === reaction.emoji)?.label ?? reaction.emoji}, ${reaction.count} reactions`}
+                            // A toggle: pressed while it is your reaction.
+                            aria-pressed={reaction.reacted}
+                            accessibilityState={{ disabled: !!busy || !!thread.postingBlocked }}
+                            onPress={() => void toggleReaction(post, reaction.emoji)}
+                            style={s.reactionTarget}
+                          >
+                            <View style={[s.reactionPill, reaction.reacted && s.selected]}>
+                              <Text style={s.reactionEmoji}>{reaction.emoji}</Text>
+                              <Text style={[s.reactionCount, reaction.reacted && s.text]}>
+                                {busy === `reaction:${post.id}:${reaction.emoji}`
+                                  ? "Saving…"
+                                  : reaction.count}
+                              </Text>
+                            </View>
+                          </Pressable>
+                        ))}
+                        {!thread.postingBlocked && (
+                          <Pressable
+                            ref={(node) => {
+                              if (node) addReactionButtons.current.set(post.id, node);
+                              else addReactionButtons.current.delete(post.id);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add reaction"
+                            disabled={!!busy}
+                            style={s.reactionTarget}
+                            onPress={() =>
+                              addReactionButtons.current
+                                .get(post.id)
+                                ?.measureInWindow((x, y, width, height) => {
+                                  setReactionAnchor({ x, y, width, height });
+                                  setReactionPost(post.id);
+                                })
+                            }
+                          >
+                            <View style={s.reactionPill}>
+                              <Icon name="smile" size={20} color={colors.mutedForeground} />
+                              <Icon name="plus" size={12} color={colors.mutedForeground} />
+                            </View>
+                          </Pressable>
+                        )}
+                      </View>
+                      {!thread.postingBlocked && (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Quote message ${post.position} by ${post.authorName}`}
+                          disabled={!!busy}
+                          style={s.quoteReply}
+                          onPress={() => {
+                            setQuote({ id: post.id, authorName: post.authorName, body: post.body });
+                            input.current?.focus();
+                          }}
+                        >
+                          <Icon name="quote" size={16} color={colors.mutedForeground} />
+                          <Text style={s.quoteReplyText}>Quote reply</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  )}
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </>
         )}
       </ScrollView>
-      {thread && !deleted && (
+      {thread && !deleted && thread.postingBlocked && (
+        <View style={s.composer}>
+          <View role="status" style={s.blockedNotice}>
+            <Icon name="mute" size={18} color={colors.mutedForeground} />
+            <Text style={[s.meta, s.flex]}>
+              {thread.postingBlocked} You can still read, pick and see standings.
+            </Text>
+          </View>
+          <Notice message={error} kind="alert" />
+          <Notice message={notice} />
+        </View>
+      )}
+      {thread && !deleted && !thread.postingBlocked && (
         <View style={s.composer}>
           {quote && (
             <View role="region" aria-label="Reply quote preview" style={s.quotePreview}>
@@ -857,7 +1029,7 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
               accessibilityState={{ disabled: !!busy || !body.trim() }}
               disabled={!!busy || !body.trim()}
               style={[s.sendButton, (!!busy || !body.trim()) && s.disabled]}
-              onPress={submitReply}
+              onPress={() => void submitReply()}
             >
               <Icon name="send" size={20} color={colors.primaryForeground} filled />
             </Pressable>
@@ -885,6 +1057,96 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
           />
         )}
       </Menu>
+      <Menu
+        anchor={menuPost ? postMenu?.anchor : undefined}
+        onClose={() => setPostMenu(undefined)}
+        label={
+          menuPost ? `Options for message ${menuPost.position} by ${menuPost.authorName}` : "Message options"
+        }
+        align="end"
+      >
+        {menuPost &&
+          postActions(menuPost, {
+            canModerate: !!thread?.canModerate,
+            blockedAuthor: menuPost.state === "blocked",
+          }).map((action) => {
+            const close = () => setPostMenu(undefined);
+            const name = menuPost.authorName;
+            if (action === "report")
+              return (
+                <MenuItem
+                  key={action}
+                  icon="flag"
+                  label="Report"
+                  accessibilityLabel={`Report message from ${name}`}
+                  onPress={() => {
+                    close();
+                    setReporting({
+                      target: { kind: "post", leagueId, threadId, postId: menuPost.id },
+                      subject: `a message from ${name}`,
+                      ...(menuPost.state !== "blocked" && { block: { name, userId: menuPost.authorId } }),
+                    });
+                  }}
+                />
+              );
+            if (action === "block" || action === "unblock")
+              return (
+                <MenuItem
+                  key={action}
+                  icon="block"
+                  destructive={action === "block"}
+                  label={action === "block" ? `Block ${name}` : `Unblock ${name}`}
+                  onPress={() => {
+                    close();
+                    void block(menuPost, action === "block");
+                  }}
+                />
+              );
+            if (action === "remove" || action === "restore")
+              return (
+                <MenuItem
+                  key={action}
+                  icon={action === "remove" ? "trash" : "restore"}
+                  destructive={action === "remove"}
+                  label={action === "remove" ? "Remove message" : "Restore message"}
+                  accessibilityLabel={`${action === "remove" ? "Remove" : "Restore"} message from ${name}`}
+                  onPress={() => {
+                    close();
+                    void moderate(menuPost, action);
+                  }}
+                />
+              );
+            return (
+              <MenuItem
+                key={action}
+                icon="restore"
+                label="Ask for a review"
+                onPress={() => {
+                  close();
+                  void appeal(menuPost);
+                }}
+              />
+            );
+          })}
+      </Menu>
+      <ReportSheet
+        target={reporting?.target ?? null}
+        subject={reporting?.subject ?? ""}
+        onClose={() => setReporting(undefined)}
+        onReported={() => void refresh()}
+        onBlock={
+          reporting?.block && {
+            name: reporting.block.name,
+            run: async () => {
+              const blocked = reporting.block;
+              if (!blocked) return;
+              await setBlocked(blocked.userId, true);
+              setThread(await request<ThreadDetail>(path));
+            },
+          }
+        }
+      />
+      {terms.sheet}
       <Popover
         anchor={selectedPost ? reactionAnchor : undefined}
         onClose={closeReactions}
@@ -910,7 +1172,7 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
                   onPress={() => {
                     // Choosing closes the menu, as on the web.
                     closeReactions();
-                    toggleReaction(selectedPost, reaction.emoji);
+                    void toggleReaction(selectedPost, reaction.emoji);
                   }}
                 >
                   <Text style={s.emoji}>{reaction.emoji}</Text>
@@ -1035,6 +1297,15 @@ const s = StyleSheet.create({
   },
   quoteReplyText: { fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground },
   highlight: { backgroundColor: colors.raised },
+  placeholder: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  placeholderText: {
+    fontFamily: fonts.body,
+    fontStyle: "italic",
+    color: colors.mutedForeground,
+    fontSize: 16,
+    lineHeight: 23,
+  },
+  blockedNotice: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 },
   composer: {
     width: "100%",
     maxWidth: 896,

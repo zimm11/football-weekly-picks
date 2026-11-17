@@ -94,6 +94,8 @@ const applicationMessages = new Set([
   "League insert returned no row",
   "Season upsert returned no row",
   "Reminder has no games",
+  "Screening answer was unusable",
+  "Report insert returned no row",
 ]);
 const operationMessages = {
   health: "Database health check failed.",
@@ -111,6 +113,9 @@ const operationMessages = {
   email_send: "Sending an email failed.",
   email_jobs: "Email job failed.",
   email_queue: "Queueing pick reminder emails failed.",
+  moderation_screen: "Content screening model request failed; the content was saved unchecked.",
+  moderation_jobs: "Moderation job failed.",
+  moderation_report: "Checking a reported message failed.",
 };
 type Operation = keyof typeof operationMessages;
 
@@ -138,7 +143,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /apps\/api\/src\/(app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|nfl|operator|outbox|push|pushQueue|pushSender|reminderTargets|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /apps\/api\/src\/(app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|moderation|moderationJobs|nfl|operator|outbox|push|pushQueue|pushSender|reminderTargets|screening|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;
@@ -161,6 +166,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
             "VAPID_PUBLIC_KEY",
             "VAPID_PRIVATE_KEY",
             "VAPID_SUBJECT",
+            "MODERATION_MODE",
           ].includes(field),
         )
       : undefined;
@@ -177,7 +183,10 @@ export function logWarning(name: keyof typeof warnings) {
 }
 
 /** A summary of one scheduled run: counts only, and only when it did something. */
-export function logJobRun(event: "email_jobs" | "push_jobs", result: Record<string, number>) {
+export function logJobRun(
+  event: "email_jobs" | "push_jobs" | "moderation_jobs",
+  result: Record<string, number>,
+) {
   if (Object.values(result).some((n) => n > 0)) console.log(JSON.stringify({ event, ...result }));
 }
 

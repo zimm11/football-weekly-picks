@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ModerationStatus, PostState } from "./moderation";
 import type { SeasonEntry, Side, WeekEntry } from "./rules";
 import type { WeekPhase } from "./seasons";
 import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
@@ -7,6 +8,7 @@ import { canonicalTimeZone, MAX_TIME_ZONE_LENGTH } from "./time";
 
 export * from "./awards";
 export * from "./insights";
+export * from "./moderation";
 export * from "./operator";
 export * from "./reminders";
 export * from "./rules";
@@ -43,6 +45,8 @@ export const toSingleLine = (text: string) =>
 
 export const updateProfileSchema = z.object({
   displayName: singleLine(40, "Enter a name"),
+  /** Agrees to the Terms of use at the same time, as the first name step does. */
+  acceptTerms: z.literal(true).optional(),
 });
 
 /** Most active players a league can have, admins included. */
@@ -155,6 +159,7 @@ export type Me = {
   displayName: string | null;
   isOperator: boolean;
   notifications: NotificationSettings;
+  moderation: ModerationStatus;
 };
 
 export type LeagueSummary = { id: string; name: string; role: Role };
@@ -174,7 +179,15 @@ export type WeekSummary = {
   /** Unpicked games that have not closed yet. */
   myMissingPickCount: number;
 };
-export type Member = { userId: string; displayName: string; role: Role };
+export type Member = {
+  userId: string;
+  displayName: string;
+  role: Role;
+  /** The signed-in player has blocked this member. */
+  blocked?: boolean;
+  /** Admins only: this member's mute in this league, if one is running. */
+  mutedUntil?: string | null;
+};
 
 export type LeagueDetail = {
   id: string;
@@ -188,6 +201,8 @@ export type LeagueDetail = {
   weeks: WeekSummary[];
   /** The most recently finalized week whose results this player hasn't been shown yet, if any. */
   recapWeekId: string | null;
+  /** Admins only: open moderation reports they can review in this league. Null for members. */
+  openReports?: number | null;
 };
 
 export type InvitePreview = {
@@ -305,15 +320,23 @@ export type MessageThread = {
   updatedAt: string;
   unread: boolean;
 };
-export type MessageQuote = { id: string; authorName: string; body: string };
+export type MessageQuote = { id: string; authorName: string; body: string; state?: PostState };
 export type MessagePost = {
   quote: MessageQuote | null;
   reactions: MessageReaction[];
   id: string;
+  /** A placeholder (`REMOVED_TEXT`, `HIDDEN_TEXT`) when the reader may not see the text. */
   body: string;
   authorName: string;
+  authorId: string;
+  /** How to show it to this reader. */
+  state: PostState;
+  /** Written by the signed-in player. */
+  mine: boolean;
   position: number;
   createdAt: string;
+  /** The author of a removed message can ask once for it to be reviewed again. */
+  canAppeal: boolean;
 };
 export type ThreadDetail = {
   id: string;
@@ -322,6 +345,12 @@ export type ThreadDetail = {
   pinned: boolean;
   canPin: boolean;
   canDelete: boolean;
+  /** League admins can hide, remove and restore single messages. */
+  canModerate: boolean;
+  /** Why the signed-in player can't post or react here right now (a mute, a suspension), or null. */
+  postingBlocked: string | null;
+  /** The player hasn't agreed to the terms yet, so the app asks before their first post. */
+  needsTerms: boolean;
   posts: MessagePost[];
 };
 
