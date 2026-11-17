@@ -1,3 +1,4 @@
+import type { leagues } from "@picks/db";
 import type { LeagueType } from "@picks/shared";
 import type { Tx } from "./context";
 import { playoffHooks } from "./playoff";
@@ -14,6 +15,20 @@ export type LeagueTypeHooks = {
    * their membership is marked removed. Squares gives back their squares on boards that haven't locked.
    */
   memberRemoved?(tx: Tx, input: { leagueId: string; userId: string; at: Date }): Promise<void>;
+  /**
+   * An admin starts a season (`POST /leagues/:leagueId/seasons`), inside its transaction. `settings` is already
+   * parsed with the type's schema. No feed call happens here: automation imports the first week afterwards.
+   */
+  startSeason?(
+    tx: Tx,
+    input: {
+      league: typeof leagues.$inferSelect;
+      year: number;
+      settings: unknown /* already parsed */;
+      at: Date;
+      actorId: string;
+    },
+  ): Promise<void>;
 };
 
 export const TYPE_HOOKS: Record<LeagueType, LeagueTypeHooks> = {

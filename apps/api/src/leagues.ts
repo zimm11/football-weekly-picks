@@ -64,6 +64,7 @@ import {
 import { deliverLeagueEventsSoon, queueLeagueEvent } from "./leagueEvents";
 import { blockedBy, openReportCount, requireNotSuspended, screen } from "./moderation";
 import type { AppServices } from "./services";
+import { startSurvivorSeason } from "./survivor";
 import { TYPE_HOOKS } from "./typeHooks";
 
 const memberParam = param(z.object({ leagueId: z.uuid(), userId: z.uuid() }));
@@ -219,6 +220,19 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
           await tx.insert(leagueMembers).values({ leagueId: league.id, userId, role: "admin", joinedAt: at });
           if (SEASON_SETTINGS_TYPES.has(input.type)) {
             await tx.insert(seasons).values({ leagueId: league.id, year: seasonYear(at), settings });
+          }
+          // A survivor pool also gets its start week, which automation imports on the first read.
+          if (input.type === "survivor") {
+            await startSurvivorSeason(
+              tx,
+              {
+                leagueId: league.id,
+                year: seasonYear(at),
+                settings: parseSeasonSettings("survivor", settings),
+                at,
+              },
+              { strict: false },
+            );
           }
           const added: string[] = [];
           const skipped: CreateLeagueResult["skipped"] = [];
