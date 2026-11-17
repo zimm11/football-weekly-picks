@@ -105,7 +105,7 @@ export const LEAGUE_TYPE_INFO: { [T in LeagueType]: LeagueTypeInfo<T> } = {
   squares: {
     type: "squares",
     name: "Squares",
-    description: "Claim squares on a 10 by 10 board for one game. Each quarter pays a winner.",
+    description: "Claim squares on a 10 by 10 board for one game. Each quarter has a winner.",
     icon: "grid",
     unit: "board",
     settings: squaresSettingsSchema,

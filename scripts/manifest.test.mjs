@@ -49,6 +49,16 @@ for (const entry of clients) {
     assert.equal(pngSize("/apple-touch-icon.png"), "180x180");
   });
 
+  test(`${entry.app}: the iPhone app's icon is the size the App Store asks for, with no transparency`, () => {
+    const root = new URL(`../${entry.app}/`, import.meta.url);
+    const config = JSON.parse(readFileSync(new URL("app.json", root), "utf8")).expo;
+    const png = readFileSync(new URL(config.icon, root));
+    assert.equal(png.toString("latin1", 1, 4), "PNG");
+    assert.equal(`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`, "1024x1024");
+    // Color type 2 is RGB: no alpha channel, which App Store Connect refuses in an icon.
+    assert.equal(png.readUInt8(25), 2, "the icon must not have an alpha channel");
+  });
+
   test(`${entry.app}: the manifest's colors match the page's theme color`, () => {
     assert.ok(html.includes(`name="theme-color" content="${manifest.theme_color}"`));
   });

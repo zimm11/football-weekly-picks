@@ -631,7 +631,7 @@ Run workspace commands from the repository root:
 | `pnpm test:contract` | Check ESPN's live feeds against what the app reads                                        |
 | `pnpm mobile:check`  | Type-check and test the Expo app                                                          |
 | `pnpm mobile:export` | Export the iOS JavaScript bundle (catches native-only bundling errors)                    |
-| `pnpm icons`         | Redraw the app icons in `apps/mobile/public` after changing `scripts/icons.mjs`           |
+| `pnpm icons`         | Redraw the website's icons and the iPhone app's icon after changing `scripts/icons.mjs`   |
 
 `pnpm check` does not include E2E tests or production builds. `pnpm test:all` does not include lint or
 type checking. For a full local verification, run `pnpm check`, `pnpm test:e2e`, and `pnpm build` after
