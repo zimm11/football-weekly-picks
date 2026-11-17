@@ -7,6 +7,7 @@ import {
   leagueTypeInfo,
 } from "./leagueTypes";
 import type { ModerationStatus, PostState } from "./moderation";
+import type { PlayoffWeekInfo } from "./playoff";
 import type { SeasonEntry, Side, WeekEntry } from "./rules";
 import type { WeekPhase } from "./seasons";
 import type { PlayerSeasonStats, WeekSummaryStats } from "./stats";
@@ -28,6 +29,7 @@ export * from "./stats";
 export * from "./survivor";
 export * from "./teams";
 export * from "./time";
+export * from "./weekly";
 
 /*
  * Shared API contracts, imported by the API, the web app, and (later) the mobile app.
@@ -150,6 +152,18 @@ export const updateLeagueSchema = z
   );
 
 export const updateMemberRoleSchema = z.object({ role: z.enum(["admin", "member"]) });
+
+/**
+ * Start season (`POST /leagues/:id/seasons`): the season's year and the type's settings, parsed with
+ * `parseSeasonSettings(league.type, …)`. An automatic weekly season also names its start week (it runs through
+ * Week 18).
+ */
+export const startSeasonSchema = z.object({
+  year: z.int().min(2020).max(2100),
+  settings: z.record(z.string(), z.unknown()).optional(),
+  startWeek: z.int().min(1).max(18).optional(),
+});
+export type StartSeason = z.infer<typeof startSeasonSchema>;
 
 /** Regular season only: the league does not run through the playoffs. */
 export const MAX_WEEK = 18;
@@ -328,6 +342,13 @@ export type WeekView = {
   submissions: { userId: string; displayName: string; pickCount: number; hasPow: boolean }[] | null;
   /** Everyone's picks and scores. Null until the week is final. */
   results: WeekResults | null;
+  /** The league's type and how it is run. Absent from older servers: read as weekly, hands-on. */
+  leagueType?: LeagueType;
+  management?: LeagueManagement;
+  /** What a winning POW adds this week (5 in weekly pick'em; the format's in a playoff round). */
+  powBonus?: number;
+  /** Playoff rounds only: the format, and the viewer's own guillotine status. */
+  playoff?: PlayoffWeekInfo | null;
 };
 
 export type Standings = {
