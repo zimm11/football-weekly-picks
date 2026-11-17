@@ -118,7 +118,7 @@ Every git worktree runs its own isolated stack, so agents can work in parallel.
 - Slots are recorded in `picks-port-slots.json` inside the shared `.git` directory and freed when the worktree directory is gone. Force one with `PICKS_PORT_SLOT=<n>`. CI selects an available port group with `scripts/ci-ports.mjs` before starting Supabase.
 - `pnpm env:local` writes the API port into `.env` (`PORT`, with `APP_URL` on the web preview's origin); the API, `pnpm worker:dev` (`PORT + 1000`) and Playwright all read it from there. Run it after `pnpm db:start` in every new worktree.
 - Before deleting a worktree, run `pnpm sb stop --no-backup` in it to remove its containers and database volume.
-- The local stack runs only what the app uses: Postgres, Auth, the API gateway, Studio, and the test inbox (Mailpit). All local email, from Auth and from the API (under `pnpm dev` and `pnpm worker:dev`), lands in the test inbox; E2E tests read it through `e2e/tests/inbox.ts`. Realtime, Storage, Edge Functions, and Analytics are switched off in `supabase/config.toml`; set `enabled = true` there when a feature needs one.
+- The local stack runs only what the app uses: Postgres, Auth, the API gateway, Studio, and the test inbox (Mailpit). All local email, from Auth and from the API (under `pnpm dev` and `pnpm worker:dev`), lands in the test inbox; E2E tests read it through `e2e/tests/inbox.ts`. PostgREST (the Data API; `[api]`), Realtime, Storage, Edge Functions, and Analytics are switched off in `supabase/config.toml`; set `enabled = true` there when a feature needs one.
 
 ## Database changes
 
