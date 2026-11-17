@@ -25,6 +25,8 @@ export type ProviderGame = {
    * past them (or reached the break after them), and final (overtime included) once the game is complete.
    */
   periodScores?: Partial<Record<SquarePeriod, PeriodScore>>;
+  /** The score so far while the game is under way (a squares board marks the square that would win now). */
+  liveScore?: PeriodScore;
 };
 
 /** Where schedules, spreads and results come from. Tests inject a fake. */
@@ -190,6 +192,9 @@ export function parseEspnScoreboard(json: unknown): ProviderGame[] {
       status: statusOf(competition.status.type),
       period: competition.status.period,
       periodScores: periodScoresOf(home, away, competition.status),
+      ...(competition.status.type.state === "in" && home.score !== undefined && away.score !== undefined
+        ? { liveScore: { home: home.score, away: away.score } }
+        : {}),
     });
   }
   return games.sort((a, b) => a.kickoff.getTime() - b.kickoff.getTime());

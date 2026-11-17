@@ -6,6 +6,7 @@ import {
   leagueTabPath,
 } from "@picks/shared";
 import { router, usePathname } from "expo-router";
+import type { ReactNode } from "react";
 import { Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
@@ -21,12 +22,15 @@ export function LeagueHeader({
   season,
   seasonChoices,
   onSeason,
+  selector,
 }: {
   leagueId: string;
   leagueName: string;
   season?: number | "new";
   seasonChoices?: { value: number | "new"; label: string }[];
   onSeason?: (year: number | "new") => void;
+  /** Another type's selector in the season's place (squares' board). */
+  selector?: ReactNode;
 }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
@@ -71,6 +75,7 @@ export function LeagueHeader({
           onChange={onSeason}
         />
       )}
+      {season === undefined && selector}
     </View>
   );
 }

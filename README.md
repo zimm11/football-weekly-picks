@@ -154,6 +154,11 @@ a password of at least six characters. To join the seeded league, open `/join/lo
 URL, sign in, and press **Join league**. In the main checkout, that URL is
 `http://localhost:8081/join/local-invite`.
 
+[`supabase/seeds/squares.sql`](supabase/seeds/squares.sql) adds **Squares Crew** (`/join/local-squares`; Commish is
+its admin, Pat and Sam are members, Alex isn't): an open board on the Super Bowl, typed in for 2027-02-14, with
+squares for Pat, Commish and the guest Uncle Ray, and a finished 2025 board whose halftime square was empty. Press
+**Lock and draw** on its **Manage board** screen, or set `CLOCK_OVERRIDE` past kickoff to see it lock by itself.
+
 [`supabase/seeds/survivor.sql`](supabase/seeds/survivor.sql) adds **Last One Standing**, a survivor pool for
 the same four accounts (invite `/join/local-survivor`): two lives from Week 8, Weeks 8–10 closed with Commish
 and Pat still in, Sam and Alex out, and an empty Week 11 that the first read imports from ESPN and opens.
@@ -275,7 +280,23 @@ week, as before, and every league from before types); an admin can switch in **L
 **Start with members from** on New league copies the current members of a league you are an admin of
 into the new one as members, each told once (a league event); anyone already in 25 leagues is skipped and named.
 
-### Survivor
+#### Squares
+
+A **Squares** league holds boards, each a 10 by 10 grid on one NFL game (the Super Bowl by default once ESPN
+lists it, any game from the feed, or teams and a kickoff typed in). An admin sets one up under **League → New
+board**; the header's selector switches between a league's boards. Players tap an open square to claim it (the
+cell fills at once and rolls back if the API refuses) and tap theirs to give it back, up to the board's limit
+(10 by default, 1–100, raised before the lock and never lowered); **Claim a random square** picks one. An admin
+can claim squares under a guest's name (counting against nobody's limit) and give back any square. The board
+locks when an admin presses **Lock and draw**, or at kickoff if nobody does: two random orders of 0–9 are drawn
+once, home across the top, away down the side, and nobody can claim or give back a square after that. Each
+quarter's winner (Q1, halftime, Q3, final with overtime) holds the square matching the last digit of each team's
+score so far; an empty square that hits means no winner. Scores fill in from ESPN's quarter line as each quarter
+settles, and an admin's typed correction is never overwritten. Members with no square get the evening-before
+reminder; everyone hears when the numbers are drawn (email and push) and each quarter's result (push only). A
+member who leaves before the lock gives their squares back; after it they stay.
+
+#### Survivor
 
 A survivor pool runs itself. New league (or **Start season** in the League tab) sets the **lives** (1–3) and the
 **start week** (any week with no kickoff yet; the next one by default); both are fixed once the start week's

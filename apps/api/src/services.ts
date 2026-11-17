@@ -44,6 +44,7 @@ export function createServices(deps: AppDeps): AppServices {
         results,
         notify: { email: deps.email, push: deps.push, nativePush: deps.nativePush },
         requestId,
+        random: deps.random,
       };
       let result: AdvanceResult;
       try {

@@ -11,7 +11,7 @@ import {
   weekParticipants as weekParticipantRows,
   weeks,
 } from "@picks/db";
-import type { LeagueType, Member, Role } from "@picks/shared";
+import type { LeagueType, Member, RandomSource, Role } from "@picks/shared";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -57,6 +57,8 @@ export type AppDeps = {
   background?: (task: () => Promise<unknown>) => void;
   /** Accounts that run the app (`OPERATOR_USER_IDS`): they can read feedback and app-wide counts. */
   operatorUserIds?: readonly string[];
+  /** 32-bit random values for a squares board's draw. Defaults to `crypto.getRandomValues`; tests fix it. */
+  random?: RandomSource;
   /**
    * Checks posts and names before they are saved (Workers AI's Clef). Without one (`MODERATION_MODE=off`, Node
    * development, most tests) content is saved as `skipped` and nothing is refused.

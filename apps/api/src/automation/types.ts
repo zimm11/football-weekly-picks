@@ -1,4 +1,5 @@
 import type { Db, leagues } from "@picks/db";
+import type { RandomSource } from "@picks/shared";
 import type { LeagueEventDeps } from "../leagueEvents";
 import type { NflProvider } from "../nfl";
 import type { ProviderWeeks } from "../weekOps";
@@ -20,6 +21,8 @@ export type AutomationContext = {
   /** How league events are delivered (`queueLeagueEvent`). Without email or push deps, that channel is skipped. */
   notify: LeagueEventDeps;
   requestId?: string;
+  /** 32-bit random values for a squares board's draw at kickoff. Defaults to `crypto.getRandomValues`. */
+  random?: RandomSource;
 };
 
 /** What advancing one league did: steps that changed something, and the notifications they queued. */
