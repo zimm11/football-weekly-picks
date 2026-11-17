@@ -17,16 +17,16 @@ export function HowToPlaySquares() {
           A squares league holds boards, each on one NFL game: the Super Bowl by default, or any game. The
           home team runs across the top and the away team down the side. Tap an open square to claim it, and
           tap yours to give it back, until the board locks. Claim a random square picks one for you. Each
-          player can hold {DEFAULT_SQUARES_PER_PLAYER} squares unless the admin sets another limit (up to{" "}
-          {MAX_SQUARES_PER_PLAYER}).
+          player can hold {DEFAULT_SQUARES_PER_PLAYER} squares unless the commissioner sets another limit (up
+          to {MAX_SQUARES_PER_PLAYER}).
         </Body>
       </Card>
       <Card>
         <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>The draw</Body>
         <Body muted>
-          The numbers read ? until the board locks: when an admin presses Lock and draw, or at kickoff if
-          nobody has. Then each row and column gets a random number from 0 to 9, drawn once and never again.
-          After the lock nobody can claim or give back a square.
+          The numbers read ? until the board locks: when a commissioner presses Lock and draw, or at kickoff
+          if nobody has. Then each row and column gets a random number from 0 to 9, drawn once and never
+          again. After the lock nobody can claim or give back a square.
         </Body>
       </Card>
       <Card>
@@ -35,7 +35,7 @@ export function HowToPlaySquares() {
           At the end of Q1, at halftime, at the end of Q3 and at the final (overtime included), the winning
           square is the one whose numbers match the last digit of each team's score so far. If nobody holds
           that square, nobody wins that quarter. While the game is on, the board marks the square that would
-          win if the quarter ended now. Scores fill in automatically; an admin can correct one, and a
+          win if the quarter ended now. Scores fill in automatically; a commissioner can correct one, and a
           corrected score stays.
         </Body>
         <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
@@ -44,7 +44,7 @@ export function HowToPlaySquares() {
         </Body>
       </Card>
       <Card>
-        <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>For admins</Body>
+        <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>For commissioners</Body>
         <Body muted>
           Set up a board under New board in the League tab, then open Manage board from the board: change the
           game or raise the limit before the lock (it is never lowered), claim squares for a guest without an

@@ -2,9 +2,9 @@
 
 The code behind **[POW Pick'em](https://www.pow-pickem.com)**, an NFL pick'em league app. Players pick
 against the spread, choose a Pick of the Week (POW), and compete for weekly wins and the season lead.
-A league admin prepares each slate and publishes the results.
+A league commissioner prepares each slate and publishes the results.
 
-The app supports regular-season weeks 1–18, invite-only leagues with shared administration, multiple
+The app supports regular-season weeks 1–18, invite-only leagues run by one or more commissioners, multiple
 seasons, private picks until finalization, and season standings with a week-by-week history. Each game has
 a matchup sheet with team stats, injuries, news, and each team's chance to win. Finalized weeks hand out
 awards and name a Low Point Loser, and each league has a message board. The interface is phone-first and
@@ -137,7 +137,7 @@ database and reapplies migrations and seed data.** Before deleting a worktree, r
 
 | Email               | Name    | Role in Sunday Crew |
 | ------------------- | ------- | ------------------- |
-| `admin@example.com` | Commish | Admin               |
+| `admin@example.com` | Commish | Commissioner        |
 | `pat@example.com`   | Pat     | Player              |
 | `sam@example.com`   | Sam     | Player              |
 | `alex@example.com`  | Alex    | Player              |
@@ -155,12 +155,12 @@ URL, sign in, and press **Join league**. In the main checkout, that URL is
 `http://localhost:8081/join/local-invite`.
 
 [`supabase/seeds/squares.sql`](supabase/seeds/squares.sql) adds **Squares Crew** (`/join/local-squares`; Commish is
-its admin, Pat and Sam are members, Alex isn't): an open board on the Super Bowl, typed in for 2027-02-14, with
+its commissioner, Pat and Sam are members, Alex isn't): an open board on the Super Bowl, typed in for 2027-02-14, with
 squares for Pat, Commish and the guest Uncle Ray, and a finished 2025 board whose halftime square was empty. Press
 **Lock and draw** on its **Manage board** screen, or set `CLOCK_OVERRIDE` past kickoff to see it lock by itself.
 
 [`supabase/seeds/playoff.sql`](supabase/seeds/playoff.sql) adds **Playoff Bracket** (`/join/local-playoff`; a
-Guillotine league, Commish its admin, Pat and Sam members): its 2025 playoffs all final, with Sam out after the Wild
+Guillotine league, Commish its commissioner, Pat and Sam members): its 2025 playoffs all final, with Sam out after the Wild
 Card, Pat out after the Divisional round and Commish the champion, and its 2026 playoffs waiting for ESPN's Wild
 Card round. Pat and Sam get the Super Bowl recap on their next visit.
 
@@ -168,7 +168,7 @@ Card round. Pat and Sam get the Super Bowl recap on their next visit.
 the same four accounts (invite `/join/local-survivor`): two lives from Week 8, Weeks 8–10 closed with Commish
 and Pat still in, Sam and Alex out, and an empty Week 11 that the first read imports from ESPN and opens.
 
-Use a normal browser window for the admin and a private window or different browser profile for a player.
+Use a normal browser window for the commissioner and a private window or different browser profile for a player.
 Sessions are stored per browser profile, so both accounts can stay signed in side by side.
 
 ### Adding POW Pick'em to your home screen
@@ -217,7 +217,7 @@ Its feedback inbox supports **Mark done**, **Reopen**, and loading older reports
 stored picks and messages: it does not measure visits, sessions, or time spent. Private pick choices
 and league message bodies are never included.
 
-Operator access is separate from league admin access. Set the Worker secret `OPERATOR_USER_IDS` to your
+Operator access is separate from a league commissioner's access. Set the Worker secret `OPERATOR_USER_IDS` to your
 Supabase Auth user UUID (or a comma-separated list): `pnpm exec wrangler secret put OPERATOR_USER_IDS` from
 `apps/api`. Find the UUID under **Authentication → Users** in your Supabase dashboard. A secret change takes
 effect within seconds, without a deploy; reload the app. An empty or unset value grants nobody access, and
@@ -243,13 +243,13 @@ tab for each.
    fetches the slate from ESPN and opens the draft's management screen. Imports need internet access.
 3. Review kickoffs, spreads, point values, and the tiebreaker game. Add or remove games as needed and
    press **Save changes** after edits. Kickoffs you type are in the league's time zone, and a game whose
-   kickoff moves takes the new slot's points unless you set them by hand. A draft is visible only to admins. Every game needs a spread
+   kickoff moves takes the new slot's points unless you set them by hand. A draft is visible only to commissioners. Every game needs a spread
    before you can press **Open week for picks**. After the week opens, the app offers to post a league
    message announcing it; you can edit the draft or skip it.
 4. Follow **Make your own picks**, or open **Picks**. Select teams, mark one POW, enter a guess for the
    tiebreaker game's combined score, and press **Save picks**. A partial sheet can be saved and completed
    later. **Stats & news** on a game opens its matchup sheet. Then try the player account. The
-   admin's management screen shows submission counts and whether a POW was chosen; other players'
+   commissioner's management screen shows submission counts and whether a POW was chosen; other players'
    choices remain private.
 5. As each game ends, its result fills in on its own from ESPN the next time anyone opens the week
    (checked at most once a minute), and each player's sheet marks their pick **Won** (with the points
@@ -268,15 +268,19 @@ tab for each.
    again and the week is
    excluded from standings until finalized again; the corrected week is then recapped again.
 7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
-   with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. The reply box stays at the bottom of the thread, and new replies appear on their own. Admins can open a thread's **⋯** menu and choose **Pin announcement** to keep it at the top of the board, or **Delete thread** to permanently remove it after confirming. Deletion returns you to the message board.
+   with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. The reply box stays at the bottom of the thread, and new replies appear on their own. Commissioners can open a thread's **⋯** menu and choose **Pin announcement** to keep it at the top of the board, or **Delete thread** to permanently remove it after confirming. Deletion returns you to the message board.
 
-### Sharing league administration
+### Sharing league commissioner duties
 
-Any admin can open **League → Members**, tap **⋯** beside a current player, and choose **Make admin**.
-All admins have equal access to weeks, games, scores, settings, invites, and membership management.
-Admins can revoke each other's admin access or remove each other, including the league creator.
-**Revoke admin** keeps that person in the league as a player with their picks and results. Admins can
-also step down themselves, provided at least one active admin remains.
+Players see the people who run a league as **commissioners**. The code, the API and the database still call
+the role `admin` (`league_members.role = 'admin'`, `requireAdmin`, `AdminTools`), so routes, stored data and
+installed apps didn't change with the name; use "commissioner" in anything players read.
+
+Any commissioner can open **League → Members**, tap **⋯** beside a current player, and choose **Make commissioner**.
+All commissioners have equal access to weeks, games, scores, settings, invites, and membership management.
+Commissioners can revoke each other's commissioner access or remove each other, including the league creator.
+**Revoke commissioner** keeps that person in the league as a player with their picks and results. Commissioners can
+also step down themselves, provided at least one active commissioner remains.
 
 ### League types
 
@@ -285,32 +289,32 @@ league created before types existed), **Playoff pick'em**, **Squares** or **Surv
 [`packages/shared/src/leagueTypes.ts`](packages/shared/src/leagueTypes.ts) says what each owns: its tabs,
 settings, weeks (1–18 the regular season; 19 Wild Card, 20 Divisional, 21 Conference, 22 Super Bowl), when picks
 show, and whether it runs itself. Every type is open to every player. A weekly league is run **Automatic**
-(the feed sets up, opens and closes each week; preselected on New league) or **Hands-on** (the admins run each
-week, as before, and every league from before types); an admin can switch in **League → League settings**.
-**Start with members from** on New league copies the current members of a league you are an admin of
+(the feed sets up, opens and closes each week; preselected on New league) or **Hands-on** (the commissioners run each
+week, as before, and every league from before types); a commissioner can switch in **League → League settings**.
+**Start with members from** on New league copies the current members of a league you are a commissioner of
 into the new one as members, each told once (a league event); anyone already in 25 leagues is skipped and named.
 
 #### Squares
 
 A **Squares** league holds boards, each a 10 by 10 grid on one NFL game (the Super Bowl by default once ESPN
-lists it, any game from the feed, or teams and a kickoff typed in). An admin sets one up under **League → New
+lists it, any game from the feed, or teams and a kickoff typed in). A commissioner sets one up under **League → New
 board**; the header's selector switches between a league's boards. Players tap an open square to claim it (the
 cell fills at once and rolls back if the API refuses) and tap theirs to give it back, up to the board's limit
-(10 by default, 1–100, raised before the lock and never lowered); **Claim a random square** picks one. An admin
+(10 by default, 1–100, raised before the lock and never lowered); **Claim a random square** picks one. A commissioner
 can claim squares under a guest's name (counting against nobody's limit), give back any square, and delete a
 board (**Manage board → Delete board**, with everything on it). A board on a game from the feed follows it: if
 the game is rescheduled before the draw, the board's kickoff moves with it. The board
-locks when an admin presses **Lock and draw**, or at kickoff if nobody does: two random orders of 0–9 are drawn
+locks when a commissioner presses **Lock and draw**, or at kickoff if nobody does: two random orders of 0–9 are drawn
 once, home across the top, away down the side, and nobody can claim or give back a square after that. Each
 quarter's winner (Q1, halftime, Q3, final with overtime) holds the square matching the last digit of each team's
 score so far; an empty square that hits means no winner. Scores fill in from ESPN's quarter line as each quarter
-settles, and an admin's typed correction is never overwritten. Members with no square get the evening-before
+settles, and a commissioner's typed correction is never overwritten. Members with no square get the evening-before
 reminder; everyone hears when the numbers are drawn (email and push) and each quarter's result (push only). A
 member who leaves before the lock gives their squares back; after it they stay.
 
 #### Automatic weekly pick'em
 
-An admin presses **Start season** on the League tab and picks the start week; the season then runs through Week
+A commissioner presses **Start season** on the League tab and picks the start week; the season then runs through Week
 18 with nobody pressing Open or Finalize. Each week is drafted and opened in one step on its Tuesday at 9 AM
 Eastern: the week is created, its games and that morning's lines come in from ESPN, and it opens for picks
 (spreads freeze then). Nothing is imported earlier, so the lines players pick against are never days old, and
@@ -319,19 +323,19 @@ switched to Automatic mid-season catches up. A game with no line on Tuesday keep
 line arrives. While the week is open its kickoffs follow ESPN (a rescheduled game locks at its new time; lines
 never change), final scores fill in as games end (never over a typed score), and it finalizes once every game
 has one, usually Monday night. Everyone gets a "week open" and a "week final" notification; the offer to post a
-thread stays with Hands-on leagues. If a game still has no line 24 hours before the first kickoff, the admins are
-told once, and the week opens as soon as they type it in. The admin can still edit spreads and points until a week's first kickoff, choose the tiebreaker game, add
+thread stays with Hands-on leagues. If a game still has no line 24 hours before the first kickoff, the commissioners are
+told once, and the week opens as soon as they type it in. The commissioner can still edit spreads and points until a week's first kickoff, choose the tiebreaker game, add
 or remove a game, and correct a score at any time: a final week is corrected in place (the standings follow and
 the recap shows again), without reopening it. Switching to Automatic picks the weeks up as they stand (a ready
 draft opens, an open week with every result in finalizes); switching back stops it and leaves every week as it
-is. Set up a week stays on the League tab as the admin's override.
+is. Set up a week stays on the League tab as the commissioner's override.
 
 #### Playoff pick'em
 
 The weekly game over the four playoff rounds (Wild Card 19, Divisional 20, Conference 21, Super Bowl 22), worth
 1, 2, 3 and 4 points per win, with one champion after the Super Bowl. Rounds run themselves: the Wild Card round
 is created once ESPN lists all six games with real teams (polling starts on Week 18's Sunday), each round opens
-as soon as every game has a line and finalizes once every game has a result, and the next is prepared. The admin
+as soon as every game has a line and finalizes once every game has a result, and the next is prepared. The commissioner
 chooses the format with **Start season** (or on New league): **Traditional** (an optional POW, a win adds 3) or
 **Guillotine** (a POW every round, a win adds 1; a losing POW, or none by the round's last kickoff, puts the
 player out of picking from the next round, while a push keeps them in). The Super Bowl has one game and no POW in
@@ -354,30 +358,30 @@ the next cron run) imports its slate from ESPN and opens it: there are no spread
    earlier in the season is disabled ("Used in Week 3"); the used teams reset at the Wild Card round, and a
    player with no unused team left on a playoff slate may pick any. A pick can change until its team kicks off,
    and only to a team still to kick off. Above the cards: lives left and teams used.
-2. **Reveal:** nobody else, admins included, learns anything about a pick (not even that one exists) until its
+2. **Reveal:** nobody else, commissioners included, learns anything about a pick (not even that one exists) until its
    team's game kicks off. Then it shows on **Standings**, the survivor grid.
 3. **Strikes:** a loss, a tie, or no pick when the week's last game kicks off is a strike; a player is out when
    their strikes reach the lives, and a player who leaves is out from that week on (who was in the league at
    each week's last kickoff is recorded when it is final, so rejoining later changes nothing). A week that would
    put out everyone still in puts out nobody.
-4. **The week closes itself:** kickoffs follow flexed games, scores fill in (never over one an admin typed), and
+4. **The week closes itself:** kickoffs follow flexed games, scores fill in (never over one a commissioner typed), and
    when every game has a result the week is final, its players are recorded, a "Week 7 is final" league event
    goes out, and the next week is imported. A recap shows each player whether they're in, who went out and how
    many are left.
 5. **The end:** one player left after a final week wins (a "pool over" league event). With several still in
    after Week 18 the pool plays on through the playoffs; several still in after the Super Bowl share the title.
 
-Admins, in the League tab, can enter a pick for a player (it records that an admin did), correct a score at any
+Commissioners, in the League tab, can enter a pick for a player (it records that a commissioner did), correct a score at any
 time (everyone's status is worked out again; nothing is stored), and remove a cancelled game, which deletes the
 picks on it so those players can pick again. Reminders at 7pm the evening before a game day go to players still
 in with no pick yet.
 
 ### Leaving, removal, and limits
 
-Any member can use **League → Leave league**; an admin can remove another member from the **⋯** menu
+Any member can use **League → Leave league**; a commissioner can remove another member from the **⋯** menu
 beside their name. Either way the
 person loses access, weeks they already played keep their results, and they can rejoin through an invite
-link. A league's only admin must make someone else an admin before leaving. **Make a new link** (beside **Copy link**, and
+link. A league's only commissioner must make someone else a commissioner before leaving. **Make a new link** (beside **Copy link**, and
 **Share** on phones) replaces the invite link, so links already shared stop working. A league holds at most 100 players, and one
 account can be in at most 25 leagues; removed and departed members don't count toward either limit.
 
@@ -402,7 +406,7 @@ were the only member of is deleted. The profile becomes "Deleted player". Then S
 row stays as an anonymous anchor with a scrambled email and no sign-in, and the same email can sign up again as a new
 account. Picks from final weeks stay, so results and standings don't change. The account is refused from the moment
 the transaction commits, even with an unexpired token (`refuseDeletedAccounts`); if the Auth call fails, the cron
-retries it. A league's only admin must make someone else an admin first.
+retries it. A league's only commissioner must make someone else a commissioner first.
 
 It needs `SUPABASE_SECRET_KEY` (the project's secret key, for the Auth admin call); without it the app says deletion
 isn't available and points to support. `pnpm env:local` writes the local stack's key.
@@ -445,7 +449,7 @@ emails sent by the local Auth service.
 
 ## League rules
 
-The app's `/how-to-play` page explains the player and admin flows, including reminders by email and notification.
+The app's `/how-to-play` page explains the player and commissioner flows, including reminders by email and notification.
 [`packages/shared/src/rules.ts`](packages/shared/src/rules.ts) is the implementation of scoring and locks,
 and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the weekly awards.
 
@@ -453,8 +457,8 @@ and [`packages/shared/src/awards.ts`](packages/shared/src/awards.ts) of the week
 
 Active league members can react to any message or reply, once per emoji per player. Counts and your
 own selections are visible to members. Reactions do not bump threads or create unread indicators.
-Only admins can permanently delete threads, including all replies and reactions, using the thread’s **⋯** menu and a confirmation. Read markers and queued notifications are removed too.
-Only admins can pin or unpin threads as announcements; pinned threads appear first without changing
+Only commissioners can permanently delete threads, including all replies and reactions, using the thread’s **⋯** menu and a confirmation. Read markers and queued notifications are removed too.
+Only commissioners can pin or unpin threads as announcements; pinned threads appear first without changing
 unread status. The board loads the newest 30 threads, with **Load older threads** for the rest. A player can start five
 threads a day in a league (two in an account's first 24 hours); a player can post ten replies a minute (twenty a day in
 an account's first 24 hours), and not the same reply twice in a row. Quoted replies can reference only messages in the same
@@ -477,8 +481,8 @@ Required for the App Store (guideline 1.2), and the same on the website:
   reports the league's name. At most 20 a day per player. A message two players report, or one reported as a threat
   or self-harm, is hidden until reviewed (and the threat emails the operator at once); the larger Clef model reads the
   thread around a reported message and removes it if it is sure.
-- **Review.** League admins see their league's reports on the League tab (**Reports**): Remove, Dismiss, or remove
-  and mute the author there for 24 hours or 7 days. Reports about admins and about league names, and appeals, go only to
+- **Review.** League commissioners see their league's reports on the League tab (**Reports**): Remove, Dismiss, or remove
+  and mute the author there for 24 hours or 7 days. Reports about commissioners and about league names, and appeals, go only to
   the operator, whose **Reports** section on `/operator` covers every league and lists players with three or more
   removals in 30 days, with **Suspend posting**. A daily digest emails operators from 14:00 UTC when anything is open or
   automation acted.
@@ -503,10 +507,10 @@ Pick the team that will cover the displayed spread. Spreads are stored as the ho
 means the home team is favored by 3.5 points. A winning pick earns the game's points. Losing and missing
 picks earn zero; a push earns zero and counts as neither a win nor a loss.
 
-Spreads stay fixed after opening unless an admin edits them manually. Pulling results and finalizing
+Spreads stay fixed after opening unless a commissioner edits them manually. Pulling results and finalizing
 never replace them with new provider lines; scoring uses the spreads currently saved in the app.
 
-Default point values use **Eastern time**, with holidays taking priority. Admins can override each game's value.
+Default point values use **Eastern time**, with holidays taking priority. Commissioners can override each game's value.
 
 | Game slot                               | Points |
 | --------------------------------------- | ------ |
@@ -530,7 +534,7 @@ holding it kicks off. After that it stays on that game for the week.
   the clock. A change the player hadn't saved on a game that locks is undone, and the save bar says so.
 - **The tiebreaker guess** follows its game's lock: it can be entered or changed until kickoff. A saved
   guess cannot be removed.
-- **The tiebreaker game** is the admin's explicit choice, otherwise the last Monday game, otherwise the
+- **The tiebreaker game** is the commissioner's explicit choice, otherwise the last Monday game, otherwise the
   last game on the slate.
 - **Weekly ranking:** most points, then most games won, then the closest guess to the tiebreaker game's
   combined final score. At equal distance, the guess that did not go over wins. Remaining ties share the win.
@@ -550,9 +554,9 @@ Each finalized week names its winner and hands out these, all worked out from th
 
 ### Week lifecycle, privacy, and history
 
-The stored week lifecycle is `draft → open → final`; only an admin finalizes a week. The interface derives
+The stored week lifecycle is `draft → open → final`; only a commissioner finalizes a week. The interface derives
 additional phases such as **Games underway** and **Awaiting finalization** from kickoffs and scores.
-Picks stay private until finalization, including from admins. Removing a member, or a member leaving,
+Picks stay private until finalization, including from commissioners. Removing a member, or a member leaving,
 preserves their history. Finalizing a week records who it is scored for (everyone in the league at its last
 kickoff, plus anyone who picked), so leaving or rejoining later never changes a closed week; finalizing again
 after a reopen only adds players. Weeks closed before that record existed use membership dates instead.
@@ -595,7 +599,7 @@ Useful starting points are [`apps/api/src/app.ts`](apps/api/src/app.ts) for API 
 contracts live in `packages/shared`. Keep Hono routes chained so the client retains their inferred types.
 
 ESPN imports use a public, unofficial scoreboard feed with no API key. It may omit spreads or change shape;
-the admin can enter games, spreads, and scores manually. Imports and score pulls are explicit admin actions.
+the commissioner can enter games, spreads, and scores manually. Imports and score pulls are explicit commissioner actions.
 
 The matchup sheet loads on demand from `GET /api/games/:gameId/insights`. Team form, injuries, leaders and
 each team's chance to win (ESPN's Matchup Predictor) come from ESPN's game summary, and headlines from its team

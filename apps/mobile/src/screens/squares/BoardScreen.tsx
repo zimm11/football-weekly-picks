@@ -100,7 +100,7 @@ export function ManageBoardScreen({ boardId }: { boardId: string }) {
       ) : view.role !== "admin" ? (
         <Card>
           <Heading>Board management</Heading>
-          <Label>Only league admins can manage a board.</Label>
+          <Label>Only league commissioners can manage a board.</Label>
           <Action link onPress={() => void go(`/boards/${boardId}`)}>
             Go to the board
           </Action>
@@ -431,7 +431,7 @@ function ScoreCorrections({
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Eyebrow>{SQUARE_PERIOD_LABEL[period]}</Eyebrow>
-              {row && <Pill>{row.byAdmin ? "Typed by an admin" : "From the schedule"}</Pill>}
+              {row && <Pill>{row.byAdmin ? "Typed by a commissioner" : "From the schedule"}</Pill>}
             </View>
             <View style={{ flexDirection: "row", gap: 12 }}>
               <View style={{ flex: 1 }}>

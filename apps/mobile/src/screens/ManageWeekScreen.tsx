@@ -156,7 +156,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
     return (
       <View style={s.content}>
         <Heading>{weekUnit(view) === "round" ? "Round management" : "Week management"}</Heading>
-        <Text style={s.text}>Only league admins can manage a {weekUnit(view)}.</Text>
+        <Text style={s.text}>Only league commissioners can manage a {weekUnit(view)}.</Text>
         <Action link onPress={() => go(`/weeks/${weekId}`)}>
           Go to the {weekUnit(view)}
         </Action>
@@ -220,7 +220,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
             </Action>
           )}
         </View>
-        <Card label={playoff ? "Round admin" : "Week admin"}>
+        <Card label={playoff ? "Round controls" : "Week controls"}>
           <Eyebrow>Manage {unit}</Eyebrow>
           {view.status === "draft" && (
             <>

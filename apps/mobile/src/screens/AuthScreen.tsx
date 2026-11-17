@@ -298,7 +298,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
             <Button link title="How to play" variant="outline" onPress={() => router.push("/how-to-play")} />
           </View>
           <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
-            Have an invite? Open your admin's link to join their league.
+            Have an invite? Open your commissioner's link to join their league.
           </Body>
         </View>
         <View style={{ flex: wide ? 1 : undefined }}>

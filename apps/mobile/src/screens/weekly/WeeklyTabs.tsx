@@ -56,7 +56,7 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
                 ? `All scores are in. The ${unit} finalizes by itself in a few minutes.`
                 : league.role === "admin"
                   ? "All final scores are entered. Finalize the week to reveal picks and update standings."
-                  : "All scores are in. Your admin will finalize the week to publish results."}
+                  : "All scores are in. Your commissioner will finalize the week to publish results."}
             </Label>
             {league.role === "admin" && !automatic && (
               <Action link onPress={() => go(`/weeks/${waiting.id}/manage`)}>
@@ -115,10 +115,10 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
                 ? "The next week opens by itself on Tuesday at 9 AM Eastern, with that morning's lines."
                 : league.role === "admin"
                   ? "Start the season on the League tab, and each week opens by itself."
-                  : "The pick sheet shows up here once the admin starts the season."
+                  : "The pick sheet shows up here once the commissioner starts the season."
               : league.role === "admin"
                 ? "Set up a week and open it, and the pick sheet shows up here for everyone."
-                : "The pick sheet shows up here as soon as the admin opens the next week."}
+                : "The pick sheet shows up here as soon as the commissioner opens the next week."}
         </Label>
         <View style={{ gap: 8 }}>
           {league.role === "admin" && drafts.length === 0 && league.type === "weekly" && (

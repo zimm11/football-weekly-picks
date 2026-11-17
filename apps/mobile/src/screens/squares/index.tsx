@@ -31,7 +31,7 @@ export function SquaresBoardTab({ league, userId, header, reload }: LeagueTabPro
           <Label>
             {league.role === "admin"
               ? "Set up the first board in the League tab: the Super Bowl, any game, or one you type in."
-              : "An admin will set up a board. You'll claim squares here."}
+              : "A commissioner will set up a board. You'll claim squares here."}
           </Label>
           {league.role === "admin" && (
             <Action link compact onPress={() => void go(`/leagues/${league.id}/league`)}>

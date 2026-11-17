@@ -22,9 +22,10 @@ const sections: LegalSection[] = [
     ],
   ],
   [
-    "Your league",
+    "Your league and its commissioners",
     [
-      "Each league is run by its admins, who are players like you, with the app doing the weekly chores in a league set to run itself. Admins can edit spreads and scores, enter a survivor pick for a player, put a guest's name on a square, remove members, and add a league's members to a new league they start. We don't settle disagreements inside a league.",
+      "Each league is run by its commissioners: players like you, starting with whoever created the league, not the people who run POW Pick'em. A league can have several, all with the same powers, and always keeps at least one; a commissioner can make another member a commissioner. In a league set to run itself, the app does the weekly chores.",
+      "Commissioners can edit spreads, point values and scores, close weeks, enter a survivor pick for a player, put a guest's name on a square, manage the invite link, remove members, and add a league's members to a new league they start. They review reports about their league's members and can remove messages and mute a member in their league. They never see your picks before the rest of the league does. We don't settle disagreements inside a league.",
       "Pick'em picks stay private until the week is final; after that, everyone in the league sees them, with the results and the standings. A survivor pick shows once its game kicks off, and a squares board is open to the whole league.",
     ],
   ],
@@ -39,7 +40,7 @@ const sections: LegalSection[] = [
     "How posts are checked",
     [
       "Every new thread, reply, display name, league name and guest name is checked automatically before it is saved. What breaks these rules is refused.",
-      "Anyone can report a message or a name from its ⋯ menu, and block a player so their messages no longer show. We review reports within 24 hours. League admins can remove messages in their league.",
+      "Anyone can report a message or a name from its ⋯ menu, and block a player so their messages no longer show. We review reports within 24 hours. League commissioners can remove messages in their league; reports about a commissioner, or about a league's name, come to us instead.",
     ],
   ],
   [
@@ -66,7 +67,7 @@ const sections: LegalSection[] = [
   [
     "Schedules, scores and odds",
     [
-      "Schedules, spreads, scores, stats, news and win predictions fill in automatically from an outside sports-data source. They can be late, missing or wrong, and league admins can change spreads and scores. Don't rely on them for anything beyond the game.",
+      "Schedules, spreads, scores, stats, news and win predictions fill in automatically from an outside sports-data source. They can be late, missing or wrong, and league commissioners can change spreads and scores. Don't rely on them for anything beyond the game.",
       "POW Pick'em is not affiliated with or endorsed by the NFL, its teams or the company whose data it shows. Team names and logos belong to their owners.",
     ],
   ],

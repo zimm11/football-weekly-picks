@@ -40,24 +40,24 @@ export function HowToPlayManagement() {
       <Heading title="Automatic or hands-on" icon="refresh" />
       <Card>
         <Item title="Automatic (the default)">
-          The league runs itself from the NFL schedule. The admin presses Start season on the League tab and
-          picks the start week; the season then runs through Week 18. Each Tuesday at 9 AM Eastern the week's
-          games and that morning's lines come in and it opens for picks, all at once, so the spreads you pick
-          against are never days old (they freeze then). Final scores fill in as games end, and the week
-          finalizes after its last game, usually Monday night. You get a notification when a week opens and
-          when it's final.
+          The league runs itself from the NFL schedule. The commissioner presses Start season on the League
+          tab and picks the start week; the season then runs through Week 18. Each Tuesday at 9 AM Eastern the
+          week's games and that morning's lines come in and it opens for picks, all at once, so the spreads
+          you pick against are never days old (they freeze then). Final scores fill in as games end, and the
+          week finalizes after its last game, usually Monday night. You get a notification when a week opens
+          and when it's final.
         </Item>
-        <Item title="What the admin can still do">
+        <Item title="What the commissioner can still do">
           Edit spreads and points until a week's first kickoff, choose the tiebreaker game, add or remove a
           game, and correct a score at any time: a final week is corrected in place, the standings follow, and
           the recap shows again. A game with no line on Tuesday holds the week back until the line arrives; if
-          it is still missing a day before the first kickoff, the admins are told, and the week opens as soon
-          as they type it in. A game that is rescheduled locks at its new kickoff.
+          it is still missing a day before the first kickoff, the commissioners are told, and the week opens
+          as soon as they type it in. A game that is rescheduled locks at its new kickoff.
         </Item>
         <Item title="Hands-on">
-          Full control of each week for admins who want it: they import or build the slate, open it, and press
-          Finalize week. An admin can switch between the two at any time in the League tab's settings;
-          automation picks the weeks up as they stand.
+          Full control of each week for commissioners who want it: they import or build the slate, open it,
+          and press Finalize week. A commissioner can switch between the two at any time in the League tab's
+          settings; automation picks the weeks up as they stand.
         </Item>
       </Card>
     </View>
@@ -87,8 +87,8 @@ export function HowToPlayPlayoff() {
           Most points after the Super Bowl, then most games won, then the closest guess at the Super Bowl's
           combined score (on equal distance, the guess that didn't go over). Players still level share the
           title. If nobody survives the guillotine, points decide it. There is no weekly winner or Low Point
-          Loser; perfect round, lone wolf and bullseye awards stay. The admin picks the format when starting
-          the season, and it can't change after the first Wild Card kickoff.
+          Loser; perfect round, lone wolf and bullseye awards stay. The commissioner picks the format when
+          starting the season, and it can't change after the first Wild Card kickoff.
         </Item>
       </Card>
     </View>

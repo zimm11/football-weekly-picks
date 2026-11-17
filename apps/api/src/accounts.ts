@@ -273,13 +273,13 @@ export function accountRoutes({ db, verifyToken, accounts, now = () => new Date(
       if (outcomes.soleAdmin.length)
         fail(
           409,
-          `Make someone else an admin of ${outcomes.soleAdmin.map((l) => l.name).join(", ")} before you delete your account.`,
+          `Make someone else a commissioner of ${outcomes.soleAdmin.map((l) => l.name).join(", ")} before you delete your account.`,
         );
       const clock = now();
       await db.transaction(async (tx) => {
         // Checked again under the locks: a league could have changed since.
         const current = await leagueOutcomes(tx, userId);
-        if (current.soleAdmin.length) fail(409, "Make someone else an admin first, then try again.");
+        if (current.soleAdmin.length) fail(409, "Make someone else a commissioner first, then try again.");
         await deleteAccountData(
           tx,
           userId,

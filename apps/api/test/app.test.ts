@@ -1709,7 +1709,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
 
     const refused = await leave(ADMIN);
     expect(refused.status).toBe(409);
-    expect(errorOf(refused)).toMatch(/only admin/);
+    expect(errorOf(refused)).toMatch(/only commissioner/);
   });
 
   it("keeps future drafts out of default standings and respects an explicitly selected empty season", async () => {

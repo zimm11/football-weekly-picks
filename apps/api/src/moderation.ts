@@ -907,7 +907,8 @@ export function moderationRoutes(deps: AppDeps) {
       const { leagueId, userId } = c.req.valid("param");
       requireAdmin((await requireMember(db, leagueId, c.var.user.id)).role);
       const target = await requireMember(db, leagueId, userId).catch(() => fail(404, "Player not found."));
-      if (target.role === "admin") fail(400, "Admins can't be muted. Revoke their admin access first.");
+      if (target.role === "admin")
+        fail(400, "Commissioners can't be muted. Revoke their commissioner access first.");
       await db.transaction((tx) =>
         mute(tx, { userId, leagueId, duration: c.req.valid("json").duration, actorId: c.var.user.id }),
       );
