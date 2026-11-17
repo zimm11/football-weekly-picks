@@ -26,7 +26,7 @@ export function BoardSelector({ league }: { league: LeagueDetail }) {
   const { boards, boardId } = useBoardChoice(league.id);
   if (!boards || boards.length < 2 || !boardId) return null;
   return (
-    <View style={{ width: 210, flexShrink: 1 }}>
+    <View style={{ width: 180, flexShrink: 1 }}>
       <Select
         label="Board"
         value={boardId}

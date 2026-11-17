@@ -9,7 +9,6 @@ import { messageOf, request } from "../../lib/api";
 import { offerHomeScreen } from "../../lib/homeScreen";
 import { notifyError } from "../../lib/notify";
 import {
-  boardTitle,
   claimRoom,
   type PendingChange,
   quarterRows,
@@ -172,7 +171,7 @@ export function BoardHeading({ view, admin, manage }: { view: BoardView; admin: 
           {manage ? "Manage board" : `${teamName(view.awayTeam)} at ${teamName(view.homeTeam)}`}
         </Text>
         <Label>
-          {manage ? `${boardTitle(view, view.timeZone)} · ` : ""}
+          {manage ? `${view.awayTeam} at ${view.homeTeam} · ` : ""}
           {kickoffDay(view.kickoff, view.timeZone)}, {kickoffTime(view.kickoff, view.timeZone)}
         </Label>
       </View>
