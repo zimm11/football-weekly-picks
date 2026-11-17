@@ -229,6 +229,10 @@ This local setting is not applied to production.
 
 ### Walking through a week
 
+This walks through Weekly pick'em, the main game. The other games each have a seeded league to try (see
+[Test accounts](#test-accounts)) and a section under [League types](#league-types); in the app, How to play has a
+tab for each.
+
 1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has five tabs: **Picks**,
    **Results**, **Standings**, **Messages**, and **League**. The **Season** selector applies to every tab
    except Messages, which is league-wide. Sunday Crew is a Hands-on league: an Automatic one does steps 2, 3, 5
