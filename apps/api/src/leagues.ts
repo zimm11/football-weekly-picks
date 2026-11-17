@@ -49,7 +49,6 @@ import {
   body,
   fail,
   isActive,
-  isOperator,
   leagueParam,
   listMemberRecords,
   param,

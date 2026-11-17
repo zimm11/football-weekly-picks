@@ -121,6 +121,7 @@ const operationMessages = {
   automation_due: "Finding leagues with automation due failed.",
   automation_league: "Advancing one league's automation failed.",
   league_event: "Queueing a league event's notifications failed.",
+  squares_board: "Advancing one squares board failed.",
   moderation_screen: "Content screening model request failed; the content was saved unchecked.",
   moderation_jobs: "Moderation job failed.",
   moderation_report: "Checking a reported message failed.",

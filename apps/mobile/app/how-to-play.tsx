@@ -1,12 +1,14 @@
 import { MAX_LEAGUE_MEMBERS, MAX_LEAGUES_PER_USER } from "@picks/shared";
-import { useRef, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { Platform, ScrollView, Text, View } from "react-native";
 import { BackLink } from "../src/components/BackLink";
 import { Icon, type IconName } from "../src/components/Icon";
 import { Body, Button, Card, colors, fonts, styles, Title } from "../src/components/ui";
 import { useAuth } from "../src/lib/auth";
 import { openScreen } from "../src/lib/navigation";
-import { HowToPlayPlayoff } from "../src/screens/playoff/HowToPlayPlayoff";
+import { HowToPlayManagement, HowToPlayPlayoff } from "../src/screens/playoff/HowToPlayPlayoff";
+import { HowToPlaySquares } from "../src/screens/squares/HowToPlaySquares";
 
 const playerSteps = [
   [
@@ -138,6 +140,12 @@ export default function HowToPlay() {
   const auth = useAuth();
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const [positions, setPositions] = useState<Record<string, number>>({});
+  // `?section=<league type>` (the "How … works" link under New league's type cards) opens at that type's section.
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  const target = section ? positions[section] : undefined;
+  useEffect(() => {
+    if (target !== undefined) scroll.current?.scrollTo({ y: target, animated: false });
+  }, [target]);
   return (
     <ScrollView
       ref={scroll}
@@ -180,7 +188,14 @@ export default function HowToPlay() {
         ))}
       </View>
       <View
-        onLayout={(event) => setPositions((old) => ({ ...old, rules: event.nativeEvent.layout.y }))}
+        onLayout={(event) =>
+          // Weekly pick'em's section (`?section=weekly`) starts at the pick rules.
+          setPositions((old) => ({
+            ...old,
+            rules: event.nativeEvent.layout.y,
+            weekly: event.nativeEvent.layout.y,
+          }))
+        }
         style={{ gap: 20 }}
       >
         <SectionHeading title="The pick rules" icon="trophy" />
@@ -312,7 +327,13 @@ export default function HowToPlay() {
         </Body>
         <Steps items={adminSteps} />
       </View>
-      <HowToPlayPlayoff />
+      <HowToPlayManagement />
+      <View onLayout={(event) => setPositions((old) => ({ ...old, playoff: event.nativeEvent.layout.y }))}>
+        <HowToPlayPlayoff />
+      </View>
+      <View onLayout={(event) => setPositions((old) => ({ ...old, squares: event.nativeEvent.layout.y }))}>
+        <HowToPlaySquares />
+      </View>
       <View style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }}>
         <Body muted>Ready for the next slate?</Body>
         <Button
