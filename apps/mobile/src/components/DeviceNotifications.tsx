@@ -9,8 +9,8 @@ export function DeviceNotifications() {
     <Card>
       <SettingsHeading>On this device</SettingsHeading>
       <Body muted>
-        New threads and missing-pick reminders as notifications. They can show league names and thread titles
-        on your lock screen.
+        New threads, missing-pick reminders, and results and updates as notifications. They can show league
+        names and thread titles on your lock screen.
       </Body>
       <NativeDeviceControls />
     </Card>

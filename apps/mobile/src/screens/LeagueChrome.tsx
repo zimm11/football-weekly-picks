@@ -1,5 +1,11 @@
+import {
+  LEAGUE_TABS,
+  LEAGUE_TYPE_INFO,
+  type LeagueTabId,
+  type LeagueType,
+  leagueTabPath,
+} from "@picks/shared";
 import { router, usePathname } from "expo-router";
-import type { ComponentProps } from "react";
 import { Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
@@ -7,13 +13,9 @@ import { colors, fonts } from "../components/ui";
 import { confirmDiscard, hasUnsavedWork } from "../lib/unsaved";
 import { go, Select } from "./leagueUi";
 
-export const LEAGUE_TABS = [
-  { id: "picks", title: "Picks", icon: "football" },
-  { id: "results", title: "Results", icon: "list" },
-  { id: "standings", title: "Standings", icon: "trophy" },
-  { id: "messages", title: "Messages", icon: "chat" },
-  { id: "league", title: "League", icon: "users" },
-] as const;
+/** A league type's tabs, in order, from the registry (`LEAGUE_TYPE_INFO[type].tabs`). */
+export const leagueTabs = (type: LeagueType) =>
+  LEAGUE_TYPE_INFO[type].tabs.map((id) => ({ id, path: leagueTabPath(type, id), ...LEAGUE_TABS[id] }));
 export function LeagueHeader({
   leagueName,
   season,
@@ -74,13 +76,16 @@ export function LeagueHeader({
 }
 export function LeagueTabBar({
   leagueId,
+  type = "weekly",
   active,
   unreadCount = 0,
   wide = false,
   onLeave,
 }: {
   leagueId: string;
-  active: string;
+  /** The league's type, whose tabs the bar shows. */
+  type?: LeagueType;
+  active: LeagueTabId;
   unreadCount?: number;
   wide?: boolean;
   /** Called as a tab starts opening, once nothing unsaved stands in the way. */
@@ -90,9 +95,9 @@ export function LeagueTabBar({
   const { width } = useWindowDimensions();
   const horizontal = wide && width >= 768;
   const path = usePathname();
-  async function open(tab: string) {
+  async function open(tabPath: string) {
     // A tab stays a link from the screens under it (Manage week sits under League).
-    const target = `/leagues/${leagueId}${tab === "picks" ? "" : `/${tab}`}`;
+    const target = `/leagues/${leagueId}${tabPath ? `/${tabPath}` : ""}`;
     if (path === target || (hasUnsavedWork() && !(await confirmDiscard()))) return;
     onLeave?.();
     router.push(target as never);
@@ -111,7 +116,7 @@ export function LeagueTabBar({
         gap: horizontal ? 4 : 0,
       }}
     >
-      {LEAGUE_TABS.map((item) => {
+      {leagueTabs(type).map((item) => {
         const selected = item.id === active;
         const ink = selected ? colors.primary : colors.mutedForeground;
         return (
@@ -126,7 +131,7 @@ export function LeagueTabBar({
             }
             accessibilityState={{ selected }}
             aria-current={selected ? "page" : undefined}
-            onPress={() => void open(item.id)}
+            onPress={() => void open(item.path)}
             style={({ pressed }) => ({
               flex: horizontal ? undefined : 1,
               height: horizontal ? 44 : 64,
@@ -141,12 +146,7 @@ export function LeagueTabBar({
             })}
           >
             <View>
-              <Icon
-                name={item.icon as ComponentProps<typeof Icon>["name"]}
-                size={horizontal ? 20 : 24}
-                filled={selected}
-                color={ink}
-              />
+              <Icon name={item.icon} size={horizontal ? 20 : 24} filled={selected} color={ink} />
               {item.id === "messages" && unreadCount > 0 && (
                 <View
                   role="img"

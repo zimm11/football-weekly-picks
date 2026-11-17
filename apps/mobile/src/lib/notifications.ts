@@ -82,12 +82,19 @@ async function save(token: string, preferences: PushPreferences, userId: string,
       token,
       newThreads: preferences.newThreads,
       pickReminders: preferences.pickReminders,
+      ...(preferences.leagueEvents !== undefined && { leagueEvents: preferences.leagueEvents }),
       ...(previous && previous.token !== token ? { oldToken: previous.token } : {}),
     },
   });
   await SecureStore.setItemAsync(
     ownerKey(),
-    JSON.stringify({ token, userId, newThreads: device.newThreads, pickReminders: device.pickReminders }),
+    JSON.stringify({
+      token,
+      userId,
+      newThreads: device.newThreads,
+      pickReminders: device.pickReminders,
+      leagueEvents: device.leagueEvents,
+    }),
   );
   return device;
 }

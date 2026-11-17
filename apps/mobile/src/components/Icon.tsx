@@ -22,6 +22,8 @@ import { FileTextIcon } from "phosphor-react-native/src/icons/FileText";
 import { FlagIcon } from "phosphor-react-native/src/icons/Flag";
 import { FootballIcon } from "phosphor-react-native/src/icons/Football";
 import { GearIcon } from "phosphor-react-native/src/icons/Gear";
+import { GridNineIcon } from "phosphor-react-native/src/icons/GridNine";
+import { HeartIcon } from "phosphor-react-native/src/icons/Heart";
 import { InfoIcon } from "phosphor-react-native/src/icons/Info";
 import { ListChecksIcon } from "phosphor-react-native/src/icons/ListChecks";
 import { LockIcon } from "phosphor-react-native/src/icons/Lock";
@@ -88,6 +90,8 @@ const ICONS = {
   reply: [ArrowBendUpLeftIcon],
   shield: [ShieldIcon],
   "user-minus": [UserMinusIcon],
+  grid: [GridNineIcon],
+  heart: [HeartIcon],
   flag: [FlagIcon],
   block: [ProhibitIcon],
   mute: [SpeakerSlashIcon],

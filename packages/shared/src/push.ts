@@ -34,9 +34,10 @@ export const pushSubscriptionSchema = z.object({
   oldEndpoint: pushEndpointSchema.optional(),
 });
 export const pushDeviceSchema = z.object({ endpoint: pushEndpointSchema });
-export type PushPreferences = { newThreads: boolean; pickReminders: boolean; leagueEvents: boolean };
+/** A device's switches as a client holds them. `leagueEvents` is absent in what older clients stored: read it as on. */
+export type PushPreferences = { newThreads: boolean; pickReminders: boolean; leagueEvents?: boolean };
 export type PushSettings = { configured: boolean; publicKey: string | null };
-export type PushDevice = PushPreferences & { id: string };
+export type PushDevice = { id: string; newThreads: boolean; pickReminders: boolean; leagueEvents: boolean };
 export type PushPayload = { title: string; body: string; url: string; tag: string };
 
 /** Native tokens are opaque Expo destinations, never arbitrary fetch URLs. */

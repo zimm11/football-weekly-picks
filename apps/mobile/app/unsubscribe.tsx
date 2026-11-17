@@ -12,8 +12,13 @@ export default function Unsubscribe() {
   const params = useLocalSearchParams<{ token?: string | string[] }>();
   const token = typeof params.token === "string" ? params.token : "";
   const kind = token.split(".")[1];
-  const valid = kind === "new_thread" || kind === "pick_reminder";
-  const label = kind === "new_thread" ? "new-thread emails" : "pick reminder emails";
+  const valid = kind === "new_thread" || kind === "pick_reminder" || kind === "league_event";
+  const label =
+    kind === "new_thread"
+      ? "new-thread emails"
+      : kind === "league_event"
+        ? "results and updates emails"
+        : "pick reminder emails";
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string>();

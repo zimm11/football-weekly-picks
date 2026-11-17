@@ -2,23 +2,20 @@
 import {
   LEAGUE_NAME_MAX,
   type LeagueDetail,
-  MAX_WEEK,
+  type LeagueManagement,
   type Member,
   MUTE_DURATION_LABELS,
   type MuteDuration,
-  nextWeekNumber,
+  managementChoices,
   updateLeagueSchema,
-  WEEK_PHASE_LABEL,
-  weekLabel,
 } from "@picks/shared";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
-import { type ComponentRef, useRef, useState } from "react";
-import { Platform, Pressable, Share, Text, TextInput, View } from "react-native";
+import { type ComponentRef, type ReactNode, useRef, useState } from "react";
+import { Platform, Share, Text, TextInput, View } from "react-native";
 import { Avatar } from "../components/Avatar";
 import { ReportSheet, type ReportTarget, setBlocked } from "../components/Moderation";
 import { type Anchor, Menu, MenuItem } from "../components/Popover";
-import { PreferenceToggle } from "../components/PreferenceToggle";
 import { fonts } from "../components/ui";
 import { request } from "../lib/api";
 import { pageOrigin } from "../lib/config";
@@ -32,8 +29,6 @@ import {
   confirm,
   Eyebrow,
   Failure,
-  go,
-  Heading,
   IconButton,
   Input,
   Label,
@@ -43,6 +38,12 @@ import {
   useEditsGuard,
 } from "./leagueUi";
 import { ReportsQueue } from "./ReportsQueue";
+
+/** How a weekly league can be run, as the League tab's settings name it. */
+const MANAGEMENT_LABEL: Record<LeagueManagement, string> = {
+  auto: "Automatic: weeks set up, open and close themselves",
+  manual: "Hands-on: you run each week",
+};
 
 export const timeZones = [
   { value: "America/New_York", label: "Eastern" },
@@ -56,24 +57,23 @@ export const timeZones = [
 ];
 export function LeagueTools({
   league,
-  year,
   userId,
+  isOperator = false,
   reload,
+  adminTools,
 }: {
   league: LeagueDetail;
-  year: number;
   userId: string;
+  /** Operators may use what isn't released yet (Automatic weekly). */
+  isOperator?: boolean;
   reload: () => void;
+  /** The league type's own admin tools (Set up a week, Start season, New board), shown to admins first. */
+  adminTools?: ReactNode;
 }) {
   const [name, setName] = useState(league.name),
-    [timeZone, setTimeZone] = useState(league.timeZone);
-  const [number, setNumber] = useState(
-    nextWeekNumber(league.weeks, MAX_WEEK) ??
-      league.weeks.find((w) => w.status !== "final")?.number ??
-      MAX_WEEK,
-  );
-  const [importGames, setImportGames] = useState(true),
-    [busy, setBusy] = useState<string>(),
+    [timeZone, setTimeZone] = useState(league.timeZone),
+    [management, setManagement] = useState(league.management);
+  const [busy, setBusy] = useState<string>(),
     [error, setError] = useState<string>(),
     [copied, setCopied] = useState(false),
     [memberId, setMemberId] = useState<string>();
@@ -85,17 +85,20 @@ export function LeagueTools({
   const memberButtons = useRef(new Map<string, ComponentRef<typeof View>>());
   const admin = league.role === "admin",
     adminCount = league.members.filter((m) => m.role === "admin").length,
-    dirty = admin && (name !== league.name || timeZone !== league.timeZone);
+    // Only weekly pick'em has a choice, and Automatic only once it's open to this player (or already in use).
+    managementOptions = [
+      ...new Set([...managementChoices(league.type, isOperator), league.management]),
+    ].filter((m) => league.type === "weekly" || m === league.management),
+    dirty =
+      admin && (name !== league.name || timeZone !== league.timeZone || management !== league.management);
   useEditsGuard(dirty && busy !== "settings", () => {
     setName(league.name);
     setTimeZone(league.timeZone);
+    setManagement(league.management);
   });
   const base = `/leagues/${league.id}`,
     // The web build links to the site serving it (a local server too); the phone app to production.
-    inviteUrl = `${pageOrigin() ?? "https://www.pow-pickem.com"}/join/${league.inviteCode}`,
-    existing = league.weeks.find((w) => w.number === number),
-    next = nextWeekNumber(league.weeks, MAX_WEEK),
-    finalCount = league.weeks.filter((w) => w.status === "final").length;
+    inviteUrl = `${pageOrigin() ?? "https://www.pow-pickem.com"}/join/${league.inviteCode}`;
   async function run(action: string, task: () => Promise<unknown>, success: string) {
     if (busy) return;
     setBusy(action);
@@ -204,102 +207,8 @@ export function LeagueTools({
   }
   return (
     <>
-      {admin && (
-        <Card label="Weeks">
-          <View style={{ gap: 4 }}>
-            <Heading>{year} season weeks</Heading>
-            <Label>
-              {league.weeks.length} of {MAX_WEEK} weeks prepared · {finalCount} final. Regular season only.
-            </Label>
-          </View>
-          {next === null && (
-            <View style={{ backgroundColor: colors.primaryTint, borderRadius: 12, padding: 12 }}>
-              <Label>
-                {finalCount === MAX_WEEK
-                  ? "Season complete. All 18 weeks are final. Choose New season in the season selector when you're ready."
-                  : "All 18 weeks are prepared. Manage an existing week below; finalize the remaining weeks to finish the season."}
-              </Label>
-            </View>
-          )}
-          <Select
-            label="Week"
-            value={number}
-            onChange={setNumber}
-            disabled={!!busy}
-            choices={Array.from({ length: MAX_WEEK }, (_, i) => {
-              const n = i + 1,
-                w = league.weeks.find((item) => item.number === n);
-              return {
-                value: n,
-                label: `${weekLabel(n)} · ${w ? WEEK_PHASE_LABEL[w.phase] : "Not created"}`,
-              };
-            })}
-          />
-          {existing ? (
-            <Action link disabled={!!busy} onPress={() => go(`/weeks/${existing.id}/manage`)}>
-              Manage week
-            </Action>
-          ) : (
-            <>
-              <Action
-                disabled={!!busy}
-                onPress={() =>
-                  void run(
-                    "create",
-                    async () => {
-                      if (!(await confirmDiscard())) return false;
-                      const created = await request<{ id: string; importError: string | null }>(
-                        `${base}/weeks`,
-                        { method: "POST", body: { year, number, importGames } },
-                      );
-                      if (created.importError) notifyError(created.importError);
-                      void go(`/weeks/${created.id}/manage`);
-                    },
-                    "Week created.",
-                  )
-                }
-              >
-                {busy === "create" ? "Creating…" : "Create week"}
-              </Action>
-              <PreferenceToggle
-                small
-                label="Import games and spreads from ESPN"
-                checked={importGames}
-                onChange={setImportGames}
-                disabled={!!busy}
-              />
-            </>
-          )}
-          <View>
-            {[...league.weeks]
-              .sort((a, b) => b.number - a.number)
-              .map((week) => (
-                <Pressable
-                  key={week.id}
-                  accessibilityRole="link"
-                  accessibilityLabel={`Manage ${weekLabel(week.number)}`}
-                  disabled={!!busy}
-                  onPress={() => void go(`/weeks/${week.id}/manage`)}
-                  style={({ pressed }) => ({
-                    minHeight: 56,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: colors.border,
-                    backgroundColor: pressed ? colors.raised : "transparent",
-                  })}
-                >
-                  <Text style={[s.subtitle, { fontSize: 20 }]}>{weekLabel(week.number)}</Text>
-                  <Pill inline tone={week.status === "open" ? "primary" : "muted"}>
-                    {WEEK_PHASE_LABEL[week.phase]}
-                  </Pill>
-                </Pressable>
-              ))}
-          </View>
-        </Card>
-      )}
+      {/* The admin's tools for this league type (`LEAGUE_TYPE_SCREENS[type].AdminTools`): Set up a week, … */}
+      {admin && adminTools}
       {admin && league.inviteCode && (
         <Card label="Invite">
           <View style={{ gap: 4 }}>
@@ -453,12 +362,25 @@ export function LeagueTools({
                 : [{ value: timeZone, label: timeZone }, ...timeZones]
             }
           />
+          {managementOptions.length > 1 && (
+            <Select
+              label="How it's run"
+              value={management}
+              onChange={setManagement}
+              disabled={!!busy}
+              choices={managementOptions.map((value) => ({ value, label: MANAGEMENT_LABEL[value] }))}
+            />
+          )}
           <Failure message={error} />
           <Action
             secondary
             disabled={!!busy || !dirty}
             onPress={() => {
-              const parsed = updateLeagueSchema.safeParse({ name, timeZone });
+              const parsed = updateLeagueSchema.safeParse({
+                name,
+                timeZone,
+                ...(management !== league.management && { management }),
+              });
               if (!parsed.success) return setError(parsed.error.issues[0]?.message);
               setError(undefined);
               void run(

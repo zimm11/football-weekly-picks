@@ -10,7 +10,11 @@ export function NativeDeviceControls() {
   const { session } = useAuth();
   const action = useAction();
   const [state, setState] = useState<Awaited<ReturnType<typeof nativePushState>>>();
-  const [draft, setDraft] = useState<PushPreferences>({ newThreads: true, pickReminders: true });
+  const [draft, setDraft] = useState<PushPreferences>({
+    newThreads: true,
+    pickReminders: true,
+    leagueEvents: true,
+  });
   const [error, setError] = useState<string>();
   const refresh = useCallback(
     () =>
@@ -20,6 +24,7 @@ export function NativeDeviceControls() {
           setDraft({
             newThreads: value.device?.newThreads ?? true,
             pickReminders: value.device?.pickReminders ?? true,
+            leagueEvents: value.device?.leagueEvents ?? true,
           });
           setError(undefined);
         },
@@ -36,11 +41,14 @@ export function NativeDeviceControls() {
   }, [refresh]);
   const dirty =
     !!state?.device &&
-    (draft.newThreads !== state.device.newThreads || draft.pickReminders !== state.device.pickReminders);
+    (draft.newThreads !== state.device.newThreads ||
+      draft.pickReminders !== state.device.pickReminders ||
+      draft.leagueEvents !== state.device.leagueEvents);
   useFormGuard(dirty, () =>
     setDraft({
       newThreads: state?.device?.newThreads ?? true,
       pickReminders: state?.device?.pickReminders ?? true,
+      leagueEvents: state?.device?.leagueEvents ?? true,
     }),
   );
   async function enable() {
@@ -87,6 +95,12 @@ export function NativeDeviceControls() {
                 checked={draft.pickReminders}
                 disabled={action.busy}
                 onChange={(value) => setDraft((old) => ({ ...old, pickReminders: value }))}
+              />
+              <PreferenceToggle
+                label="Results and updates"
+                checked={draft.leagueEvents ?? true}
+                disabled={action.busy}
+                onChange={(value) => setDraft((old) => ({ ...old, leagueEvents: value }))}
               />
               <Button
                 title={action.busy ? "Saving…" : "Save preferences"}
