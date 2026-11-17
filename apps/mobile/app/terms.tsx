@@ -68,7 +68,7 @@ const sections: LegalSection[] = [
     "Schedules, scores and odds",
     [
       "Schedules, spreads, scores, stats, news and win predictions fill in automatically from an outside sports-data source. They can be late, missing or wrong, and league commissioners can change spreads and scores. Don't rely on them for anything beyond the game.",
-      "POW Pick'em is not affiliated with or endorsed by the NFL, its teams or the company whose data it shows. Team names and logos belong to their owners.",
+      "POW Pick'em is not affiliated with or endorsed by the NFL, its teams or the company whose data it shows. Team names belong to their owners. The team badges in the app are our own drawings, not the teams' logos.",
     ],
   ],
   [

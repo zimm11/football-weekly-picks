@@ -41,7 +41,7 @@ for (const { app, html, hashed } of clients) {
     );
     assert.deepEqual(csp["script-src"], ["'self'"]);
     assert.deepEqual(csp["frame-ancestors"], ["'none'"]);
-    assert.ok(csp["img-src"].includes("https://a.espncdn.com"), "team logos");
+    assert.deepEqual(csp["img-src"], ["'self'", "data:"], "no third-party images");
     assert.ok(csp["connect-src"].includes("https://*.supabase.co"), "Supabase Auth");
     assert.deepEqual(csp["worker-src"], ["'self'"]);
     for (const path of hashed)
