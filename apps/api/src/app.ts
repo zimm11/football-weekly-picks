@@ -1,6 +1,9 @@
 import { profiles } from "@picks/db";
 import {
+  activeMute,
   type Me,
+  MODERATION_MESSAGES,
+  type ModerationStatus,
   type NotificationSettings,
   updateNotificationsSchema,
   updateProfileSchema,
@@ -16,6 +19,7 @@ import { type AppDeps, body, fail, isOperator } from "./context";
 import { leagueRoutes } from "./leagues";
 import { logError, requestLogger } from "./logging";
 import { messageRoutes } from "./messages";
+import { moderationRoutes, requireNotSuspended, screen } from "./moderation";
 import { operatorRoutes } from "./operator";
 import { pushRoutes } from "./push";
 import { unsubscribeRoutes } from "./unsubscribe";
@@ -54,8 +58,14 @@ const notificationsOf = (profile?: typeof profiles.$inferSelect): NotificationSe
   pickReminders: profile?.emailPickReminders ?? true,
 });
 
+const moderationOf = (profile: typeof profiles.$inferSelect | undefined, now: Date): ModerationStatus => ({
+  termsAccepted: !!profile?.termsAcceptedAt,
+  mutedUntil: activeMute(now, profile?.mutedUntil)?.toISOString() ?? null,
+  suspended: !!profile?.suspendedAt,
+});
+
 export function createApp(deps: AppDeps) {
-  const { db, verifyToken, publicConfig } = deps;
+  const { db, verifyToken, publicConfig, screener, now = () => new Date() } = deps;
   const auth = requireAuth(verifyToken);
 
   // Keep everything chained (and sub-apps mounted with `.route`), or `ApiType` loses the route types.
@@ -77,21 +87,31 @@ export function createApp(deps: AppDeps) {
         displayName: profile?.displayName ?? null,
         isOperator: isOperator(deps, c.var.user.id),
         notifications: notificationsOf(profile),
+        moderation: moderationOf(profile, now()),
       };
       return c.json(me);
     })
     .put("/me", auth, body(updateProfileSchema), async (c) => {
-      const { displayName } = c.req.valid("json");
+      const { displayName, acceptTerms } = c.req.valid("json");
+      const userId = c.var.user.id;
+      const [current] = await db.select().from(profiles).where(eq(profiles.userId, userId));
+      const renaming = current?.displayName !== displayName;
+      if (renaming) await requireNotSuspended(db, userId);
+      if (renaming)
+        await screen(screener, { kind: "display_name", text: displayName }, MODERATION_MESSAGES.rejectedName);
+      const clock = now();
+      const terms = acceptTerms ? { termsAcceptedAt: current?.termsAcceptedAt ?? clock } : {};
       const [profile] = await db
         .insert(profiles)
-        .values({ userId: c.var.user.id, displayName })
-        .onConflictDoUpdate({ target: profiles.userId, set: { displayName } })
+        .values({ userId, displayName, ...terms })
+        .onConflictDoUpdate({ target: profiles.userId, set: { displayName, ...terms } })
         .returning();
       const me: Me = {
         ...c.var.user,
         displayName,
-        isOperator: isOperator(deps, c.var.user.id),
+        isOperator: isOperator(deps, userId),
         notifications: notificationsOf(profile),
+        moderation: moderationOf(profile, clock),
       };
       return c.json(me);
     })
@@ -110,7 +130,8 @@ export function createApp(deps: AppDeps) {
     .route("/", messageRoutes(deps))
     .route("/", operatorRoutes(deps))
     .route("/", unsubscribeRoutes(deps))
-    .route("/", pushRoutes(deps));
+    .route("/", pushRoutes(deps))
+    .route("/", moderationRoutes(deps));
 
   const app = new Hono<{ Variables: AuthVariables }>()
     .use(requestLogger)

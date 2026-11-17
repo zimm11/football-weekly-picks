@@ -1,4 +1,5 @@
 import {
+  contentReports,
   emailOutbox,
   messagePosts,
   messageReactions,
@@ -11,8 +12,13 @@ import {
   MESSAGE_REACTIONS,
   type MessageReaction,
   type MessageThread,
+  MODERATION_MESSAGES,
   messageReactionSchema,
+  NEW_ACCOUNT_MS,
+  NEW_ACCOUNT_REPLY_LIMIT,
+  NEW_ACCOUNT_THREAD_LIMIT,
   pinThreadSchema,
+  REPLY_MINUTE_LIMIT,
   readThreadSchema,
   replySchema,
   THREAD_DAILY_LIMIT,
@@ -22,7 +28,7 @@ import {
   threadCursor,
   threadListQuerySchema,
 } from "@picks/shared";
-import { and, asc, count, desc, eq, like, type SQL, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, like, not, type SQL, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
@@ -34,15 +40,34 @@ import {
   param,
   query,
   requireAdmin,
-  requireDisplayName,
   requireMember,
+  type Tx,
 } from "./context";
 import { logError } from "./logging";
+import {
+  blockedBy,
+  openingPostGone,
+  posterState,
+  postingBlocked,
+  postView,
+  readerBlocked,
+  requirePoster,
+  screen,
+} from "./moderation";
 import { drainOutbox, queueThreadEmails } from "./outbox";
 import { drainPush, queueThreadPush } from "./pushQueue";
 
 const threadParam = param(z.object({ leagueId: z.uuid(), threadId: z.uuid() }));
 const postParam = param(z.object({ leagueId: z.uuid(), threadId: z.uuid(), postId: z.uuid() }));
+
+/** When the account was created (Supabase Auth's clock), for the tighter limits on brand-new accounts. */
+async function accountCreatedAt(db: AppDeps["db"] | Tx, userId: string): Promise<Date | null> {
+  const rows = await db.execute<{ created_at: string | null }>(
+    sql`select created_at from auth.users where id = ${userId}`,
+  );
+  const value = rows[0]?.created_at;
+  return value ? new Date(value) : null;
+}
 
 export function messageRoutes({
   db,
@@ -51,20 +76,32 @@ export function messageRoutes({
   push,
   nativePush,
   limits,
+  screener,
   now = () => new Date(),
   background = (task) => void task(),
 }: AppDeps) {
   const auth = requireAuth(verifyToken);
+  /**
+   * The thread, if this player may see it: a thread whose opening message was removed is gone for everyone, and
+   * one hidden for review only shows to its author and the league's admins.
+   */
   async function thread(leagueId: string, threadId: string, userId: string) {
     const { role } = await requireMember(db, leagueId, userId);
     const [row] = await db
       .select()
       .from(messageThreads)
-      .where(and(eq(messageThreads.id, threadId), eq(messageThreads.leagueId, leagueId)));
+      .where(
+        and(
+          eq(messageThreads.id, threadId),
+          eq(messageThreads.leagueId, leagueId),
+          not(openingPostGone(userId, role === "admin")),
+        ),
+      );
     if (!row) fail(404, "Thread not found.");
     return { ...row, role, canPin: role === "admin", canDelete: role === "admin" };
   }
-  async function reactions(threadId: string, userId: string) {
+  /** Each message's reactions as this player sees them: without those from players they blocked. */
+  async function reactions(threadId: string, userId: string, blocked: ReadonlySet<string>) {
     const rows = await db
       .select({
         postId: messageReactions.postId,
@@ -76,6 +113,7 @@ export function messageRoutes({
       .where(eq(messagePosts.threadId, threadId));
     const result = new Map<string, MessageReaction[]>();
     for (const row of rows) {
+      if (blocked.has(row.userId)) continue;
       const option = MESSAGE_REACTIONS.find((r) => r.emoji === row.emoji);
       if (!option) continue;
       const list = result.get(row.postId) ?? [];
@@ -93,6 +131,9 @@ export function messageRoutes({
   /** Threads newest first (pinned before the rest), each marked unread for this player or not. */
   /** `updated_at` to the microsecond, as the text a page cursor carries (a JS Date would drop the last digits). */
   const updatedAtMicros = sql<string>`(extract(epoch from ${messageThreads.updatedAt}) * 1000000)::bigint`;
+  /** SQL: threads this player sees on the board: not removed or hidden from them, not by a player they blocked. */
+  const visibleTo = (userId: string, isAdmin: boolean) =>
+    and(not(openingPostGone(userId, isAdmin)), not(readerBlocked(userId, messageThreads.authorId)));
   async function threadRows(userId: string, where: SQL | undefined, limit?: number) {
     const query = db
       .select({
@@ -132,7 +173,7 @@ export function messageRoutes({
     return (await threadRows(userId, where, limit)).map(({ position: _, ...thread }) => thread);
   }
   /** How many of the league's threads have posts this player hasn't read, across every page. */
-  async function unreadThreads(userId: string, leagueId: string) {
+  async function unreadThreads(userId: string, leagueId: string, isAdmin: boolean) {
     const [row] = await db
       .select({ n: count() })
       .from(messageThreads)
@@ -143,6 +184,7 @@ export function messageRoutes({
       .where(
         and(
           eq(messageThreads.leagueId, leagueId),
+          visibleTo(userId, isAdmin),
           sql`coalesce(${messageReads.version}, 0) < ${messageThreads.version}`,
         ),
       );
@@ -158,8 +200,8 @@ export function messageRoutes({
         const { leagueId } = c.req.valid("param");
         const { before, limit } = c.req.valid("query");
         const userId = c.var.user.id;
-        await requireMember(db, leagueId, userId);
-        const inLeague = eq(messageThreads.leagueId, leagueId);
+        const { role } = await requireMember(db, leagueId, userId);
+        const inLeague = and(eq(messageThreads.leagueId, leagueId), visibleTo(userId, role === "admin"));
         // Without `limit` or `before`, the whole board as an array: what tabs opened before pagination ask for.
         if (limit === undefined && before === undefined) return c.json(await listThreads(userId, inLeague));
         const size = limit ?? THREAD_PAGE_SIZE;
@@ -179,7 +221,7 @@ export function messageRoutes({
             ),
             size + 1,
           ),
-          unreadThreads(userId, leagueId),
+          unreadThreads(userId, leagueId, role === "admin"),
         ]);
         const page = rest.slice(0, size);
         const last = page.at(-1);
@@ -192,9 +234,22 @@ export function messageRoutes({
     )
     .post("/leagues/:leagueId/messages", auth, leagueParam, body(createThreadSchema), async (c) => {
       const { leagueId } = c.req.valid("param");
-      const { league } = await requireMember(db, leagueId, c.var.user.id);
-      await requireDisplayName(db, c.var.user.id);
+      const userId = c.var.user.id;
+      const { league } = await requireMember(db, leagueId, userId);
+      await requirePoster(db, userId, leagueId, now());
       const { title, body: content } = c.req.valid("json");
+      // Checked before the transaction, so waiting on the model never holds a lock.
+      const screened = await screen(
+        screener,
+        { kind: "thread", text: `${title}\n\n${content}` },
+        MODERATION_MESSAGES.rejected,
+      );
+      const created = await accountCreatedAt(db, userId);
+      const newAccount = !!created && now().getTime() - created.getTime() < NEW_ACCOUNT_MS;
+      const dailyLimit = Math.min(
+        limits?.threadsPerDay ?? THREAD_DAILY_LIMIT,
+        newAccount ? NEW_ACCOUNT_THREAD_LIMIT : Number.POSITIVE_INFINITY,
+      );
       let queued = 0;
       const id = await db.transaction(async (tx) => {
         // One thread at a time per player and league, so two posts at once can't both slip under the limit.
@@ -212,7 +267,7 @@ export function messageRoutes({
               sql`${messageThreads.createdAt} > now() - interval '24 hours'`,
             ),
           );
-        if ((recent?.n ?? 0) >= (limits?.threadsPerDay ?? THREAD_DAILY_LIMIT)) {
+        if ((recent?.n ?? 0) >= dailyLimit) {
           fail(429, "You've started a lot of threads here today. Reply to one, or try again tomorrow.");
         }
         const [t] = await tx
@@ -222,7 +277,7 @@ export function messageRoutes({
         if (!t) throw new Error("Thread insert returned no row");
         await tx
           .insert(messagePosts)
-          .values({ threadId: t.id, authorId: c.var.user.id, body: content, position: 1 });
+          .values({ threadId: t.id, authorId: c.var.user.id, body: content, position: 1, ...screened });
         await tx.insert(messageReads).values({ threadId: t.id, userId: c.var.user.id, version: 1 });
         if (email) {
           queued = await queueThreadEmails(tx, email, {
@@ -250,15 +305,33 @@ export function messageRoutes({
     })
     .get("/leagues/:leagueId/messages/:threadId", auth, threadParam, async (c) => {
       const { leagueId, threadId } = c.req.valid("param");
-      const t = await thread(leagueId, threadId, c.var.user.id);
-      const rows = await db
-        .select({ post: messagePosts, authorName: profiles.displayName })
-        .from(messagePosts)
-        .leftJoin(profiles, eq(profiles.userId, messagePosts.authorId))
-        .where(eq(messagePosts.threadId, threadId))
-        .orderBy(asc(messagePosts.position));
-      const byPost = await reactions(threadId, c.var.user.id);
+      const userId = c.var.user.id;
+      const t = await thread(leagueId, threadId, userId);
+      const [rows, blocked, poster, appealed] = await Promise.all([
+        db
+          .select({ post: messagePosts, authorName: profiles.displayName })
+          .from(messagePosts)
+          .leftJoin(profiles, eq(profiles.userId, messagePosts.authorId))
+          .where(eq(messagePosts.threadId, threadId))
+          .orderBy(asc(messagePosts.position)),
+        blockedBy(db, userId),
+        posterState(db, userId, leagueId),
+        db
+          .select({ postId: contentReports.postId })
+          .from(contentReports)
+          .innerJoin(messagePosts, eq(messagePosts.id, contentReports.postId))
+          .where(
+            and(
+              eq(messagePosts.threadId, threadId),
+              eq(contentReports.source, "appeal"),
+              eq(contentReports.reporterId, userId),
+            ),
+          ),
+      ]);
+      const byPost = await reactions(threadId, userId, blocked);
+      const reader = { userId, isAdmin: t.role === "admin", blocked };
       const postsById = new Map(rows.map((r) => [r.post.id, r]));
+      const appealedIds = new Set(appealed.map((a) => a.postId));
       const result: ThreadDetail = {
         id: t.id,
         title: t.title,
@@ -266,24 +339,36 @@ export function messageRoutes({
         version: t.version,
         canPin: t.canPin,
         canDelete: t.canDelete,
-        posts: rows.map(({ post, authorName }) => ({
-          id: post.id,
-          reactions: byPost.get(post.id) ?? [],
-          body: post.body,
-          quote: (() => {
-            const original = post.quotedPostId ? postsById.get(post.quotedPostId) : undefined;
-            return original
-              ? {
-                  id: original.post.id,
-                  authorName: original.authorName ?? "Player",
-                  body: original.post.body,
-                }
-              : null;
-          })(),
-          position: post.position,
-          authorName: authorName ?? "Player",
-          createdAt: post.createdAt.toISOString(),
-        })),
+        canModerate: t.role === "admin",
+        postingBlocked: postingBlocked(poster, now()),
+        needsTerms: !poster?.termsAcceptedAt,
+        posts: rows.map(({ post, authorName }) => {
+          const view = postView(post, reader);
+          const original = post.quotedPostId ? postsById.get(post.quotedPostId) : undefined;
+          const quoted = original && postView(original.post, reader);
+          return {
+            id: post.id,
+            // A removed message keeps no reactions on show.
+            reactions: view.state === "removed" ? [] : (byPost.get(post.id) ?? []),
+            body: view.body,
+            state: view.state,
+            authorId: post.authorId,
+            mine: post.authorId === userId,
+            canAppeal: post.authorId === userId && !!post.removedAt && !appealedIds.has(post.id),
+            quote:
+              original && quoted
+                ? {
+                    id: original.post.id,
+                    authorName: original.authorName ?? "Player",
+                    body: quoted.body,
+                    state: quoted.state,
+                  }
+                : null,
+            position: post.position,
+            authorName: authorName ?? "Player",
+            createdAt: post.createdAt.toISOString(),
+          };
+        }),
       };
       return c.json(result);
     })
@@ -324,8 +409,16 @@ export function messageRoutes({
         const [post] = await db
           .select({ id: messagePosts.id })
           .from(messagePosts)
-          .where(and(eq(messagePosts.id, postId), eq(messagePosts.threadId, threadId)));
+          .where(
+            and(
+              eq(messagePosts.id, postId),
+              eq(messagePosts.threadId, threadId),
+              isNull(messagePosts.removedAt),
+              isNull(messagePosts.hiddenAt),
+            ),
+          );
         if (!post) fail(404, "Message not found.");
+        await requirePoster(db, c.var.user.id, leagueId, now());
         const { emoji, active } = c.req.valid("json");
         if (active) {
           await db
@@ -343,7 +436,9 @@ export function messageRoutes({
               ),
             );
         }
-        return c.json((await reactions(threadId, c.var.user.id)).get(postId) ?? []);
+        return c.json(
+          (await reactions(threadId, c.var.user.id, await blockedBy(db, c.var.user.id))).get(postId) ?? [],
+        );
       },
     )
     .post(
@@ -353,29 +448,72 @@ export function messageRoutes({
       body(replySchema),
       async (c) => {
         const { leagueId, threadId } = c.req.valid("param");
-        await thread(leagueId, threadId, c.var.user.id);
-        await requireDisplayName(db, c.var.user.id);
+        const userId = c.var.user.id;
+        const current = await thread(leagueId, threadId, userId);
+        await requirePoster(db, userId, leagueId, now());
+        const { body: content, quotedPostId } = c.req.valid("json");
+        const screened = await screen(
+          screener,
+          { kind: "reply", text: content, context: [current.title] },
+          MODERATION_MESSAGES.rejected,
+        );
+        const created = await accountCreatedAt(db, userId);
+        const newAccount = !!created && now().getTime() - created.getTime() < NEW_ACCOUNT_MS;
         await db.transaction(async (tx) => {
+          // One reply at a time per player, so the limits below can't be raced.
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`reply:${userId}`}, 0))`);
+          const [pace] = await tx
+            .select({
+              lastMinute: sql<number>`(count(*) filter (where ${messagePosts.createdAt} > now() - interval '1 minute'))::int`,
+              lastDay: count(),
+            })
+            .from(messagePosts)
+            .where(
+              and(
+                eq(messagePosts.authorId, userId),
+                sql`${messagePosts.position} > 1`,
+                // Measured on the database's clock, like the thread limit.
+                sql`${messagePosts.createdAt} > now() - interval '24 hours'`,
+              ),
+            );
+          if ((pace?.lastMinute ?? 0) >= REPLY_MINUTE_LIMIT)
+            fail(429, "You're replying fast. Wait a minute and try again.");
+          if (newAccount && (pace?.lastDay ?? 0) >= NEW_ACCOUNT_REPLY_LIMIT)
+            fail(429, "New accounts can post 20 replies a day. Try again tomorrow.");
           const [t] = await tx
             .update(messageThreads)
             .set({ version: sql`${messageThreads.version} + 1`, updatedAt: now() })
             .where(eq(messageThreads.id, threadId))
             .returning();
           if (!t) fail(404, "Thread not found.");
-          const { body: content, quotedPostId } = c.req.valid("json");
           if (quotedPostId) {
             const [original] = await tx
               .select({ id: messagePosts.id })
               .from(messagePosts)
-              .where(and(eq(messagePosts.id, quotedPostId), eq(messagePosts.threadId, threadId)));
+              .where(
+                and(
+                  eq(messagePosts.id, quotedPostId),
+                  eq(messagePosts.threadId, threadId),
+                  isNull(messagePosts.removedAt),
+                  isNull(messagePosts.hiddenAt),
+                ),
+              );
             if (!original) fail(404, "Quoted message not found in this thread.");
           }
+          const [last] = await tx
+            .select({ body: messagePosts.body })
+            .from(messagePosts)
+            .where(and(eq(messagePosts.threadId, threadId), eq(messagePosts.authorId, userId)))
+            .orderBy(desc(messagePosts.position))
+            .limit(1);
+          if (last && last.body.trim() === content.trim()) fail(409, "You just posted that.");
           await tx.insert(messagePosts).values({
             threadId,
-            authorId: c.var.user.id,
+            authorId: userId,
             body: content,
             quotedPostId,
             position: t.version,
+            ...screened,
           });
         });
         return c.json({ ok: true }, 201);

@@ -19,6 +19,7 @@ import type { InsightsProvider } from "./insights";
 import type { NflProvider } from "./nfl";
 import type { EmailDeps } from "./outbox";
 import type { PushSender } from "./pushSender";
+import type { Screener } from "./screening";
 
 export type PublicConfig = {
   supabaseUrl: string;
@@ -54,6 +55,11 @@ export type AppDeps = {
   background?: (task: () => Promise<unknown>) => void;
   /** Accounts that run the app (`OPERATOR_USER_IDS`): they can read feedback and app-wide counts. */
   operatorUserIds?: readonly string[];
+  /**
+   * Checks posts and names before they are saved (Workers AI's Clef). Without one (`MODERATION_MODE=off`, Node
+   * development, most tests) content is saved as `skipped` and nothing is refused.
+   */
+  screener?: Screener;
 };
 
 /** Whether this account runs the app. Decided by user id, which a player cannot change, never by email. */

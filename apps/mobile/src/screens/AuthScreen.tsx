@@ -3,6 +3,7 @@ import { usePathname, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Icon } from "../components/Icon";
+import { PreferenceToggle } from "../components/PreferenceToggle";
 import { Splash } from "../components/Splash";
 import { TeamLogo } from "../components/TeamLogo";
 import {
@@ -33,6 +34,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [forgot, setForgot] = useState(path === "/reset-password");
   const [busy, setBusy] = useState<"signin" | "signup" | "reset" | "name">();
   const lock = useRef(false);
@@ -53,8 +55,9 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
     setBusy(mode);
     try {
       if (mode === "name") {
-        const parsed = updateProfileSchema.safeParse({ displayName: name });
+        const parsed = updateProfileSchema.safeParse({ displayName: name, acceptTerms: true });
         if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Enter a name");
+        if (!agreed) throw new Error("Agree to the Terms of use to continue.");
         await request("/me", { method: "PUT", body: parsed.data });
         await auth.refreshProfile();
         return;
@@ -90,14 +93,30 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
     <Card>
       {landing && <Title style={{ fontSize: 24, lineHeight: 28 }}>Welcome to POW Pick'em</Title>}
       {nameOnly ? (
-        <Field
-          label="Display name"
-          value={name}
-          onChangeText={setName}
-          autoComplete="name"
-          maxLength={40}
-          editable={!busy}
-        />
+        <>
+          <Field
+            label="Display name"
+            value={name}
+            onChangeText={setName}
+            autoComplete="name"
+            maxLength={40}
+            editable={!busy}
+          />
+          <PreferenceToggle
+            label="I agree to the Terms of use"
+            description="No harassment, hate, sexual content, threats or spam on the message board."
+            checked={agreed}
+            disabled={!!busy}
+            onChange={setAgreed}
+          />
+          <Button
+            title="Read the Terms of use"
+            variant="link"
+            link
+            style={{ alignSelf: "flex-start", paddingHorizontal: 0 }}
+            onPress={() => router.push("/terms")}
+          />
+        </>
       ) : (
         <>
           {forgot && (
@@ -158,7 +177,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
                     ? "Signing in…"
                     : "Sign in"
           }
-          disabled={!!busy}
+          disabled={!!busy || (nameOnly && !agreed)}
           onPress={() => void submit(nameOnly ? "name" : forgot ? "reset" : "signin")}
         />
         {!nameOnly && (

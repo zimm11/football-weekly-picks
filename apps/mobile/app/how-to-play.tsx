@@ -30,7 +30,11 @@ const playerSteps = [
   ],
   [
     "Talk it over in Messages",
-    "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can permanently delete a thread and all its replies and reactions from its ⋯ menu after confirming. Admins can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. You can start five threads a day in a league, and reply as often as you like. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
+    "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can permanently delete a thread and all its replies and reactions from its ⋯ menu after confirming. Admins can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. You can start five threads a day in a league (two on your first day), and reply up to ten times a minute. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
+  ],
+  [
+    "Keep the board friendly",
+    "Trash talk about teams, picks and standings is welcome; harassment, hate, sexual content, threats and spam aren't (see the Terms of use, which you agree to before your first post). Posts and names are checked automatically: anything that clearly breaks the rules is refused, so edit it and try again. To report a message, tap ⋯ beside it and choose Report; to report a player's name, use ⋯ beside them in the League tab. Reports are reviewed within 24 hours. Block a player from the same menus to hide their threads, replies and reactions from you everywhere; they aren't told, and picks and standings don't change. Unblock them in Settings. A player whose messages are removed twice in 30 days is muted for a day, a week after a third. Muted players can still pick. If one of your messages is removed by mistake, tap ⋯ and choose Ask for a review.",
   ],
   [
     "Get reminders",
@@ -51,6 +55,10 @@ const adminSteps = [
   [
     "Share the admin work",
     "In the League tab, tap ⋯ beside a member and choose Make admin to give them the same access you have; Revoke admin takes it back and keeps them in the league as a player. Remove from league takes a member out while keeping their results from weeks already played. Make a new link replaces the invite link, so the old one stops working. A league always keeps at least one admin: if you're the only one, make someone else an admin before leaving or stepping down.",
+  ],
+  [
+    "Handle reports",
+    "Reports about your league's members appear on the League tab under Reports, with the reported message or name. Remove takes a message down for everyone (it shows as Message removed) or resets a name; Dismiss leaves it up. The ⋯ menu removes and mutes the author in this league for 24 hours or 7 days. You can also remove a single message from its ⋯ menu in the thread, or mute a member from theirs in the League tab. A message two players report, or one reported as a threat, is hidden until someone reviews it. Reports about admins, and about the league's name, go to the people who run POW Pick'em instead.",
   ],
   [
     "Set up a draft week",

@@ -53,6 +53,13 @@ const sharedFields = {
   EMAIL_DAILY_LIMIT: z.coerce.number().int().min(0).default(1000),
   EMAIL_MONTHLY_LIMIT: z.coerce.number().int().min(0).default(10000),
 
+  /**
+   * Content screening on Workers AI (the Worker's `AI` binding). `enforce` checks every post and name, refusing
+   * what the model blocks; `off` is the emergency switch for an outage or a run of wrong blocks. The Node API has
+   * no `AI` binding, so it never screens.
+   */
+  MODERATION_MODE: z.enum(["enforce", "off"]).default("enforce"),
+
   /** Explicit opt-in to native push after Expo/APNs credentials are configured. */
   EXPO_PUSH_ENABLED: z
     .enum(["true", "false"])

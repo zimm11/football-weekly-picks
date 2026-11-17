@@ -14,6 +14,11 @@ role, can read or write them.
 
 ```mermaid
 erDiagram
+  message_posts |o--o{ content_reports : "post_id"
+  auth_users |o--o{ content_reports : "subject_user_id"
+  leagues |o--o{ content_reports : "league_id"
+  auth_users |o--o{ content_reports : "reporter_id"
+  auth_users |o--o{ content_reports : "resolved_by"
   auth_users ||--o{ email_outbox : "user_id"
   auth_users |o--o{ feedback : "user_id"
   weeks ||--o{ games : "week_id"
@@ -22,12 +27,18 @@ erDiagram
   message_threads ||--o{ message_posts : "thread_id"
   auth_users ||--o{ message_posts : "author_id"
   message_posts |o--o{ message_posts : "quoted_post_id"
+  auth_users |o--o{ message_posts : "removed_by"
   message_posts ||--o{ message_reactions : "post_id"
   auth_users ||--o{ message_reactions : "user_id"
   message_threads ||--o{ message_reads : "thread_id"
   auth_users ||--o{ message_reads : "user_id"
   leagues ||--o{ message_threads : "league_id"
   auth_users ||--o{ message_threads : "author_id"
+  message_posts |o--o{ moderation_actions : "post_id"
+  auth_users |o--o{ moderation_actions : "user_id"
+  leagues |o--o{ moderation_actions : "league_id"
+  auth_users |o--o{ moderation_actions : "actor_id"
+  content_reports |o--o{ moderation_actions : "report_id"
   weeks ||--o{ picks : "week_id"
   games ||--o{ picks : "game_id"
   auth_users ||--o{ picks : "user_id"
@@ -41,6 +52,8 @@ erDiagram
   leagues ||--o{ seasons : "league_id"
   weeks ||--o{ tiebreaker_guesses : "week_id"
   auth_users ||--o{ tiebreaker_guesses : "user_id"
+  auth_users ||--o{ user_blocks : "blocker_id"
+  auth_users ||--o{ user_blocks : "blocked_id"
   weeks ||--o{ week_participants : "week_id"
   auth_users ||--o{ week_participants : "user_id"
   weeks ||--o{ week_recap_views : "week_id"
@@ -49,6 +62,22 @@ erDiagram
   games |o--o{ weeks : "tiebreaker_game_id"
   auth_users["auth.users (Supabase Auth)"] {
     uuid id PK
+  }
+  content_reports {
+    uuid id PK
+    text kind
+    text target_key
+    uuid post_id FK
+    uuid subject_user_id FK
+    uuid league_id FK
+    uuid reporter_id FK
+    text source
+    text reason
+    text note
+    text status
+    timestamptz created_at
+    timestamptz resolved_at
+    uuid resolved_by FK
   }
   email_outbox {
     uuid id PK
@@ -97,6 +126,7 @@ erDiagram
     text role
     timestamptz joined_at
     timestamptz removed_at
+    timestamptz muted_until
   }
   leagues {
     uuid id PK
@@ -112,6 +142,11 @@ erDiagram
     text body
     uuid quoted_post_id FK
     integer position
+    text screening
+    jsonb screening_scores
+    timestamptz hidden_at
+    timestamptz removed_at
+    uuid removed_by FK
     timestamptz created_at
   }
   message_reactions {
@@ -134,6 +169,17 @@ erDiagram
     timestamptz created_at
     timestamptz updated_at
   }
+  moderation_actions {
+    uuid id PK
+    text action
+    uuid post_id FK
+    uuid user_id FK
+    uuid league_id FK
+    uuid actor_id FK
+    uuid report_id FK
+    text note
+    timestamptz created_at
+  }
   picks {
     uuid id PK
     uuid week_id FK
@@ -149,6 +195,9 @@ erDiagram
     text display_name
     boolean email_new_threads
     boolean email_pick_reminders
+    timestamptz terms_accepted_at
+    timestamptz muted_until
+    timestamptz suspended_at
     timestamptz created_at
   }
   push_deliveries {
@@ -190,6 +239,11 @@ erDiagram
     integer total
     timestamptz updated_at
   }
+  user_blocks {
+    uuid blocker_id PK, FK
+    uuid blocked_id PK, FK
+    timestamptz created_at
+  }
   week_participants {
     uuid week_id PK, FK
     uuid user_id PK, FK
@@ -214,6 +268,31 @@ Lines read parent to child and are labelled with the child's foreign-key column.
 
 ## Tables
 
+### `content_reports`
+
+One item in the moderation queue: a player's report of a message, a display name or a league name; a flag from the screening model's recheck of a post saved while it was down; or an author's appeal against a removal or mute. League admins review their league's items, except those about admins, which only the operator sees.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `kind` | text | no |  | One of: `post`, `display_name`, `league_name`. |
+| `target_key` | text | no |  | What the report is about, e.g. `post:<id>`, `name:<userId>` or `league:<id>`; one open report per reporter. |
+| `post_id` | uuid | yes | FK → `message_posts.id` | The reported message, for `post` reports. |
+| `subject_user_id` | uuid | yes | FK → `auth.users.id` | Who wrote the message or holds the name. Null for a league name. |
+| `league_id` | uuid | yes | FK → `leagues.id` | The league it was reported in. Null for a display name flagged when it was saved. |
+| `reporter_id` | uuid | yes | FK → `auth.users.id` | Who reported it. Null for automatic flags; for an appeal, the author appealing. |
+| `source` | text | no |  | One of: `player`, `recheck`, `appeal`. |
+| `reason` | text | no |  | One of: `harassment`, `hate`, `sexual`, `threat_self_harm`, `spam`, `other`, `flagged`, `appeal`. |
+| `note` | text | yes |  | The reporter's (or appealing author's) own words, if any. |
+| `status` | text | no |  | open: waiting for review. removed: the content was taken down. dismissed: it stays. One of: `open`, `removed`, `dismissed`. Has a default. |
+| `created_at` | timestamptz | no |  | Has a default. |
+| `resolved_at` | timestamptz | yes |  |  |
+| `resolved_by` | uuid | yes | FK → `auth.users.id` | Who resolved it. Null while open, when automation did, or once that account is deleted. |
+
+Unique among rows matching a condition: (`target_key`, `reporter_id`), index `content_reports_one_open_per_reporter` (the condition is in `schema.ts`).
+
+Unique among rows matching a condition: (`target_key`), index `content_reports_one_open_flag` (the condition is in `schema.ts`).
+
 ### `email_outbox`
 
 Emails waiting to be sent, and a short history of those that were. Rows are queued with their content already rendered; the address is looked up at send time from `auth.users`, so it is never copied here.
@@ -222,7 +301,7 @@ Emails waiting to be sent, and a short history of those that were. Rows are queu
 | --- | --- | --- | --- | --- |
 | `id` | uuid | no | PK | Has a default. |
 | `user_id` | uuid | no | FK → `auth.users.id` |  |
-| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`. |
+| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`, `moderation`. |
 | `dedupe_key` | text | no | unique | Identifies the email's purpose (e.g. `thread:<id>:<user>`) so a retried or repeated job never queues it twice. |
 | `message` | jsonb | no |  | Rendered message: subject, HTML and plain-text bodies, and the one-click unsubscribe URL for its headers. |
 | `status` | text | no |  | pending → sending → sent; or failed (gave up), or skipped (no address, opted out, or too late to be useful). One of: `pending`, `sending`, `sent`, `failed`, `skipped`. Has a default. |
@@ -288,6 +367,7 @@ Who is in a league, and whether they run it.
 | `role` | text | no |  | One of: `admin`, `member`. Has a default. |
 | `joined_at` | timestamptz | no |  | Has a default. |
 | `removed_at` | timestamptz | yes |  | Set when the admin removes the player. They lose access, but stay in the results of weeks already played. |
+| `muted_until` | timestamptz | yes |  | A league admin's mute: no posts, replies or reactions in this league until then. Never limits picking. |
 
 ### `leagues`
 
@@ -313,6 +393,11 @@ The opening message and subsequent replies, ordered within a thread.
 | `body` | text | no |  |  |
 | `quoted_post_id` | uuid | yes | FK → `message_posts.id` | Optional original message quoted by this reply; the API restricts it to the same thread. |
 | `position` | integer | no |  |  |
+| `screening` | text | no |  | The screening model's verdict when it was posted (or rechecked). One of: `allow`, `block`, `unchecked`, `skipped`. Has a default. |
+| `screening_scores` | jsonb | yes |  | The model's probabilities for allow and block, kept for tuning the threshold. |
+| `hidden_at` | timestamptz | yes |  | Waiting for review: other players see a placeholder, the author and admins still see the text. |
+| `removed_at` | timestamptz | yes |  | Removed by a moderator or automatically: everyone sees "Message removed" in its place. The row stays so positions, unread counts and quotes still line up; the text is cleared 30 days later. |
+| `removed_by` | uuid | yes | FK → `auth.users.id` | Who removed it. Null when automation did, or once that account is deleted. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 Unique together: (`thread_id`, `position`).
@@ -352,6 +437,22 @@ A league-wide conversation, independent of the selected season.
 | `created_at` | timestamptz | no |  | Has a default. |
 | `updated_at` | timestamptz | no |  | Has a default. |
 
+### `moderation_actions`
+
+Append-only log of every moderation action, by a person or automatically.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `action` | text | no |  | One of: `remove`, `hide`, `restore`, `dismiss`, `mute`, `unmute`, `suspend`, `unsuspend`, `reset_name`. |
+| `post_id` | uuid | yes | FK → `message_posts.id` | The message acted on, if any. |
+| `user_id` | uuid | yes | FK → `auth.users.id` | The player acted on: the author, or the muted or suspended player. |
+| `league_id` | uuid | yes | FK → `leagues.id` |  |
+| `actor_id` | uuid | yes | FK → `auth.users.id` | Who did it. Null when automation did, or once that account is deleted. |
+| `report_id` | uuid | yes | FK → `content_reports.id` |  |
+| `note` | text | yes |  | A short reason, from the moderator or the rule that acted. |
+| `created_at` | timestamptz | no |  | Has a default. |
+
 ### `picks`
 
 A player's pick of one side of one game.
@@ -381,6 +482,9 @@ What a player is called on leaderboards, and which emails they want.
 | `display_name` | text | no |  |  |
 | `email_new_threads` | boolean | no |  | Email the player when someone starts a message thread in one of their leagues. Has a default. |
 | `email_pick_reminders` | boolean | no |  | Email the player the evening before a game day on which they still have games to pick. Has a default. |
+| `terms_accepted_at` | timestamptz | yes |  | When the player agreed to the Terms of use. Posting, replying and reacting need it. |
+| `muted_until` | timestamptz | yes |  | No posts, replies or reactions anywhere until then: from repeated removals, or the operator. Never limits picking. |
+| `suspended_at` | timestamptz | yes |  | Set by the operator: no posts, replies, reactions or name changes until lifted. Never limits picking. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 ### `push_deliveries`
@@ -445,6 +549,16 @@ A player's guess at the combined score of the week's tiebreaker game.
 | `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
 | `total` | integer | no |  | Guessed combined points of both teams. |
 | `updated_at` | timestamptz | no |  | Has a default. |
+
+### `user_blocks`
+
+A player has blocked another: one-way and app-wide. The blocker no longer sees the blocked player's threads, replies or reactions, and gets no notifications about their threads. Picks and standings are untouched.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `blocker_id` | uuid | no | PK, FK → `auth.users.id` |  |
+| `blocked_id` | uuid | no | PK, FK → `auth.users.id` |  |
+| `created_at` | timestamptz | no |  | Has a default. |
 
 ### `week_participants`
 

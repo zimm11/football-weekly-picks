@@ -110,6 +110,7 @@ export default function Layout() {
                 <Stack.Screen name="index" options={{ title: "Your leagues" }} />
                 <Stack.Screen name="account" options={{ title: "Settings" }} />
                 <Stack.Screen name="how-to-play" options={{ title: "How to play" }} />
+                <Stack.Screen name="terms" options={{ title: "Terms of use" }} />
               </Stack>
               <NotificationBanner />
               {web && <HomeScreenOffer />}

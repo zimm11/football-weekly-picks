@@ -43,12 +43,14 @@ describe("Worker scheduled handler", () => {
     fakes.connection.$close.mockClear();
   });
 
-  it("does nothing when neither email nor push is configured", async () => {
+  it("still runs the moderation jobs when neither email nor push is configured", async () => {
     const worker = await loadWorker(base);
-    const waitUntil = vi.fn();
-    await worker.scheduled({}, bindings, { waitUntil });
-    expect(fakes.runScheduledJobs).not.toHaveBeenCalled();
-    expect(waitUntil).not.toHaveBeenCalled();
+    const waited: Promise<unknown>[] = [];
+    await worker.scheduled({}, bindings, { waitUntil: (p) => waited.push(p) });
+    await Promise.all(waited);
+    expect(fakes.runScheduledJobs).toHaveBeenCalledOnce();
+    const [, deps] = fakes.runScheduledJobs.mock.calls[0] ?? [];
+    expect(deps).toMatchObject({ email: undefined, push: undefined, nativePush: undefined });
   });
 
   it("runs the jobs on this run's own connection and closes it afterwards", async () => {

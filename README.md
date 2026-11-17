@@ -303,8 +303,45 @@ own selections are visible to members. Reactions do not bump threads or create u
 Only admins can permanently delete threads, including all replies and reactions, using the thread’s **⋯** menu and a confirmation. Read markers and queued notifications are removed too.
 Only admins can pin or unpin threads as announcements; pinned threads appear first without changing
 unread status. The board loads the newest 30 threads, with **Load older threads** for the rest. A player can start five
-threads a day in a league; replies aren't limited. Quoted replies can reference only messages in the same thread and show the original
-author and text with a link back. You can remove a quote before posting without losing your reply.
+threads a day in a league (two in an account's first 24 hours); a player can post ten replies a minute (twenty a day in
+an account's first 24 hours), and not the same reply twice in a row. Quoted replies can reference only messages in the same
+thread and show the original author and text with a link back. You can remove a quote before posting without losing your reply.
+
+### Content moderation
+
+Required for the App Store (guideline 1.2), and the same on the website:
+
+- **Terms of use** (`/terms`, works signed out). The first name step has an "I agree" checkbox; players who joined before
+  get a one-time sheet before their next post, reply or reaction. Settings links the Terms and `support@pow-pickem.com`.
+- **Screening.** Every new thread, reply, display name and league name goes to Cloudflare's Clef-flash model on Workers
+  AI before it is saved ([`src/screening.ts`](apps/api/src/screening.ts)). The policy is plain English, so the repository
+  holds no list of offensive words. There are two outcomes: block refuses it ("That doesn't meet the league's
+  guidelines.", the draft stays) and allow posts it; anything borderline is left to reports. If the model doesn't
+  answer within 1.5 s the content is saved `unchecked` and the cron rechecks it, hiding and flagging it if it should
+  have been blocked. The threshold is `SCREENING_THRESHOLDS.block` in `packages/shared`.
+- **Reports.** ⋯ on any message → **Report**; ⋯ on a member in the League tab → **Report name**; the League tab also
+  reports the league's name. At most 20 a day per player. A message two players report, or one reported as a threat
+  or self-harm, is hidden until reviewed (and the threat emails the operator at once); the larger Clef model reads the
+  thread around a reported message and removes it if it is sure.
+- **Review.** League admins see their league's reports on the League tab (**Reports**): Remove, Dismiss, or remove
+  and mute the author there for 24 hours or 7 days. Reports about admins and about league names, and appeals, go only to
+  the operator, whose **Reports** section on `/operator` covers every league and lists players with three or more
+  removals in 30 days, with **Suspend posting**. A daily digest emails operators from 14:00 UTC when anything is open or
+  automation acted.
+- **Removal** is soft: everyone sees "Message removed" in its place and the text is cleared after 30 days. Removing a
+  thread's first message removes the thread. The second removal in 30 days mutes the author everywhere for 24 hours,
+  the third for 7 days. The author can **Ask for a review** once.
+- **Blocking** (⋯ → **Block**) is one-way and app-wide: the blocked player's threads, replies and reactions are hidden
+  from the blocker, and their threads notify the blocker no longer. Undo it in Settings → **Blocked players**.
+- **Never picking.** A mute or a suspension stops posting, replying, reacting and name changes, nothing else: picks, the
+  POW, tiebreakers, results, standings and joining leagues all keep working.
+
+Locally (`pnpm dev`, tests) nothing is screened, because the Node API has no Workers AI binding; tests use a fake that
+blocks the harmless placeholder `forbiddenword`. `pnpm worker:dev` leaves the binding out too
+(`WORKER_DEV_SCREENING=1` keeps it, after `wrangler login`). To set or recheck the threshold, run
+`pnpm moderation:eval` with `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` and `MODERATION_EVAL_FILE`: it runs your
+own labeled messages (one JSON object a line: `kind`, `text`, `expect` of `allow` or `block`), fails if any expected
+to be allowed is blocked, and prints the range of block thresholds that would sort every line as labeled. The labeled set stays outside this public repository; the script prints line numbers and scores, never text.
 
 ### Scoring
 
@@ -654,6 +691,15 @@ Subscription endpoints and keys are private capabilities: never logged, and send
 push services. Before relying on it, smoke-test an installed iPhone app and an Android browser: subscribe,
 get a thread alert with the app closed, open its link, change preferences, and turn notifications off.
 Desktop WebKit emulation can't establish real iPhone delivery.
+
+### Content moderation in production
+
+Screening uses the Worker's `AI` binding (Workers AI; no key, billed per input token: about $0.04 a million for
+Clef-flash, so cents a month). It is on by default. `MODERATION_MODE=off` (a Worker variable or secret) is the
+emergency switch for a Workers AI outage or a run of wrong blocks: content then saves `skipped` and nothing is refused.
+Reports and blocks keep working either way. Set `OPERATOR_USER_IDS` so someone gets the threat alerts and the daily
+digest, and act on reports within 24 hours (Apple checks). Before the first App Store submission, run
+`pnpm moderation:eval` and set `support@pow-pickem.com` up in Cloudflare Email Routing.
 
 ### Release sequence
 

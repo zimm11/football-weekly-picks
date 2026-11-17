@@ -10,8 +10,12 @@
 //
 // Reads the local stack's settings from .env (`pnpm db:start`, then `pnpm env:local`) or, in CI, from the
 // environment. Hyperdrive isn't emulated locally: the Worker connects straight to the database at DATABASE_URL.
+//
+// Content screening is off: Workers AI only runs remotely, which needs a Cloudflare login and costs a little, so
+// the Workers AI binding is left out of the config this runs with (MODERATION_MODE=off). WORKER_DEV_SCREENING=1
+// keeps it, to try the real model (after `wrangler login`).
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -44,7 +48,22 @@ const vars = [
   .filter((key) => process.env[key] !== undefined)
   .map((key) => `${key}=${JSON.stringify(process.env[key])}`);
 writeFileSync(envFile, `${vars.join("\n")}\n`, { mode: 0o600 });
-const cleanUp = () => rmSync(dir, { recursive: true, force: true });
+// Beside wrangler.jsonc, so the paths in it resolve the same. Gitignored.
+const config = path.join(ROOT, "apps/api/.wrangler-dev.jsonc");
+const screening = process.env.WORKER_DEV_SCREENING === "1";
+writeFileSync(config, withoutAi(readFileSync(path.join(ROOT, "apps/api/wrangler.jsonc"), "utf8"), screening));
+const cleanUp = () => {
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(config, { force: true });
+};
+
+/** The Worker config minus its Workers AI binding (one line, `"ai": { ... },`), unless screening is wanted. */
+function withoutAi(source, keep = false) {
+  if (keep) return source;
+  const out = source.replace(/^\s*"ai":\s*\{[^}\n]*\},?\s*\n/m, "");
+  if (out === source) throw new Error('worker-dev: wrangler.jsonc has no one-line "ai" binding to leave out');
+  return out;
+}
 
 // EXPO_WEB_OUT names another build folder, so parallel runs (one per agent or worktree task) don't collide.
 // The default folder is the one wrangler.jsonc already points at, so `--assets` is only passed for another.
@@ -66,7 +85,8 @@ try {
 const wrangler = spawn(
   "pnpm",
   [
-    ...["exec", "wrangler", "dev", "--env-file", envFile, "--port", port],
+    ...["exec", "wrangler", "dev", "--config", config, "--env-file", envFile, "--port", port],
+    ...(screening ? [] : ["--var", "MODERATION_MODE:off"]),
     ...(assets ? ["--assets", assets] : []),
     // Its own local state, so two Workers on different ports can run side by side.
     ...["--persist-to", path.join(dir, "state")],

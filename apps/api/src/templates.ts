@@ -139,3 +139,49 @@ export function pickReminderEmail(input: {
     listUnsubscribeUrl: links.listUnsubscribeUrl,
   };
 }
+
+/**
+ * The operator's moderation emails. They never quote what was reported (that stays on the operator screen), so a
+ * forwarded or previewed email can't spread it, and they have no unsubscribe link: only operators receive them.
+ */
+function operatorEmail(heading: string, lines: string[], url: string): OutboxMessage {
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(heading)}</title></head>
+<body style="margin:0;padding:24px;background:#eef1f7;font-family:Arial,Helvetica,sans-serif;color:${NAVY};">
+<h1 style="margin:0 0 16px;font-size:20px;">${escapeHtml(heading)}</h1>
+${lines.map((line) => `<p style="margin:0 0 8px;font-size:15px;line-height:1.5;">${escapeHtml(line)}</p>`).join("\n")}
+<p style="margin:16px 0 0;"><a href="${escapeHtml(url)}" style="color:${BLUE};font-weight:bold;">Open the reports queue</a></p>
+</body></html>`;
+  const text = `${heading}\n\n${lines.join("\n")}\n\nOpen the reports queue: ${url}\n`;
+  return { subject: `POW Pick'em: ${heading}`, html, text };
+}
+
+export function moderationAlertEmail(input: { url: string }): OutboxMessage {
+  return operatorEmail(
+    "A report needs a look now",
+    [
+      "A player reported a message for threats or self-harm. It's hidden until you review it.",
+      "Review it within 24 hours.",
+    ],
+    input.url,
+  );
+}
+
+export function moderationDigestEmail(input: {
+  url: string;
+  open: number;
+  overdue: number;
+  removed: number;
+  hidden: number;
+}): OutboxMessage {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return operatorEmail(
+    input.overdue ? "Reports are close to 24 hours old" : "Moderation digest",
+    [
+      `${plural(input.open, "report is", "reports are")} waiting for review.`,
+      ...(input.overdue ? [`${plural(input.overdue, "has", "have")} been waiting more than 20 hours.`] : []),
+      `In the last day, automation removed ${plural(input.removed, "message", "messages")} and hid ${plural(input.hidden, "message", "messages")}.`,
+    ],
+    input.url,
+  );
+}
