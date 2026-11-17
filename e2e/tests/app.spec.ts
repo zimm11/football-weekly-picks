@@ -144,6 +144,7 @@ test("admins have equal authority and can step down while keeping one admin", as
   // Three players, several reloads and a menu per admin action: this runs close to the default 30s.
   test.slow();
   await page.getByLabel("League name").fill("Shared administration");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Shared administration" })).toBeVisible();
   const leagueUrl = page.url();
@@ -226,6 +227,7 @@ test("admins choose one season across tabs and manage existing weeks without dup
   signedIn: _,
 }) => {
   await page.getByLabel("League name").fill("Season choices");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
   await page.getByLabel("Import games and spreads from ESPN").uncheck();
@@ -260,6 +262,7 @@ test("upcoming picks take priority over unfinished past weeks and season changes
   signedIn: _,
 }) => {
   await page.getByLabel("League name").fill("Pick priorities");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
 
@@ -309,6 +312,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   // The admin starts a league, which lands on its League tab, and sets up a week by hand (no schedule import,
   // so the test stays offline).
   await page.getByLabel("League name").fill("E2E League");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "E2E League" })).toBeVisible();
   const inviteUrl = await page.getByLabel(/Invite link/).inputValue();

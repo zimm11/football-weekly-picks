@@ -18,9 +18,14 @@ export type AppServices = {
   /**
    * Takes a league that runs itself one step further when a player reads it (its league, week, survivor or board
    * screen), at most once a minute per league, so nobody waits for the cron to see a final score. Hands-on weekly
-   * leagues do nothing. Never throws: a failure is logged and the read goes on.
+   * leagues do nothing. Never throws: a failure is logged and the read goes on. `force` skips the throttle, for
+   * an admin's change that automation should act on at once (Start season, a line typed in, a score corrected).
    */
-  advanceLeagueOnRead(league: typeof leagues.$inferSelect, requestId?: string): Promise<void>;
+  advanceLeagueOnRead(
+    league: typeof leagues.$inferSelect,
+    requestId?: string,
+    options?: { force?: boolean },
+  ): Promise<void>;
 };
 
 export function createServices(deps: AppDeps): AppServices {
@@ -30,11 +35,13 @@ export function createServices(deps: AppDeps): AppServices {
   const lastRun = new Map<string, number>();
   return {
     results,
-    async advanceLeagueOnRead(league, requestId) {
+    async advanceLeagueOnRead(league, requestId, options) {
       if (league.type === "weekly" && league.management === "manual") return;
       const at = now();
       const last = lastRun.get(league.id);
-      if (last !== undefined && at.getTime() >= last && at.getTime() - last < ADVANCE_ON_READ_MS) return;
+      const throttled =
+        last !== undefined && at.getTime() >= last && at.getTime() - last < ADVANCE_ON_READ_MS;
+      if (throttled && !options?.force) return;
       if (lastRun.size > 10_000) lastRun.clear();
       lastRun.set(league.id, at.getTime());
       const ctx: AutomationContext = {

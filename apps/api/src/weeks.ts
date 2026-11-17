@@ -10,7 +10,11 @@ import {
   type Game,
   type GameInsights,
   hasResult,
+  POW_BONUS,
+  roundPoints,
+  SUPER_BOWL_ROUND,
   scoreWeek,
+  slateEditable,
   submitPicksSchema,
   updateGameSchema,
   updateWeekSchema,
@@ -38,6 +42,7 @@ import {
 } from "./context";
 import { logError } from "./logging";
 import type { ProviderGame } from "./nfl";
+import { playoffSubmission, playoffWeekInfo } from "./playoff";
 import type { AppServices } from "./services";
 import {
   fillFinishedGames,
@@ -49,12 +54,20 @@ import {
   markRecapSeen,
   openProblem,
   openWeek,
+  type PointsFor,
   pointsAfterKickoffChange,
   reopenWeek,
   writeFinals,
 } from "./weekOps";
 
 export { RESULTS_REFRESH_MS } from "./weekOps";
+
+/** A league that runs itself: an Automatic weekly league, or any type with no hands-on mode (playoff). */
+const runsItself = (league: WeekContext["league"]) => league.management === "auto";
+
+/** What a new game in this week is worth by default: its slot's points, or in a playoff round, the round's. */
+const pointsFor = (ctx: WeekContext): PointsFor =>
+  ctx.league.type === "playoff" ? () => roundPoints(ctx.week.number) : defaultPoints;
 
 /** The league types the shared pick'em week, game and pick routes serve. Any other type's week is a 404. */
 const PICKEM = ["weekly", "playoff"] as const;
@@ -70,11 +83,19 @@ const toGame = (g: GameRow): Game => ({
   awayScore: g.awayScore,
 });
 
-export async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<WeekView> {
+export async function buildWeekView(
+  db: Db,
+  ctx: WeekContext,
+  userId: string,
+  at: Date = new Date(),
+): Promise<WeekView> {
   // Re-read the week: the caller may have just changed it.
   const [week] = await db.select().from(weeks).where(eq(weeks.id, ctx.week.id));
   if (!week) fail(404, "Week not found");
   const final = week.status === "final";
+  // A playoff round scores the format's POW bonus and has no round winner (one champion, after the Super Bowl).
+  const playoff = ctx.league.type === "playoff" ? await playoffWeekInfo(db, ctx, userId, at) : null;
+  const powBonus = playoff?.powBonus ?? POW_BONUS;
   // Until the week is final, only the caller's own picks and guess are read. An admin also needs everyone's
   // picks to count submissions, but never sees the picks themselves.
   const pickScope =
@@ -106,8 +127,10 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string): P
         guesses: guessRows,
         userIds: [...participants.keys()],
         tiebreakerGameId,
+        powBonus,
       }).map((e) => ({
         ...e,
+        ...(playoff && { isWinner: false }),
         displayName: participants.get(e.userId)?.displayName ?? "Player",
         removed: participants.get(e.userId)?.removedAt != null,
       })),
@@ -126,7 +149,8 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string): P
     year: ctx.season.year,
     number: week.number,
     status: week.status,
-    tiebreakerGameId,
+    // A playoff league's one tiebreaker is the Super Bowl's total: the earlier rounds have none.
+    tiebreakerGameId: playoff && week.number < SUPER_BOWL_ROUND ? null : tiebreakerGameId,
     games: gameRows.map(toGame),
     myPicks: pickRows
       .filter((p) => p.userId === userId)
@@ -145,6 +169,10 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string): P
           })
         : null,
     results,
+    leagueType: ctx.league.type,
+    management: ctx.league.management,
+    powBonus,
+    playoff: playoff?.info ?? null,
   };
 }
 
@@ -161,24 +189,43 @@ export function weekRoutes(
     return ctx;
   }
 
-  /** Loads the week for an admin action and checks it is in one of the allowed states. */
-  async function adminWeek(weekId: string, userId: string, allowed: WeekContext["week"]["status"][]) {
-    const ctx = await pickemWeek(weekId, userId);
-    requireAdmin(ctx.role);
+  /** Refuses an admin action on a week in a state it isn't allowed in. */
+  function requireStatus(ctx: WeekContext, allowed: WeekContext["week"]["status"][]) {
     if (!allowed.includes(ctx.week.status)) {
       fail(
         409,
         ctx.week.status === "final" ? "This week is closed. Reopen it to make changes." : "Not allowed yet.",
       );
     }
+  }
+
+  /** Loads the week for an admin action and checks it is in one of the allowed states. */
+  async function adminWeek(weekId: string, userId: string, allowed: WeekContext["week"]["status"][]) {
+    const ctx = await pickemWeek(weekId, userId);
+    requireAdmin(ctx.role);
+    requireStatus(ctx, allowed);
     return ctx;
   }
 
-  async function adminGame(gameId: string, userId: string) {
+  /**
+   * A game for an admin action. With `correct`, a final week's game is allowed too in a league that runs itself,
+   * whose final weeks are corrected in place rather than reopened.
+   */
+  async function adminGame(gameId: string, userId: string, correct = false) {
     const [game] = await db.select().from(games).where(eq(games.id, gameId));
     if (!game) fail(404, "Game not found");
-    return { game, ctx: await adminWeek(game.weekId, userId, ["draft", "open"]) };
+    const ctx = await pickemWeek(game.weekId, userId);
+    requireAdmin(ctx.role);
+    requireStatus(ctx, correct && runsItself(ctx.league) ? ["draft", "open", "final"] : ["draft", "open"]);
+    return { game, ctx };
   }
+
+  /**
+   * After an admin's change in a league that runs itself, automation acts on it at once: a draft opens as soon as
+   * its last line is typed in, and a week finalizes as soon as its last score is.
+   */
+  const advanceNow = (ctx: WeekContext, requestId?: string) =>
+    runsItself(ctx.league) ? services.advanceLeagueOnRead(ctx.league, requestId, { force: true }) : undefined;
 
   return (
     new Hono<{ Variables: AuthVariables }>()
@@ -216,10 +263,10 @@ export function weekRoutes(
           db,
           nfl,
           { id: ctx.week.id, year: ctx.season.year, number: ctx.week.number },
-          { requestId: c.get("requestId") },
+          { requestId: c.get("requestId"), pointsFor: pointsFor(ctx) },
         );
         if (error) fail(502, error);
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
       .patch("/weeks/:weekId", auth, weekParam, body(updateWeekSchema), async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["draft", "open"]);
@@ -230,7 +277,7 @@ export function weekRoutes(
           .where(and(eq(games.id, tiebreakerGameId), eq(games.weekId, ctx.week.id)));
         if (!game) fail(400, "That game is not part of this week.");
         await db.update(weeks).set({ tiebreakerGameId }).where(eq(weeks.id, ctx.week.id));
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
       .post("/weeks/:weekId/games", auth, weekParam, body(createGameSchema), async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["draft", "open"]);
@@ -243,16 +290,28 @@ export function weekRoutes(
           kickoff,
           spread: input.spread,
           spreadByAdmin: true,
-          points: input.points ?? defaultPoints(kickoff),
+          points: input.points ?? pointsFor(ctx)(kickoff),
         });
-        return c.json(await buildWeekView(db, ctx, c.var.user.id), 201);
+        await advanceNow(ctx, c.get("requestId"));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()), 201);
       })
       .patch("/games/:gameId", auth, gameParam, body(updateGameSchema), async (c) => {
-        const { game, ctx } = await adminGame(c.req.valid("param").gameId, c.var.user.id);
+        const { game, ctx } = await adminGame(c.req.valid("param").gameId, c.var.user.id, true);
         const input = c.req.valid("json");
         const homeScore = input.homeScore === undefined ? game.homeScore : input.homeScore;
         const awayScore = input.awayScore === undefined ? game.awayScore : input.awayScore;
         if ((homeScore === null) !== (awayScore === null)) fail(400, "Enter both scores, or neither.");
+        const slateChange = input.spread !== undefined || input.points !== undefined;
+        // A league that runs itself corrects a final week in place: only its scores, and never clearing one.
+        const correcting = ctx.week.status === "final";
+        if (correcting && (slateChange || input.kickoff !== undefined)) {
+          fail(409, "Only a score can be corrected once the week is final.");
+        }
+        if (correcting && homeScore === null) fail(409, "Enter the corrected score.");
+        // In a league that runs itself, spreads and points stand once the week's first game kicks off.
+        if (runsItself(ctx.league) && slateChange && !slateEditable(await gamesOf(db, ctx.week.id), now())) {
+          fail(409, "Spreads and points are fixed once the week's first game kicks off.");
+        }
         const kickoff = input.kickoff ? new Date(input.kickoff) : undefined;
         await db
           .update(games)
@@ -261,18 +320,23 @@ export function weekRoutes(
             spread: input.spread,
             // A spread the admin typed stands: automation never replaces it with the feed's.
             spreadByAdmin: input.spread === undefined ? undefined : true,
-            points: input.points ?? (kickoff ? pointsAfterKickoffChange(game, kickoff) : undefined),
+            points:
+              input.points ?? (kickoff ? pointsAfterKickoffChange(game, kickoff, pointsFor(ctx)) : undefined),
             homeScore,
             awayScore,
           })
           .where(eq(games.id, game.id));
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        // Standings are computed on read, so the correction flows through; the recap shows again.
+        if (correcting) await db.update(weeks).set({ finalizedAt: now() }).where(eq(weeks.id, ctx.week.id));
+        await advanceNow(ctx, c.get("requestId"));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
       /** Removing a game also removes any picks already made on it. */
       .delete("/games/:gameId", auth, gameParam, async (c) => {
         const { game, ctx } = await adminGame(c.req.valid("param").gameId, c.var.user.id);
         await db.delete(games).where(eq(games.id, game.id));
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        await advanceNow(ctx, c.get("requestId"));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
 
       // ---------- Admin: week lifecycle (draft → open → final) ----------
@@ -281,7 +345,7 @@ export function weekRoutes(
         const problem = openProblem(await gamesOf(db, ctx.week.id));
         if (problem) fail(409, problem);
         await openWeek(db, ctx.week.id);
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
       /** Pulls final scores from the provider for games that came from it. Spreads are never touched here. */
       .post("/weeks/:weekId/results", auth, weekParam, async (c) => {
@@ -295,7 +359,7 @@ export function weekRoutes(
         }
         // The admin asked for the provider's scores, so they replace any typed in.
         await writeFinals(db, await gamesOf(db, ctx.week.id), provided, { overwrite: true });
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
       .post("/weeks/:weekId/finalize", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["open"]);
@@ -310,13 +374,13 @@ export function weekRoutes(
             actorId: c.var.user.id,
           }),
         );
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
       /** Lets the admin correct a score or spread after closing; picks are hidden again until it is re-closed. */
       .post("/weeks/:weekId/reopen", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["final"]);
         await reopenWeek(db, ctx.week.id);
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
 
       // ---------- Players ----------
@@ -332,7 +396,7 @@ export function weekRoutes(
           now(),
           requestId,
         );
-        return c.json(await buildWeekView(db, ctx, c.var.user.id));
+        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
       })
       /** The player has been shown this closed week's recap. See `recapWeekId` on the league. */
       .post("/weeks/:weekId/recap/seen", auth, weekParam, async (c) => {
@@ -399,6 +463,21 @@ export function weekRoutes(
             .from(tiebreakerGuesses)
             .where(and(eq(tiebreakerGuesses.weekId, weekId), eq(tiebreakerGuesses.userId, userId)));
 
+          // Playoff pick'em: a player the guillotine put out keeps only their Super Bowl guess.
+          const playoff =
+            ctx.league.type === "playoff"
+              ? await playoffSubmission(tx, {
+                  season: ctx.season,
+                  week,
+                  userId,
+                  submission: input,
+                  existing,
+                  at,
+                })
+              : null;
+          if (playoff?.error) fail(409, playoff.error);
+          const powGameId = playoff ? playoff.powGameId : input.powGameId;
+
           const tiebreakerGameId = effectiveTiebreakerId(week.tiebreakerGameId, gameRows);
           const tiebreakerRow = gameRows.find((g) => g.id === tiebreakerGameId);
           const error =
@@ -411,7 +490,7 @@ export function weekRoutes(
               })),
               existing,
               picks: input.picks,
-              powGameId: input.powGameId,
+              powGameId,
               now: at,
             }) ??
             checkTiebreakerGuess({
@@ -437,17 +516,17 @@ export function weekRoutes(
                 set: { side: pick.side, updatedAt: at },
               });
           }
-          if (input.powGameId !== currentPow) {
+          if (powGameId !== currentPow) {
             const mine = and(eq(picks.weekId, weekId), eq(picks.userId, userId));
             await tx
               .update(picks)
               .set({ isPow: false })
               .where(and(mine, eq(picks.isPow, true)));
-            if (input.powGameId) {
+            if (powGameId) {
               await tx
                 .update(picks)
                 .set({ isPow: true })
-                .where(and(mine, eq(picks.gameId, input.powGameId)));
+                .where(and(mine, eq(picks.gameId, powGameId)));
             }
           }
           if (input.tiebreakerTotal !== null && input.tiebreakerTotal !== guess?.total) {
@@ -460,7 +539,7 @@ export function weekRoutes(
               });
           }
         });
-        return c.json(await buildWeekView(db, ctx, userId));
+        return c.json(await buildWeekView(db, ctx, userId, now()));
       })
   );
 }

@@ -11,6 +11,7 @@ import {
   teamName,
   WEEK_PHASE_LABEL,
   type WeekView,
+  weekLabel,
   weekPhase,
 } from "@picks/shared";
 import { useFocusEffect } from "expo-router";
@@ -49,6 +50,7 @@ import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
 import { formatRecord, gameDays, kickoffTime, pickStatus } from "../lib/weekPresentation";
 import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
 import { MatchupSheet } from "./MatchupSheet";
+import { PlayoffStatusLine } from "./playoff/PlayoffStatus";
 import { WeekResults } from "./WeekResults";
 import { WeekAction, WeekBadge, WeekStat, w } from "./weekUi";
 
@@ -181,13 +183,14 @@ export function WeekScreen({
     setError(undefined);
   }
   function choose(game: Game, side: Side) {
+    if (viewRef.current?.playoff?.mayPick === false) return;
     if (!savingRef.current && !gameLocked(game, clockNow()))
       edit({ ...draftRef.current, sides: { ...draftRef.current.sides, [game.id]: side } });
   }
   function togglePow(game: Game) {
     const current = viewRef.current;
-    if (!current || savingRef.current || gameLocked(game, clockNow()) || !draftRef.current.sides[game.id])
-      return;
+    if (!current || current.playoff?.mayPick === false) return;
+    if (savingRef.current || gameLocked(game, clockNow()) || !draftRef.current.sides[game.id]) return;
     const savedPowGame = current.games.find((value) => value.id === savedDraft(current).pow);
     if (savedPowGame && gameLocked(savedPowGame, clockNow())) return;
     edit({ ...draftRef.current, pow: draftRef.current.pow === game.id ? null : game.id });
@@ -259,7 +262,14 @@ export function WeekScreen({
   const score = scoreSoFar(
     view.games.map((game) => ({ ...game, kickoff: new Date(game.kickoff) })),
     view.myPicks,
+    view.powBonus,
   );
+  // A league that runs itself finalizes by itself; a playoff player the guillotine put out only watches.
+  const automatic = view.management === "auto";
+  const closed = view.playoff?.mayPick === false;
+  const powBonus = view.powBonus ?? 5;
+  // In Guillotine the Super Bowl's one pick is the POW: saving makes it so.
+  const superBowlPow = view.playoff?.format === "guillotine" && view.number === 22;
   const picked = view.games.filter((game) => draft.sides[game.id]).length;
   const phase = weekPhase(view.status, view.games, now);
   const tab = view.status === "final" ? "results" : "picks";
@@ -291,10 +301,10 @@ export function WeekScreen({
             </WeekBadge>
             <Text
               accessibilityRole="header"
-              accessibilityLabel={`Week ${view.number} · ${view.year}`}
+              accessibilityLabel={`${weekLabel(view.number)} · ${view.year}`}
               style={s.title}
             >
-              Week {view.number}
+              {weekLabel(view.number)}
               {!embedded && <Text style={s.year}> · {view.year}</Text>}
             </Text>
           </View>
@@ -312,15 +322,18 @@ export function WeekScreen({
           <View style={w.card}>
             <Text style={s.cardTitle}>Awaiting finalization</Text>
             <Text style={w.muted}>
-              All final scores are entered. Picks stay private and this week does not count in standings until
-              the admin finalizes it.
+              {automatic
+                ? "All final scores are in. It finalizes by itself in a few minutes; picks stay private until then."
+                : "All final scores are entered. Picks stay private and this week does not count in standings until the admin finalizes it."}
             </Text>
           </View>
         )}
         {phase === "underway" &&
           !view.games.some((game) => game.homeScore === null && new Date(game.kickoff) > now) && (
             <Text style={w.muted}>
-              All games have locked. Results fill in as games end; the week counts once an admin finalizes it.
+              {automatic
+                ? "All games have locked. Results fill in as games end, and the week finalizes by itself after the last one."
+                : "All games have locked. Results fill in as games end; the week counts once an admin finalizes it."}
             </Text>
           )}
         {view.status === "draft" && (
@@ -331,7 +344,8 @@ export function WeekScreen({
         {view.status === "final" && <WeekResults view={view} userId={session?.user.id} />}
         {view.status === "open" && (
           <>
-            <PickStatusBanner view={view} dirty={dirty} now={now} />
+            <PlayoffStatusLine view={view} />
+            {!closed && <PickStatusBanner view={view} dirty={dirty} now={now} />}
             {score.wins + score.losses + score.pushes > 0 && (
               <View style={w.card} accessibilityLabel="Your week so far">
                 <View style={[w.between, { alignItems: "baseline", flexWrap: "wrap" }]}>
@@ -363,7 +377,11 @@ export function WeekScreen({
                     compact
                   />
                 </View>
-                <Text style={w.small}>Unofficial until an admin finalizes the week.</Text>
+                <Text style={w.small}>
+                  {automatic
+                    ? "Unofficial until the week is final."
+                    : "Unofficial until an admin finalizes the week."}
+                </Text>
               </View>
             )}
             <View style={{ gap: 0 }}>
@@ -383,8 +401,9 @@ export function WeekScreen({
               {showLocks && (
                 <Text style={[w.muted, { paddingBottom: 4 }]}>
                   Each game locks at kickoff. Until then you can change your pick and put your POW on it or
-                  take it off. Once your POW's game kicks off, your POW stays there. It is worth 5 extra
-                  points if it wins. If you don't choose a POW, you don't get one.
+                  take it off. Once your POW's game kicks off, your POW stays there. It is worth {powBonus}{" "}
+                  extra {powBonus === 1 ? "point" : "points"} if it wins. If you don't choose a POW, you don't
+                  get one.
                 </Text>
               )}
             </View>
@@ -394,7 +413,7 @@ export function WeekScreen({
                   {group.day}
                 </Text>
                 {group.games.map((game) => {
-                  const locked = gameLocked(game, now);
+                  const locked = closed || gameLocked(game, now);
                   const scored = { ...game, kickoff: new Date(game.kickoff) };
                   const covered = coveringSide(scored);
                   const savedSide = saved.sides[game.id];
@@ -404,7 +423,7 @@ export function WeekScreen({
                       : covered === "push"
                         ? "Push"
                         : covered === savedSide
-                          ? `Won +${pickPoints(scored, { side: savedSide, isPow: saved.pow === game.id })}`
+                          ? `Won +${pickPoints(scored, { side: savedSide, isPow: saved.pow === game.id }, view.powBonus)}`
                           : "Lost";
                   return (
                     <View key={game.id} style={s.gameCard}>
@@ -535,7 +554,7 @@ export function WeekScreen({
                 />
               </View>
             )}
-            {!draft.pow && (
+            {!draft.pow && !closed && !superBowlPow && (
               <Text style={w.muted}>
                 {needsPow
                   ? "No POW chosen. Tap POW on a pick whose game hasn't locked yet; if you don't, you won't have one this week."

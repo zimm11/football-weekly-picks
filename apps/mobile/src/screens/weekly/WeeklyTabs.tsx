@@ -40,6 +40,9 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
   const week = league.weeks.find((w) => w.id === focused && w.status === "open") ?? currentWeek(league.weeks);
   const drafts = league.weeks.filter((w) => w.status === "draft");
   const open = league.weeks.filter((w) => w.status === "open");
+  // A league that runs itself opens and finalizes on its own; a playoff league's unit is the round.
+  const automatic = league.management === "auto";
+  const unit = league.type === "playoff" ? "round" : "week";
   const prelude = (
     <View style={{ gap: 16 }}>
       {header}
@@ -49,11 +52,13 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
           <Card key={waiting.id}>
             <Heading>{weekLabel(waiting.number)} · Awaiting finalization</Heading>
             <Label>
-              {league.role === "admin"
-                ? "All final scores are entered. Finalize the week to reveal picks and update standings."
-                : "All scores are in. Your admin will finalize the week to publish results."}
+              {automatic
+                ? `All scores are in. The ${unit} finalizes by itself in a few minutes.`
+                : league.role === "admin"
+                  ? "All final scores are entered. Finalize the week to reveal picks and update standings."
+                  : "All scores are in. Your admin will finalize the week to publish results."}
             </Label>
-            {league.role === "admin" && (
+            {league.role === "admin" && !automatic && (
               <Action link onPress={() => go(`/weeks/${waiting.id}/manage`)}>
                 Review & finalize {weekLabel(waiting.number)}
               </Action>
@@ -66,6 +71,10 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
             <Text style={[s.text, { flex: 1 }]}>
               <Text style={{ fontFamily: fonts.semibold }}>{weekLabel(draft.number)}</Text> is a draft.
               Players can't see it yet.
+              {automatic &&
+                (league.type === "playoff"
+                  ? " It opens by itself once every game has a line."
+                  : " It opens by itself on Tuesday at 9 AM Eastern once every game has a line.")}
             </Text>
             <Action link compact secondary onPress={() => go(`/weeks/${draft.id}/manage`)}>
               Set up
@@ -95,16 +104,24 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
     <ScrollView contentContainerStyle={[s.content, { gap: 20 }]}>
       {prelude}
       <Card>
-        <Heading>No week is open</Heading>
+        <Heading>No {unit} is open</Heading>
         <Label>
-          {league.role === "admin"
-            ? "Set up a week and open it, and the pick sheet shows up here for everyone."
-            : "The pick sheet shows up here as soon as the admin opens the next week."}
+          {league.type === "playoff"
+            ? "Each round opens by itself once ESPN lists its games and lines, starting with the Wild Card round after the regular season ends."
+            : automatic
+              ? league.weeks.length
+                ? "The next week opens by itself on Tuesday at 9 AM Eastern once every game has a line."
+                : league.role === "admin"
+                  ? "Start the season on the League tab, and each week opens by itself."
+                  : "The pick sheet shows up here once the admin starts the season."
+              : league.role === "admin"
+                ? "Set up a week and open it, and the pick sheet shows up here for everyone."
+                : "The pick sheet shows up here as soon as the admin opens the next week."}
         </Label>
         <View style={{ gap: 8 }}>
-          {league.role === "admin" && drafts.length === 0 && (
+          {league.role === "admin" && drafts.length === 0 && league.type === "weekly" && (
             <Action link onPress={() => go(`/leagues/${league.id}/league`)}>
-              Set up a week
+              {automatic && league.weeks.length === 0 ? "Start season" : "Set up a week"}
             </Action>
           )}
           {league.weeks

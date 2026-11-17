@@ -20,8 +20,11 @@ export type LeagueType = (typeof LEAGUE_TYPES)[number];
 export const LEAGUE_MANAGEMENT = ["auto", "manual"] as const;
 export type LeagueManagement = (typeof LEAGUE_MANAGEMENT)[number];
 
-/** Weekly pick'em's season settings. Automatic and hands-on weekly leagues need none yet. */
-export const weeklySettingsSchema = z.object({});
+/**
+ * Weekly pick'em's season settings. `startWeek`: where an automatic season began (Start season); it then runs
+ * through Week 18. Hands-on seasons have none.
+ */
+export const weeklySettingsSchema = z.object({ startWeek: z.int().min(1).max(18).optional() });
 export type WeeklySettings = z.infer<typeof weeklySettingsSchema>;
 
 export type LeagueSettings = {

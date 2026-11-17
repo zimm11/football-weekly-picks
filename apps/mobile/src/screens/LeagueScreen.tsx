@@ -99,11 +99,16 @@ export function LeagueScreen({ leagueId, path = "" }: { leagueId: string; path?:
         seasonChoices={[
           ...years.map((value) => ({
             value,
-            label: `${value}${detail.weeks.some((w) => w.year === value) ? "" : " · Not started"}`,
+            // A playoff league's season is its postseason: "2026 playoffs".
+            label:
+              detail.type === "playoff"
+                ? `${value} playoffs`
+                : `${value}${detail.weeks.some((w) => w.year === value) ? "" : " · Not started"}`,
           })),
           ...(detail.role === "admin" ? [{ value: "new" as const, label: "New season…" }] : []),
         ]}
         onSeason={chooseYear}
+        seasonWidth={detail.type === "playoff" ? 156 : undefined}
         selector={
           tab !== "messages" && screens.HeaderSelector ? (
             <screens.HeaderSelector league={detail} />

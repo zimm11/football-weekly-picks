@@ -7,6 +7,7 @@ import { Icon, type IconName } from "../src/components/Icon";
 import { Body, Button, Card, colors, fonts, styles, Title } from "../src/components/ui";
 import { useAuth } from "../src/lib/auth";
 import { openScreen } from "../src/lib/navigation";
+import { HowToPlayManagement, HowToPlayPlayoff } from "../src/screens/playoff/HowToPlayPlayoff";
 import { HowToPlaySquares } from "../src/screens/squares/HowToPlaySquares";
 
 const playerSteps = [
@@ -325,6 +326,10 @@ export default function HowToPlay() {
           so results stay private until then.
         </Body>
         <Steps items={adminSteps} />
+      </View>
+      <HowToPlayManagement />
+      <View onLayout={(event) => setPositions((old) => ({ ...old, playoff: event.nativeEvent.layout.y }))}>
+        <HowToPlayPlayoff />
       </View>
       <View onLayout={(event) => setPositions((old) => ({ ...old, squares: event.nativeEvent.layout.y }))}>
         <HowToPlaySquares />
