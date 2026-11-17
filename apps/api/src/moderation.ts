@@ -13,6 +13,7 @@ import {
   activeMute,
   appealSchema,
   type BlockedPlayer,
+  DELETED_MESSAGE_TEXT,
   HIDDEN_TEXT,
   MODERATION_MESSAGES,
   MUTE_DURATIONS,
@@ -199,7 +200,10 @@ export const openingPostGone = (readerId: string, readerIsAdmin: boolean) => sql
 export function postView(
   post: { authorId: string; body: string; hiddenAt: Date | null; removedAt: Date | null },
   reader: { userId: string; isAdmin: boolean; blocked: ReadonlySet<string> },
+  authorDeleted = false,
 ): { state: PostState; body: string } {
+  // The author deleted their account: the text is already cleared.
+  if (authorDeleted) return { state: "deleted", body: DELETED_MESSAGE_TEXT };
   if (post.removedAt) return { state: "removed", body: REMOVED_TEXT };
   if (post.hiddenAt) {
     if (post.authorId === reader.userId) return { state: "review", body: post.body };

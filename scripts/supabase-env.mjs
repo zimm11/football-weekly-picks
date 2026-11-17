@@ -40,6 +40,8 @@ const env = {
   DATABASE_URL: get("DB_URL"),
   SUPABASE_URL: get("API_URL"),
   SUPABASE_PUBLISHABLE_KEY: get("PUBLISHABLE_KEY", "ANON_KEY"),
+  // The local stack's secret (service-role) key, for the one Auth admin call account deletion makes.
+  SUPABASE_SECRET_KEY: get("SECRET_KEY", "SERVICE_ROLE_KEY"),
   // The seeded admin@example.com runs the local app, so the operator screen can be opened and tested.
   OPERATOR_USER_IDS: "11111111-1111-4111-8111-000000000001",
   // The local stack's test inbox (Mailpit), where E2E tests read auth emails such as password resets.

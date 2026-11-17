@@ -198,6 +198,7 @@ erDiagram
     timestamptz terms_accepted_at
     timestamptz muted_until
     timestamptz suspended_at
+    timestamptz deleted_at
     timestamptz created_at
   }
   push_deliveries {
@@ -485,6 +486,7 @@ What a player is called on leaderboards, and which emails they want.
 | `terms_accepted_at` | timestamptz | yes |  | When the player agreed to the Terms of use. Posting, replying and reacting need it. |
 | `muted_until` | timestamptz | yes |  | No posts, replies or reactions anywhere until then: from repeated removals, or the operator. Never limits picking. |
 | `suspended_at` | timestamptz | yes |  | Set by the operator: no posts, replies, reactions or name changes until lifted. Never limits picking. |
+| `deleted_at` | timestamptz | yes |  | When the player deleted their account. The profile stays as "Deleted player" so results from weeks already played keep a name; everything personal is gone, and the account can't sign in or use the API again. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 ### `push_deliveries`

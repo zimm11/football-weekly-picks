@@ -35,6 +35,7 @@ const envFile = path.join(dir, ".env");
 const vars = [
   "SUPABASE_URL",
   "SUPABASE_PUBLISHABLE_KEY",
+  "SUPABASE_SECRET_KEY",
   "OPERATOR_USER_IDS",
   "UNSUBSCRIBE_SECRET",
   "INBOX_URL",
