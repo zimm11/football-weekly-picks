@@ -3,7 +3,7 @@
 --
 -- What you get (see README "Test accounts"):
 --   * Four accounts, all with the password `password123`:
---       admin@example.com (Commish, league admin), pat@example.com, sam@example.com, alex@example.com
+--       admin@example.com (Commish, league commissioner), pat@example.com, sam@example.com, alex@example.com
 --   * One league, "Sunday Crew", with invite link /join/local-invite
 --   * The 2026 season with Weeks 6–9 already closed, so standings, the week-by-week grid and rank
 --     movement have some history to show.
@@ -15,8 +15,8 @@
 --         Alex missed Week 7 entirely; Sam chose no POW in Week 8.
 --       - Each closed week records its players (week_participants), as finalizing does, so leaving and
 --         rejoining the league later doesn't change its results. Everyone joined on 2026-08-01.
--- Messages support emoji reactions, admin-only pinned announcements and quoted replies within a thread.
--- Admins can permanently delete a thread and its replies, reactions, read markers and queued notifications after confirmation.
+-- Messages support emoji reactions, commissioner-only pinned announcements and quoted replies within a thread.
+-- Commissioners can permanently delete a thread and its replies, reactions, read markers and queued notifications after confirmation.
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
 -- Settings (account menu) holds notifications by email and per device, plus home-screen install help; on a phone
 -- the first save of picks offers the install help once. None of it shows in the home-screen app.

@@ -59,7 +59,7 @@ test("signed-out visitors can explore the landing page and public guide", async 
     .click();
   await expect(page).toHaveURL(/\/how-to-play$/);
   await expect(page.getByRole("heading", { name: "The pick rules" })).toBeVisible();
-  await page.getByRole("link", { name: "For admins", exact: true }).click();
+  await page.getByRole("link", { name: "For commissioners", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Set up a draft week" })).toBeInViewport();
   // What every league shares sits under the tabs, whichever game is chosen.
   await expect(page.getByRole("heading", { name: "Start a league of your own" })).toBeAttached();
@@ -175,17 +175,24 @@ test("admins have equal authority and can step down while keeping one admin", as
       await expect(player.getByRole("button", { name: /^Options for / })).toHaveCount(0);
 
       await page.reload();
-      await memberAction(page, name, `Make ${name} an admin`);
+      await memberAction(page, name, `Make ${name} a commissioner`);
       await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
-      await memberAction(page, name, `Make ${name} an admin`);
-      await page.getByRole("alertdialog").getByRole("button", { name: "Make admin", exact: true }).click();
+      await memberAction(page, name, `Make ${name} a commissioner`);
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: "Make commissioner", exact: true })
+        .click();
       await page.getByRole("button", { name: `Options for ${name}` }).click();
-      await expect(page.getByRole("menuitem", { name: `Revoke admin access for ${name}` })).toBeVisible();
+      await expect(
+        page.getByRole("menuitem", { name: `Revoke commissioner access for ${name}` }),
+      ).toBeVisible();
       await page.keyboard.press("Escape");
       await player.reload();
       await expect(player.getByRole("button", { name: "Create week" })).toBeVisible();
       await player.getByRole("button", { name: "Options for Commish" }).click();
-      await expect(player.getByRole("menuitem", { name: "Revoke admin access for Commish" })).toBeEnabled();
+      await expect(
+        player.getByRole("menuitem", { name: "Revoke commissioner access for Commish" }),
+      ).toBeEnabled();
       await expect(player.getByRole("menuitem", { name: "Remove Commish", exact: true })).toBeEnabled();
       await player.keyboard.press("Escape");
     }
@@ -196,24 +203,30 @@ test("admins have equal authority and can step down while keeping one admin", as
     await expect(pat.getByRole("heading", { name: /Week 1 · / })).toBeVisible();
 
     await pat.goto(leagueUrl);
-    await memberAction(pat, "Commish", "Revoke admin access for Commish");
-    await pat.getByRole("alertdialog").getByRole("button", { name: "Revoke admin", exact: true }).click();
+    await memberAction(pat, "Commish", "Revoke commissioner access for Commish");
+    await pat
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Revoke commissioner", exact: true })
+      .click();
     await pat.getByRole("button", { name: "Options for Commish" }).click();
-    await expect(pat.getByRole("menuitem", { name: "Make Commish an admin" })).toBeVisible();
+    await expect(pat.getByRole("menuitem", { name: "Make Commish a commissioner" })).toBeVisible();
     await pat.keyboard.press("Escape");
     await page.reload();
     await expect(page.getByRole("button", { name: "Create week" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Options for / })).toHaveCount(0);
     await expect(page.getByLabel(/Invite link/)).toHaveCount(0);
 
-    await memberAction(pat, "Pat", "Revoke admin access for Pat");
-    await pat.getByRole("alertdialog").getByRole("button", { name: "Revoke admin", exact: true }).click();
+    await memberAction(pat, "Pat", "Revoke commissioner access for Pat");
+    await pat
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Revoke commissioner", exact: true })
+      .click();
     await expect(pat.getByLabel(/Invite link/)).toHaveCount(0);
     const sam = contexts[1]?.pages()[0];
     if (!sam) throw new Error("Missing Sam's page");
     await sam.reload();
     await sam.getByRole("button", { name: "Options for Sam" }).click();
-    await expect(sam.getByRole("menuitem", { name: "Revoke admin access for Sam" })).toBeDisabled();
+    await expect(sam.getByRole("menuitem", { name: "Revoke commissioner access for Sam" })).toBeDisabled();
     await sam.keyboard.press("Escape");
     await memberAction(sam, "Commish", "Remove Commish");
     await sam.getByRole("alertdialog").getByRole("button", { name: "Remove", exact: true }).click();

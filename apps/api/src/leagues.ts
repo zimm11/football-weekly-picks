@@ -111,7 +111,7 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
 
   async function leagueByInvite(code: string) {
     const [league] = await db.select().from(leagues).where(eq(leagues.inviteCode, code));
-    if (!league) fail(404, "This invite link is no longer valid. Ask the league admin for a new one.");
+    if (!league) fail(404, "This invite link is no longer valid. Ask the league commissioner for a new one.");
     return league;
   }
 
@@ -138,8 +138,8 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
         fail(
           409,
           leaving
-            ? "You're the league's only admin. Make another member an admin before you leave."
-            : "At least one admin must remain. Make another member an admin first.",
+            ? "You're the league's only commissioner. Make another member a commissioner before you leave."
+            : "At least one commissioner must remain. Make another member a commissioner first.",
         );
       }
       const at = now();

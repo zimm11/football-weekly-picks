@@ -282,7 +282,7 @@ describe.skipIf(!process.env.DATABASE_URL)("account deletion (requires `pnpm db:
     const refused = await remove(ADMIN);
     expect(refused.status).toBe(409);
     expect(refused.body).toEqual({
-      error: "Make someone else an admin of Deletion league before you delete your account.",
+      error: "Make someone else a commissioner of Deletion league before you delete your account.",
     });
     expect(softDeleted).toEqual([]);
   });

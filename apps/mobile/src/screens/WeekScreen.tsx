@@ -334,7 +334,7 @@ export function WeekScreen({
             <Text style={w.muted}>
               {automatic
                 ? "All final scores are in. It finalizes by itself in a few minutes; picks stay private until then."
-                : "All final scores are entered. Picks stay private and this week does not count in standings until the admin finalizes it."}
+                : "All final scores are entered. Picks stay private and this week does not count in standings until the commissioner finalizes it."}
             </Text>
           </View>
         )}
@@ -343,7 +343,7 @@ export function WeekScreen({
             <Text style={w.muted}>
               {automatic
                 ? `All games have locked. Results fill in as games end, and the ${unit} finalizes by itself after the last one.`
-                : "All games have locked. Results fill in as games end; the week counts once an admin finalizes it."}
+                : "All games have locked. Results fill in as games end; the week counts once a commissioner finalizes it."}
             </Text>
           )}
         {view.status === "draft" && (
@@ -396,7 +396,7 @@ export function WeekScreen({
                 <Text style={w.small}>
                   {automatic
                     ? `Unofficial until the ${unit} is final.`
-                    : "Unofficial until an admin finalizes the week."}
+                    : "Unofficial until a commissioner finalizes the week."}
                 </Text>
               </View>
             )}

@@ -100,8 +100,8 @@ export function DeleteAccount() {
             {blocked ? (
               <View style={{ gap: 8 }}>
                 <Body>
-                  First make someone else an admin of {list(preview.soleAdmin)}, so{" "}
-                  {preview.soleAdmin.length === 1 ? "it keeps" : "they keep"} an admin.
+                  First make someone else a commissioner of {list(preview.soleAdmin)}, so{" "}
+                  {preview.soleAdmin.length === 1 ? "it keeps" : "they keep"} a commissioner.
                 </Body>
                 {preview.soleAdmin.map((league) => (
                   <Pressable

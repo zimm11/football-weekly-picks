@@ -21,7 +21,7 @@ import { HowToPlaySurvivor } from "../src/screens/survivor/HowToPlaySurvivor";
 const playerSteps = [
   [
     "Open Picks and choose your sides",
-    "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. Stats & news under a game opens team form, injuries, news, and each team's chance of winning. If there is no open week, the next one opens on Tuesday morning in a league that runs itself, or when your admin opens it.",
+    "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. Stats & news under a game opens team form, injuries, news, and each team's chance of winning. If there is no open week, the next one opens on Tuesday morning in a league that runs itself, or when your commissioner opens it.",
   ],
   [
     "Choose your POW and tiebreaker",
@@ -40,7 +40,7 @@ const playerSteps = [
 const adminSteps = [
   [
     "Set up a draft week",
-    "Choose the Season above the league tabs. To begin another year, select Start a new season and enter its starting year. In the League tab, select a week (1–18) and press Create week; existing weeks open with Manage week instead. The season choice carries across Picks, Results, Standings, and League. Leave Auto-fill games and spreads checked to load the slate, or add games by hand. You land on Manage week; drafts are visible only to admins.",
+    "Choose the Season above the league tabs. To begin another year, select Start a new season and enter its starting year. In the League tab, select a week (1–18) and press Create week; existing weeks open with Manage week instead. The season choice carries across Picks, Results, Standings, and League. Leave Auto-fill games and spreads checked to load the slate, or add games by hand. You land on Manage week; drafts are visible only to commissioners.",
   ],
   [
     "Review the slate, then open picks",
@@ -52,7 +52,7 @@ const adminSteps = [
   ],
   [
     "Record scores and finalize the week",
-    "Results for auto-filled games fill in on their own as each game ends, whenever someone has the week open. To fetch them right away, press Auto-fill results in Manage week; it replaces any score typed in by hand. Or enter scores and press Save changes; a score you type is never overwritten automatically. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Auto-filling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
+    "Results for auto-filled games fill in on their own as each game ends, whenever someone has the week open. To fetch them right away, press Auto-fill results in Manage week; it replaces any score typed in by hand. Or enter scores and press Save changes; a score you type is never overwritten automatically. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Auto-filling results and finalizing never change spreads: the opening lines stay in place unless a commissioner edits them manually.",
   ],
   [
     "Correct results when needed",
@@ -63,23 +63,23 @@ const adminSteps = [
 const everyLeagueSteps = [
   [
     "Get into a league",
-    `Create an account or sign in, then choose your display name. Open the invite link your admin sends and press Join league. You can belong to up to ${MAX_LEAGUES_PER_USER} leagues, each playing one game. Your leagues are always one tap away from the POW Pick'em logo.`,
+    `Create an account or sign in, then choose your display name. Open the invite link your commissioner sends and press Join league. You can belong to up to ${MAX_LEAGUES_PER_USER} leagues, each playing one game. Your leagues are always one tap away from the POW Pick'em logo.`,
   ],
   [
     "Start a league of your own",
     `From Your leagues, choose the game (Weekly pick'em, Playoff pick'em, Squares, or Survivor; it can't change later), enter a League name, and press Create league. Start with members from adds the players of a league you already run, so the same crew needs no new link. In the League tab, check the time zone and copy the invite link to share. A league can hold up to ${MAX_LEAGUE_MEMBERS} players, and keeps them from season to season.`,
   ],
   [
-    "Share the admin work",
-    "In the League tab, tap ⋯ beside a member and choose Make admin to give them the same access you have; Revoke admin takes it back and keeps them in the league as a player. Remove from league takes a member out while keeping their results from weeks already played. Make a new link replaces the invite link, so the old one stops working. A league always keeps at least one admin: if you're the only one, make someone else an admin before leaving or stepping down.",
+    "Share the commissioner work",
+    "In the League tab, tap ⋯ beside a member and choose Make commissioner to give them the same access you have; Revoke commissioner takes it back and keeps them in the league as a player. Remove from league takes a member out while keeping their results from weeks already played. Make a new link replaces the invite link, so the old one stops working. A league always keeps at least one commissioner: if you're the only one, make someone else a commissioner before leaving or stepping down.",
   ],
   [
     "Handle reports",
-    "Reports about your league's members appear on the League tab under Reports, with the reported message or name. Remove takes a message down for everyone (it shows as Message removed) or resets a name; Dismiss leaves it up. The ⋯ menu removes and mutes the author in this league for 24 hours or 7 days. You can also remove a single message from its ⋯ menu in the thread, or mute a member from theirs in the League tab. A message two players report, or one reported as a threat, is hidden until someone reviews it. Reports about admins, and about the league's name, go to the people who run POW Pick'em instead.",
+    "Reports about your league's members appear on the League tab under Reports, with the reported message or name. Remove takes a message down for everyone (it shows as Message removed) or resets a name; Dismiss leaves it up. The ⋯ menu removes and mutes the author in this league for 24 hours or 7 days. You can also remove a single message from its ⋯ menu in the thread, or mute a member from theirs in the League tab. A message two players report, or one reported as a threat, is hidden until someone reviews it. Reports about commissioners, and about the league's name, go to the people who run POW Pick'em instead.",
   ],
   [
     "Talk it over in Messages",
-    "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can permanently delete a thread and all its replies and reactions from its ⋯ menu after confirming. Admins can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. You can start five threads a day in a league (two on your first day), and reply up to ten times a minute. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
+    "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Commissioners can permanently delete a thread and all its replies and reactions from its ⋯ menu after confirming. Commissioners can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. You can start five threads a day in a league (two on your first day), and reply up to ten times a minute. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
   ],
   [
     "Keep the board friendly",
@@ -93,7 +93,7 @@ const everyLeagueSteps = [
   ],
   [
     "Manage your account",
-    "Tap your name in the header to change your name or password, open Settings, or sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only admin, make someone else an admin first.",
+    "Tap your name in the header to change your name or password, open Settings, or sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only commissioner, make someone else a commissioner first.",
   ],
 ];
 function Steps({ items }: { items: string[][] }) {
@@ -259,7 +259,7 @@ export default function HowToPlay() {
               ["rules", "The pick rules"],
               ["running", "Automatic or hands-on"],
               ["players", "For players"],
-              ["admins", "For admins"],
+              ["admins", "For commissioners"],
             ].map(([id = "", title = ""]) => (
               <Button
                 link
@@ -293,7 +293,7 @@ export default function HowToPlay() {
               <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
                 A winning pick earns the game’s points. Losing or missing picks earn zero. A push earns zero
                 and is neither a win nor a loss. Use the spread shown in the app; it stays fixed unless an
-                admin edits it.
+                commissioner edits it.
               </Body>
             </Card>
             <Card>
@@ -323,8 +323,8 @@ export default function HowToPlay() {
                 </View>
               ))}
               <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
-                Default game slots use Eastern time. Holiday values take priority. Admins can change game
-                values, so always check the points on your sheet.
+                Default game slots use Eastern time. Holiday values take priority. Commissioners can change
+                game values, so always check the points on your sheet.
               </Body>
             </Card>
             <Card>
@@ -374,14 +374,15 @@ export default function HowToPlay() {
               </Body>
               <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
                 A perfect week wins every game. A bullseye is an exact tiebreaker guess. A lone wolf is alone
-                on the covering side of a game at least three players picked. The tiebreaker is the admin’s
-                chosen game, otherwise the last Monday game, or last game if there is no Monday game.
+                on the covering side of a game at least three players picked. The tiebreaker is the
+                commissioner’s chosen game, otherwise the last Monday game, or last game if there is no Monday
+                game.
               </Body>
               <Body style={{ fontFamily: fonts.semibold }}>Season standings</Body>
               <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
                 Points from closed weeks, then POWs won, wins, Monday wins, and Sunday night wins. Remaining
-                ties share a rank. Picks stay private until the week is final; admins can see submission
-                status, never other players’ choices.
+                ties share a rank. Picks stay private until the week is final; commissioners can see
+                submission status, never other players’ choices.
               </Body>
             </Card>
           </View>
@@ -401,10 +402,10 @@ export default function HowToPlay() {
             onLayout={(event) => setPositions((old) => ({ ...old, admins: event.nativeEvent.layout.y }))}
             style={{ gap: 20 }}
           >
-            <SectionHeading title="For admins" icon="list" />
+            <SectionHeading title="For commissioners" icon="list" />
             <Body muted>
               An Automatic league needs only Start season on the League tab; see Automatic or hands-on above.
-              In a Hands-on league the admins run each week: Draft → Accepting picks → Games underway →
+              In a Hands-on league the commissioners run each week: Draft → Accepting picks → Games underway →
               Awaiting finalization → Final. Finalizing is their action, so results stay private until then.
             </Body>
             <Steps items={adminSteps} />
@@ -420,7 +421,7 @@ export default function HowToPlay() {
       <View style={{ gap: 20 }}>
         <SectionHeading title="In every league" icon="users" />
         <Body muted>
-          Whatever the game, a league shares the same accounts, invites, admins, message board and
+          Whatever the game, a league shares the same accounts, invites, commissioners, message board and
           notifications.
         </Body>
         <Steps items={everyLeagueSteps} />

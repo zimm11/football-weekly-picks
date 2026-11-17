@@ -40,7 +40,7 @@ The launcher reads database credentials from this checkout's local Supabase only
 - Final results, awards, standings, player season statistics and weekly recap.
 - Matchup stats/news/market sheets, loaded on demand.
 - Message board pagination, unread state, threads, replies, quotes, reactions, pin/unpin/delete permissions.
-- League membership/admin tools and week setup, import/edit games, manual results, open/finalize/reopen and announcement posting.
+- League membership/commissioner tools and week setup, import/edit games, manual results, open/finalize/reopen and announcement posting.
 - Email notification preferences, native device notifications, feedback, operator dashboard and signed-out unsubscribe confirmation.
 - Native navigation and sign-out safeguards for unsaved work.
 

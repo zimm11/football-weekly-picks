@@ -14,7 +14,7 @@ const rules: [string, string][] = [
   ],
   [
     "Strikes and lives",
-    `A loss is a strike. So is a tie, and so is having no pick when the week's last game kicks off. The admin gives the pool 1 to ${MAX_SURVIVOR_LIVES} lives when it starts; you're out when your strikes reach them. A player who leaves the league is out from that week on. If a week would put out everyone still in, it puts out nobody and their strikes for it don't count.`,
+    `A loss is a strike. So is a tie, and so is having no pick when the week's last game kicks off. The commissioner gives the pool 1 to ${MAX_SURVIVOR_LIVES} lives when it starts; you're out when your strikes reach them. A player who leaves the league is out from that week on. If a week would put out everyone still in, it puts out nobody and their strikes for it don't count.`,
   ],
   [
     "Who's in",
@@ -22,14 +22,14 @@ const rules: [string, string][] = [
   ],
   [
     "When picks show",
-    "Your pick is hidden from everyone, admins included, until your team's game kicks off. Then it shows on Standings, the survivor grid: players down the side, weeks across, each pick with a check if it won and struck through if it lost.",
+    "Your pick is hidden from everyone, commissioners included, until your team's game kicks off. Then it shows on Standings, the survivor grid: players down the side, weeks across, each pick with a check if it won and struck through if it lost.",
   ],
   [
     "How it ends",
     "The last player standing after a week wins. With more than one still in after Week 18, the pool carries on through the playoffs; anyone still in after the Super Bowl shares the title.",
   ],
   [
-    "For admins",
+    "For commissioners",
     "Choose the lives and the start week (any week with no kickoff yet; the next one by default) when you create the league or start a season. They're fixed once the start week's first game kicks off. Each week is imported from the schedule and opens by itself, kickoffs follow flexed games, scores fill in, and the week closes when its last game ends. In the League tab you can enter a pick for a player, correct a score at any time (everyone's status is worked out again), or remove a cancelled game; picks on it are deleted, and those players can pick again.",
   ],
 ];

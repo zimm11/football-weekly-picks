@@ -227,7 +227,7 @@ test("a survivor admin removes a cancelled game and enters a pick for a player",
     await expect(page.getByText("Pick saved for Pat.")).toBeVisible();
     await pat.reload();
     await expect(pat.getByText("Your pick: Chiefs")).toBeVisible();
-    await expect(pat.getByText("An admin entered this pick for you.")).toBeVisible();
+    await expect(pat.getByText("A commissioner entered this pick for you.")).toBeVisible();
   } finally {
     await context.close();
   }

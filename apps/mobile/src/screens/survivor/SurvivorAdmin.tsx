@@ -192,7 +192,7 @@ function EnterPick({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
       <Heading>Enter a pick for a player</Heading>
       <Label>
         For {weekLabel(week.number)}. It replaces any pick of theirs whose game hasn't kicked off, and they're
-        told an admin entered it.
+        told a commissioner entered it.
       </Label>
       <Select
         label="Player"

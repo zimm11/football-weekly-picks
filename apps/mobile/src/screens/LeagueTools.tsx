@@ -114,14 +114,14 @@ export function LeagueTools({
     if (
       !(await showConfirm({
         title: granting
-          ? `Make ${target.displayName} an admin?`
-          : `Revoke admin access for ${target.displayName}?`,
+          ? `Make ${target.displayName} a commissioner?`
+          : `Revoke commissioner access for ${target.displayName}?`,
         message: granting
-          ? "They get the same admin access as you, including managing weeks, settings, invites, admin assignments, and removing members."
+          ? "They get the same commissioner access as you, including managing weeks, settings, invites, commissioner assignments, and removing members."
           : target.userId === userId
-            ? "You stay in the league as a player and keep your picks and results. Another admin can restore your admin access."
+            ? "You stay in the league as a player and keep your picks and results. Another commissioner can restore your commissioner access."
             : "They stay in the league as a player and keep their picks and results.",
-        confirmLabel: granting ? "Make admin" : "Revoke admin",
+        confirmLabel: granting ? "Make commissioner" : "Revoke commissioner",
       }))
     )
       return;
@@ -132,7 +132,9 @@ export function LeagueTools({
           method: "PATCH",
           body: { role: granting ? "admin" : "member" },
         }),
-      granting ? `${target.displayName} is now an admin.` : `Admin access revoked for ${target.displayName}.`,
+      granting
+        ? `${target.displayName} is now a commissioner.`
+        : `Commissioner access revoked for ${target.displayName}.`,
     );
   }
   async function remove(target: Member) {
@@ -290,7 +292,7 @@ export function LeagueTools({
                 </Text>
                 {busy === "role" && member?.userId === target.userId && <Label>Saving…</Label>}
               </View>
-              {target.role === "admin" && <Pill inline>Admin</Pill>}
+              {target.role === "admin" && <Pill inline>Commissioner</Pill>}
               {admin && target.mutedUntil && <Pill inline>Muted</Pill>}
               {(admin || target.userId !== userId) && (
                 <IconButton
@@ -393,7 +395,7 @@ export function LeagueTools({
         <Eyebrow>Leave league</Eyebrow>
         <Label>
           {admin && adminCount === 1
-            ? "You're the only admin. Make another member an admin before you leave."
+            ? "You're the only commissioner. Make another member a commissioner before you leave."
             : "You'll lose access to this league. Your results from weeks already played stay in the standings."}
         </Label>
         <Action
@@ -479,11 +481,11 @@ export function LeagueTools({
               <MenuItem
                 icon="shield"
                 disabled={member.role === "admin" && adminCount === 1}
-                label={member.role === "admin" ? "Revoke admin" : "Make admin"}
+                label={member.role === "admin" ? "Revoke commissioner" : "Make commissioner"}
                 accessibilityLabel={
                   member.role === "admin"
-                    ? `Revoke admin access for ${member.displayName}`
-                    : `Make ${member.displayName} an admin`
+                    ? `Revoke commissioner access for ${member.displayName}`
+                    : `Make ${member.displayName} a commissioner`
                 }
                 onPress={() => void role(member)}
               />

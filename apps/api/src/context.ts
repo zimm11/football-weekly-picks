@@ -150,7 +150,7 @@ export async function requireMember(db: Store, leagueId: string, userId: string)
 }
 
 export function requireAdmin(role: Role) {
-  if (role !== "admin") fail(403, "Only the league admin can do that");
+  if (role !== "admin") fail(403, "Only a league commissioner can do that");
 }
 
 /** A week with its season, league and the caller's role. Draft weeks are invisible to non-admins. */

@@ -13,6 +13,14 @@ const sections: [string, string[]][] = [
     ],
   ],
   [
+    "League commissioners",
+    [
+      "Every league is run by one or more commissioners: players in the league, starting with whoever created it, not the people who run POW Pick'em. A commissioner can make another member a commissioner, and a league always keeps at least one.",
+      "Commissioners set up the league's weeks and boards, can change spreads, point values and scores, close weeks, enter a survivor pick for a player and give back a square before a board locks. They manage the invite link, can remove a player from the league, and review reports about their league's members: they can remove messages and mute a member in their league. They never see your picks before the rest of the league does.",
+      "Reports about a commissioner, and about a league's name, go to the people who run POW Pick'em instead.",
+    ],
+  ],
+  [
     "The message board",
     [
       "Trash talk about teams, picks, results and standings is part of the fun. Keep it about the game.",
@@ -23,7 +31,7 @@ const sections: [string, string[]][] = [
     "How posts are checked",
     [
       "Every new thread, reply, display name and league name is checked automatically before it is saved. What breaks these rules is refused.",
-      "Anyone can report a message or a name from its ⋯ menu, and block a player so their messages no longer show. We review reports within 24 hours. League admins can remove messages in their league.",
+      "Anyone can report a message or a name from its ⋯ menu, and block a player so their messages no longer show. We review reports within 24 hours. League commissioners can remove messages in their league.",
     ],
   ],
   [

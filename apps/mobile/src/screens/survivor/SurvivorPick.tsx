@@ -176,7 +176,7 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
           {view.current?.usedWaived && canPick && (
             <Label>Every team still to play this week is one you've used, so you may pick any of them.</Label>
           )}
-          {saved?.byAdmin && <Label>An admin entered this pick for you.</Label>}
+          {saved?.byAdmin && <Label>A commissioner entered this pick for you.</Label>}
         </Card>
         {!week && <NoWeek view={view} />}
         {week &&
@@ -247,7 +247,7 @@ function NoWeek({ view }: { view: SurvivorView }) {
   const detail = !view.settings
     ? view.role === "admin"
       ? "Start the pool from the League tab."
-      : "An admin can start the pool from the League tab."
+      : "A commissioner can start the pool from the League tab."
     : view.over
       ? "The pool is over. See how it finished on Standings."
       : "The next week opens by itself as soon as its games are listed.";

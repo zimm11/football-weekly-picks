@@ -109,7 +109,7 @@ export function LeaguesScreen() {
       {leagues.data?.length === 0 && (
         <Card>
           <Heading>Get ready for your first week</Heading>
-          <Text style={s.text}>Open an invite from your league admin, or start a league below.</Text>
+          <Text style={s.text}>Open an invite from your league commissioner, or start a league below.</Text>
           <PressableGuide />
         </Card>
       )}
@@ -129,7 +129,7 @@ export function LeaguesScreen() {
               {league.name}
             </Text>
             <Pill inline>{LEAGUE_TYPE_INFO[league.type]?.name ?? LEAGUE_TYPE_INFO.weekly.name}</Pill>
-            {league.role === "admin" && <Pill inline>Admin</Pill>}
+            {league.role === "admin" && <Pill inline>Commissioner</Pill>}
           </RowLink>
         ))}
       </View>
@@ -266,7 +266,7 @@ export function JoinScreen({ code }: { code: string }) {
             </Action>
           ) : invite.data.full ? (
             <Text style={s.text}>
-              This league is full. Ask its admin to make room, then open the invite again.
+              This league is full. Ask its commissioner to make room, then open the invite again.
             </Text>
           ) : (
             <Action
