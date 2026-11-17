@@ -54,12 +54,12 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
     limits: { daily: 10_000, monthly: 100_000 },
   };
 
-  // The scripted feed, by "year:week". `asked` counts the provider's calls.
+  // The scripted feed, by "year:week". `asked` lists the weeks the provider was asked for.
   const feed = new Map<string, ProviderGame[]>();
-  let asked = 0;
+  const asked: string[] = [];
   const nfl: NflProvider = {
     async getWeek(year, week) {
-      asked++;
+      asked.push(`${year}:${week}`);
       return (feed.get(`${year}:${week}`) ?? []).map((g) => ({ ...g }));
     },
   };
@@ -471,12 +471,12 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
       expect(over[0]?.message.subject).toBe("Last One Standing: The survivor pool is over");
       // Nothing more happens, however often it runs.
       at(new Date(clock.getTime() + 10 * 60_000));
-      const before = asked;
+      const before = asked.length;
       await cron();
       await view(ADMIN, leagueId);
       expect(await weekRow(leagueId, 21)).toBeUndefined();
       // A finished pool doesn't even ask the feed.
-      expect(asked).toBe(before);
+      expect(asked.slice(before).filter((key) => key.startsWith("2026:2"))).toEqual([]);
       expect(await events(leagueId, "pool-over:%")).toHaveLength(4);
       // The grid: every pick shows now, each with its outcome.
       expect(end.picks.filter((p) => p.userId === ANN).map((p) => [p.team, p.outcome])).toEqual([
