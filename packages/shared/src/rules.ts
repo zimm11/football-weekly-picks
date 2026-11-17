@@ -186,7 +186,8 @@ export type ScoredPick = { userId: string; gameId: string; side: Side; isPow: bo
 /**
  * Scores one week.
  *
- * - A winning pick earns the game's points; a winning POW earns POW_BONUS more. A push earns nothing.
+ * - A winning pick earns the game's points; a winning POW earns `powBonus` more (POW_BONUS unless the type says
+ *   otherwise: Playoff pick'em passes its format's). A push earns nothing.
  * - Only a POW the player chose counts. A player who chose none has no POW that week.
  * - Weekly ranking: points, then games won, then closest tiebreaker guess (on equal distance, the guess that
  *   did not go over wins). Players still level share the rank.
@@ -197,8 +198,10 @@ export function scoreWeek(input: {
   guesses: { userId: string; total: number }[];
   userIds: string[];
   tiebreakerGameId: string | null;
+  /** Extra points for a winning POW. Defaults to weekly pick'em's POW_BONUS. */
+  powBonus?: number;
 }): WeekEntry[] {
-  const { games, picks, guesses, userIds, tiebreakerGameId } = input;
+  const { games, picks, guesses, userIds, tiebreakerGameId, powBonus = POW_BONUS } = input;
   const gameById = new Map(games.map((g) => [g.id, g]));
   const guessByUser = new Map(guesses.map((g) => [g.userId, g.total]));
   const actualTotal = tiebreakerTotal(tiebreakerGameId ? gameById.get(tiebreakerGameId) : undefined);
@@ -234,7 +237,7 @@ export function scoreWeek(input: {
         if (isSundayNightGame(game.kickoff)) entry.sundayNightWins += 1;
         if (entry.powGameId === game.id) {
           entry.powWon = true;
-          entry.points += POW_BONUS;
+          entry.points += powBonus;
         }
       }
     }
@@ -277,7 +280,11 @@ export type ScoreSoFar = {
  * One player's own running score in a week that isn't closed yet, from the games that have a result.
  * Scored by the same rules as `scoreWeek`, so it matches the final tally once every game is in.
  */
-export function scoreSoFar(games: ScoredGame[], picks: Omit<ScoredPick, "userId">[]): ScoreSoFar {
+export function scoreSoFar(
+  games: ScoredGame[],
+  picks: Omit<ScoredPick, "userId">[],
+  powBonus = POW_BONUS,
+): ScoreSoFar {
   const gameById = new Map(games.map((g) => [g.id, g]));
   const mine = picks.filter((p) => gameById.has(p.gameId));
   const [entry] = scoreWeek({
@@ -286,6 +293,7 @@ export function scoreSoFar(games: ScoredGame[], picks: Omit<ScoredPick, "userId"
     guesses: [],
     userIds: ["me"],
     tiebreakerGameId: null,
+    powBonus,
   });
   if (!entry) throw new Error("scoreWeek returned no entry");
   const powPick = mine.find((p) => p.isPow);
@@ -313,10 +321,14 @@ export function scoreSoFar(games: ScoredGame[], picks: Omit<ScoredPick, "userId"
 }
 
 /** What one pick earned once its game has a result: the game's points, plus the bonus for a winning POW. */
-export function pickPoints(game: ScoredGame, pick: { side: Side; isPow: boolean }): number | null {
+export function pickPoints(
+  game: ScoredGame,
+  pick: { side: Side; isPow: boolean },
+  powBonus = POW_BONUS,
+): number | null {
   const covered = coveringSide(game);
   if (covered === null) return null;
-  return covered === pick.side ? game.points + (pick.isPow ? POW_BONUS : 0) : 0;
+  return covered === pick.side ? game.points + (pick.isPow ? powBonus : 0) : 0;
 }
 
 export type SeasonEntry = {

@@ -37,7 +37,7 @@ const WEEK_STATUSES = ["draft", "open", "final"] as const;
 const PICK_SIDES = ["home", "away"] as const;
 const FEEDBACK_KINDS = ["bug", "feature", "other"] as const;
 const FEEDBACK_STATUSES = ["open", "done"] as const;
-const NOTIFICATION_KINDS = ["new_thread", "pick_reminder"] as const;
+const NOTIFICATION_KINDS = ["new_thread", "pick_reminder", "league_event"] as const;
 /** Email also carries the operator's moderation alerts and daily digest, which have no push counterpart. */
 const EMAIL_KINDS = [...NOTIFICATION_KINDS, "moderation"] as const;
 /** The model's verdict on a post. `skipped`: not checked (screening off, or posted before screening existed). */
@@ -69,6 +69,14 @@ const MODERATION_ACTIONS = [
 ] as const;
 const EMAIL_STATUSES = ["pending", "sending", "sent", "failed", "skipped"] as const;
 const PUSH_STATUSES = ["pending", "sent", "skipped", "failed"] as const;
+/**
+ * The kinds of league (`LEAGUE_TYPES` in packages/shared/src/leagueTypes.ts, which a test holds equal to this list)
+ * and who runs a weekly league's chores. The schema can't import the shared package, so the lists live here too.
+ */
+export const LEAGUE_TYPE_VALUES = ["weekly", "playoff", "squares", "survivor"] as const;
+export const LEAGUE_MANAGEMENT_VALUES = ["auto", "manual"] as const;
+/** The four results a squares board pays: end of Q1, halftime, end of Q3, and the final score with overtime. */
+export const SQUARE_PERIODS = ["q1", "half", "q3", "final"] as const;
 
 /** A CHECK constraint holding `column` to `values`. The values are fixed identifiers, written into the SQL. */
 const oneOf = (name: string, column: AnyPgColumn, values: readonly string[]) =>
@@ -88,6 +96,8 @@ export const profiles = pgTable("profiles", {
   emailNewThreads: boolean().notNull().default(true),
   /** Email the player the evening before a game day on which they still have games to pick. */
   emailPickReminders: boolean().notNull().default(true),
+  /** Email the player about results and updates in their leagues (a week opening or final, being added, …). */
+  emailLeagueEvents: boolean().notNull().default(true),
   /** When the player agreed to the Terms of use. Posting, replying and reacting need it. */
   termsAcceptedAt: timestamp({ withTimezone: true }),
   /** No posts, replies or reactions anywhere until then: from repeated removals, or the operator. Never limits picking. */
@@ -103,15 +113,34 @@ export const profiles = pgTable("profiles", {
 }).enableRLS();
 
 /** A group of players who pick against each other, run by league admins. */
-export const leagues = pgTable("leagues", {
-  id: uuid().primaryKey().defaultRandom(),
-  name: text().notNull(),
-  /** IANA zone game days and kickoff times are shown in. */
-  timeZone: text().notNull().default("America/New_York"),
-  /** Anyone holding this code can join. Admins can rotate it. */
-  inviteCode: text().notNull().unique(),
-  createdAt: createdAt(),
-}).enableRLS();
+export const leagues = pgTable(
+  "leagues",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    name: text().notNull(),
+    /** IANA zone game days and kickoff times are shown in. */
+    timeZone: text().notNull().default("America/New_York"),
+    /** Anyone holding this code can join. Admins can rotate it. */
+    inviteCode: text().notNull().unique(),
+    /**
+     * The game the league plays, fixed when it is created: weekly (pick'em every regular-season week), playoff
+     * (pick'em over the four postseason rounds), squares (boards on single games) or survivor. Rows from before
+     * league types, and creates from old clients, are weekly.
+     */
+    type: text({ enum: LEAGUE_TYPE_VALUES }).notNull().default("weekly"),
+    /**
+     * Who does a week's chores. auto: the feed imports, opens and finalizes each week by itself. manual: the
+     * admins do (today's hands-on game). Only a weekly league may be manual; existing leagues stay manual.
+     */
+    management: text({ enum: LEAGUE_MANAGEMENT_VALUES }).notNull().default("manual"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    oneOf("leagues_type_check", t.type, LEAGUE_TYPE_VALUES),
+    oneOf("leagues_management_check", t.management, LEAGUE_MANAGEMENT_VALUES),
+    check("leagues_manual_weekly_check", sql`${t.management} = 'auto' or ${t.type} = 'weekly'`),
+  ],
+).enableRLS();
 
 /** Who is in a league, and whether they run it. */
 export const leagueMembers = pgTable(
@@ -145,12 +174,17 @@ export const seasons = pgTable(
       .references(() => leagues.id, { onDelete: "cascade" }),
     /** The year the NFL season starts in. */
     year: integer().notNull(),
+    /**
+     * The league type's settings for this season, e.g. `{ format }` for playoff or `{ lives, startWeek }` for
+     * survivor. Parsed with the type's Zod schema (packages/shared/src/leagueTypes.ts) on every write and read.
+     */
+    settings: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [unique("seasons_league_year_key").on(t.leagueId, t.year)],
 ).enableRLS();
 
-/** One week of a season: the unit players pick, and the admin opens and closes. */
+/** One week of a season: the unit players pick, and the admin (or the feed) opens and closes. */
 export const weeks = pgTable(
   "weeks",
   {
@@ -158,7 +192,10 @@ export const weeks = pgTable(
     seasonId: uuid()
       .notNull()
       .references(() => seasons.id, { onDelete: "cascade" }),
-    /** Regular-season week, 1–18. */
+    /**
+     * The NFL week: 1–18 the regular season, then the postseason rounds 19 (Wild Card), 20 (Divisional),
+     * 21 (Conference) and 22 (Super Bowl).
+     */
     number: integer().notNull(),
     /** draft: the admin is setting games and spreads. open: players pick. final: scored, picks revealed. */
     status: text({ enum: WEEK_STATUSES }).notNull().default("draft"),
@@ -178,6 +215,7 @@ export const weeks = pgTable(
     unique("weeks_season_number_key").on(t.seasonId, t.number),
     index("weeks_tiebreaker_game_idx").on(t.tiebreakerGameId),
     oneOf("weeks_status_check", t.status, WEEK_STATUSES),
+    check("weeks_number_check", sql`${t.number} between 1 and 22`),
     // Also in the database, from a hand-written migration because Drizzle can't express its delete rule:
     // `weeks_tiebreaker_game_week_fk`, (tiebreaker_game_id, id) → games (id, week_id), ON DELETE SET NULL
     // (tiebreaker_game_id). It keeps the tiebreaker to one of the week's own games.
@@ -201,6 +239,11 @@ export const games = pgTable(
     kickoff: timestamp({ withTimezone: true }).notNull(),
     /** The home team's line: -3.5 means the home team is favored by 3.5. Null until a line is set. */
     spread: doublePrecision(),
+    /**
+     * The admin typed this spread in (or changed the feed's). The feed then never replaces it, in automatic
+     * leagues as in hands-on ones that refresh a draft's lines.
+     */
+    spreadByAdmin: boolean().notNull().default(false),
     /** What a correct pick is worth. */
     points: integer().notNull(),
     /** Final score. Null until the game is final; a game with a score is closed to picks. */
@@ -300,6 +343,136 @@ export const weekRecapViews = pgTable(
     seenAt: timestamp({ withTimezone: true }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.weekId, t.userId] }), index("week_recap_views_user_idx").on(t.userId)],
+).enableRLS();
+
+/**
+ * A survivor player's pick for one week: one team to win outright. No team may be used twice in a season (the
+ * save checks it); who is still alive is worked out from the final weeks, never stored.
+ */
+export const survivorPicks = pgTable(
+  "survivor_picks",
+  {
+    weekId: uuid()
+      .notNull()
+      .references(() => weeks.id, { onDelete: "cascade" }),
+    userId: userRef(),
+    gameId: uuid()
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    /** The team picked to win: the game's home or away side. */
+    side: text({ enum: PICK_SIDES }).notNull(),
+    /** An admin entered or last changed this pick for the player. */
+    byAdmin: boolean().notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.weekId, t.userId] }),
+    index("survivor_picks_user_idx").on(t.userId),
+    index("survivor_picks_game_idx").on(t.gameId),
+    oneOf("survivor_picks_side_check", t.side, PICK_SIDES),
+    // The pick's week must be its game's own; cascades like the single-column key, as `picks` does.
+    foreignKey({
+      name: "survivor_picks_game_week_fk",
+      columns: [t.gameId, t.weekId],
+      foreignColumns: [games.id, games.weekId],
+    }).onDelete("cascade"),
+  ],
+).enableRLS();
+
+/**
+ * A squares board: a 10 by 10 grid on one NFL game. Players claim squares until it locks, then two random orders
+ * of 0–9 are drawn, one per team. Its phase (open, locked, underway, final) is worked out, never stored.
+ */
+export const squareBoards = pgTable(
+  "square_boards",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    leagueId: uuid()
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    /** The schedule provider's id for the game; null for a game typed in by hand. */
+    externalId: text(),
+    /** The NFL season year the provider lists the game under; null for a game typed in by hand. */
+    year: integer(),
+    /** The provider's week for the game, on the app's 1–22 line; null for a game typed in by hand. */
+    week: integer(),
+    /** Team abbreviation, e.g. "KC". Its digits run across the top. */
+    homeTeam: text().notNull(),
+    /** Team abbreviation. Its digits run down the side. */
+    awayTeam: text().notNull(),
+    kickoff: timestamp({ withTimezone: true }).notNull(),
+    /** Most squares one player may claim. Can be raised before the lock, never lowered. */
+    maxPerPlayer: integer().notNull().default(10),
+    /** The home team's digit for each column, 0–9 in drawn order. Null until the draw. */
+    homeDigits: integer().array(),
+    /** The away team's digit for each row, 0–9 in drawn order. Null until the draw. */
+    awayDigits: integer().array(),
+    /** When the board locked and its numbers were drawn. Null while squares can still be claimed. */
+    drawnAt: timestamp({ withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("square_boards_league_idx").on(t.leagueId),
+    check("square_boards_max_per_player_check", sql`${t.maxPerPlayer} between 1 and 100`),
+    check("square_boards_week_check", sql`${t.week} is null or ${t.week} between 1 and 22`),
+    check(
+      "square_boards_draw_check",
+      sql`(${t.drawnAt} is null and ${t.homeDigits} is null and ${t.awayDigits} is null) or (${t.drawnAt} is not null and cardinality(${t.homeDigits}) = 10 and cardinality(${t.awayDigits}) = 10)`,
+    ),
+  ],
+).enableRLS();
+
+/** A claimed square, by a player or, for someone without an account, a guest name an admin typed. */
+export const squareClaims = pgTable(
+  "square_claims",
+  {
+    boardId: uuid()
+      .notNull()
+      .references(() => squareBoards.id, { onDelete: "cascade" }),
+    /** The grid row, 0–9 from the top: the away team's side. */
+    row: integer().notNull(),
+    /** The grid column, 0–9 from the left: the home team's side. */
+    col: integer().notNull(),
+    /** The player who holds it. Null for a guest square. */
+    userId: uuid().references(() => authUsers.id, { onDelete: "cascade" }),
+    /** Who holds a guest square. Guests count against nobody's limit, can win, and are never notified. */
+    guestName: text(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.boardId, t.row, t.col] }),
+    // Counting a player's squares against the board's limit.
+    index("square_claims_board_user_idx").on(t.boardId, t.userId),
+    index("square_claims_user_idx").on(t.userId),
+    check("square_claims_owner_check", sql`(${t.userId} is null) <> (${t.guestName} is null)`),
+    check("square_claims_row_check", sql`${t.row} between 0 and 9`),
+    check("square_claims_col_check", sql`${t.col} between 0 and 9`),
+  ],
+).enableRLS();
+
+/**
+ * A board's game score at the end of a scoring period, cumulative (the final includes overtime). Filled from the
+ * feed once it has moved past the period; a score an admin typed is never overwritten.
+ */
+export const squareScores = pgTable(
+  "square_scores",
+  {
+    boardId: uuid()
+      .notNull()
+      .references(() => squareBoards.id, { onDelete: "cascade" }),
+    /** q1, half, q3 or final. */
+    period: text({ enum: SQUARE_PERIODS }).notNull(),
+    homeScore: integer().notNull(),
+    awayScore: integer().notNull(),
+    /** An admin typed this score; the feed leaves it alone. */
+    byAdmin: boolean().notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.boardId, t.period] }),
+    oneOf("square_scores_period_check", t.period, SQUARE_PERIODS),
+    check("square_scores_scores_check", sql`${t.homeScore} >= 0 and ${t.awayScore} >= 0`),
+  ],
 ).enableRLS();
 
 /** A league-wide conversation, independent of the selected season. */
@@ -584,6 +757,8 @@ export const pushSubscriptions = pgTable(
     /** Preferences apply to this device, independently of the player's other devices. */
     newThreads: boolean().notNull().default(true),
     pickReminders: boolean().notNull().default(true),
+    /** Results and updates in the player's leagues (league events), on this device. */
+    leagueEvents: boolean().notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [
@@ -605,9 +780,16 @@ export const pushDeliveries = pgTable(
       .references(() => leagues.id, { onDelete: "cascade" }),
     threadId: uuid().references(() => messageThreads.id, { onDelete: "cascade" }),
     weekId: uuid().references(() => weeks.id, { onDelete: "cascade" }),
+    /** The squares board a notification is about, so deleting the board clears what is still queued. */
+    boardId: uuid().references((): AnyPgColumn => squareBoards.id, { onDelete: "cascade" }),
     kind: text({ enum: NOTIFICATION_KINDS }).notNull(),
-    /** Thread id or week id + local game date, scoped to subscription by the unique index. */
+    /**
+     * Thread id, week id + local game date, or league id + event name; scoped to the subscription by the
+     * unique index.
+     */
     eventKey: text().notNull(),
+    /** A league event's notification (title, body, link), rendered when it is queued. Null for the other kinds. */
+    payload: jsonb().$type<{ title: string; body: string; url: string }>(),
     /** Game ids are rechecked for missing picks immediately before a reminder is sent. */
     gameIds: text().array().notNull().default(sql`'{}'::text[]`),
     status: text({ enum: PUSH_STATUSES }).notNull().default("pending"),
@@ -625,6 +807,7 @@ export const pushDeliveries = pgTable(
     index("push_delivery_league_idx").on(t.leagueId),
     index("push_delivery_thread_idx").on(t.threadId),
     index("push_delivery_week_idx").on(t.weekId),
+    index("push_delivery_board_idx").on(t.boardId),
     index("push_delivery_created_idx").on(t.createdAt),
     oneOf("push_deliveries_kind_check", t.kind, NOTIFICATION_KINDS),
     oneOf("push_deliveries_status_check", t.status, PUSH_STATUSES),

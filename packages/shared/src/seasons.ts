@@ -11,6 +11,28 @@ export const WEEK_PHASE_LABEL = {
 } as const;
 export type WeekPhase = keyof typeof WEEK_PHASE_LABEL;
 
+/*
+ * One week number line for every league type. Weeks 1–18 are the regular season; the postseason rounds follow as
+ * 19 (Wild Card), 20 (Divisional), 21 (Conference) and 22 (Super Bowl). The schedule provider maps 19–22 onto
+ * ESPN's postseason weeks.
+ */
+export const REGULAR_SEASON_WEEKS = 18;
+/** The last week on the line: the Super Bowl. */
+export const LAST_WEEK = 22;
+export const POSTSEASON_ROUNDS = {
+  19: "Wild Card",
+  20: "Divisional",
+  21: "Conference",
+  22: "Super Bowl",
+} as const satisfies Record<number, string>;
+
+export const isPostseasonWeek = (number: number) => number > REGULAR_SEASON_WEEKS && number <= LAST_WEEK;
+
+/** "Week 7", or the round's name for 19–22 ("Wild Card", "Super Bowl"). */
+export function weekLabel(number: number): string {
+  return POSTSEASON_ROUNDS[number as keyof typeof POSTSEASON_ROUNDS] ?? `Week ${number}`;
+}
+
 type PhaseGame = { kickoff: Date | string; homeScore: number | null; awayScore: number | null };
 
 /** Display phases never reveal picks or finalize a week automatically. */

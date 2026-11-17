@@ -11,7 +11,15 @@ export function isPushEndpoint(value: string): boolean {
 }
 
 export const pushEndpointSchema = z.string().max(2048).refine(isPushEndpoint, "Unsupported push service.");
-export const pushPreferencesSchema = z.object({ newThreads: z.boolean(), pickReminders: z.boolean() });
+/**
+ * A device's notification switches. `leagueEvents` (results and updates) is optional so clients from before it
+ * keep working: a device they save keeps its current value, and a new one starts with it on.
+ */
+export const pushPreferencesSchema = z.object({
+  newThreads: z.boolean(),
+  pickReminders: z.boolean(),
+  leagueEvents: z.boolean().optional(),
+});
 export const pushSubscriptionSchema = z.object({
   endpoint: pushEndpointSchema,
   keys: z.object({
@@ -26,7 +34,7 @@ export const pushSubscriptionSchema = z.object({
   oldEndpoint: pushEndpointSchema.optional(),
 });
 export const pushDeviceSchema = z.object({ endpoint: pushEndpointSchema });
-export type PushPreferences = z.infer<typeof pushPreferencesSchema>;
+export type PushPreferences = { newThreads: boolean; pickReminders: boolean; leagueEvents: boolean };
 export type PushSettings = { configured: boolean; publicKey: string | null };
 export type PushDevice = PushPreferences & { id: string };
 export type PushPayload = { title: string; body: string; url: string; tag: string };

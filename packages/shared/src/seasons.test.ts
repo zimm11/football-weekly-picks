@@ -5,6 +5,7 @@ import {
   nextWeekNumber,
   preferredSeasonYear,
   seasonYear,
+  weekLabel,
   weekPhase,
   weekPickAvailability,
 } from "./seasons";
@@ -101,5 +102,13 @@ describe("pick availability", () => {
     expect(currentWeek([stale, complete])?.number).toBe(10);
     expect(currentWeek([stale])?.number).toBe(9);
     expect(currentWeek([week(12, { status: "draft" }), week(8, { status: "final" })])).toBeUndefined();
+  });
+});
+
+describe("weekLabel", () => {
+  it("names regular-season weeks by number and the postseason rounds by name", () => {
+    expect(weekLabel(1)).toBe("Week 1");
+    expect(weekLabel(18)).toBe("Week 18");
+    expect([19, 20, 21, 22].map(weekLabel)).toEqual(["Wild Card", "Divisional", "Conference", "Super Bowl"]);
   });
 });

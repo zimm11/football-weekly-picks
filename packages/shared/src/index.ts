@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  LEAGUE_MANAGEMENT,
+  LEAGUE_TYPES,
+  type LeagueManagement,
+  type LeagueType,
+  leagueTypeInfo,
+} from "./leagueTypes";
 import type { ModerationStatus, PostState } from "./moderation";
 import type { SeasonEntry, Side, WeekEntry } from "./rules";
 import type { WeekPhase } from "./seasons";
@@ -9,12 +16,16 @@ import { canonicalTimeZone, MAX_TIME_ZONE_LENGTH } from "./time";
 export * from "./accounts";
 export * from "./awards";
 export * from "./insights";
+export * from "./leagueTypes";
 export * from "./moderation";
 export * from "./operator";
+export * from "./playoff";
 export * from "./reminders";
 export * from "./rules";
 export * from "./seasons";
+export * from "./squares";
 export * from "./stats";
+export * from "./survivor";
 export * from "./teams";
 export * from "./time";
 
@@ -70,14 +81,18 @@ export const MAX_LEAGUES_PER_USER = 25;
 
 /** Which notification emails a player wants. Omitted fields are left as they are. */
 export const updateNotificationsSchema = z
-  .object({ newThreads: z.boolean(), pickReminders: z.boolean() })
+  .object({ newThreads: z.boolean(), pickReminders: z.boolean(), leagueEvents: z.boolean() })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
-export type NotificationSettings = { newThreads: boolean; pickReminders: boolean };
+/** `leagueEvents`: results and updates in the player's leagues (a week opening or final, being added, …). */
+export type NotificationSettings = { newThreads: boolean; pickReminders: boolean; leagueEvents: boolean };
+
+/** The kinds of notification, by email and push. Each can be turned off on its own. */
+export type NotificationKind = "new_thread" | "pick_reminder" | "league_event";
 
 /** One-click unsubscribe, from a link in a notification email. */
 export const unsubscribeSchema = z.object({ token: z.string().min(1).max(512) });
-export type UnsubscribeResult = { kind: "new_thread" | "pick_reminder" };
+export type UnsubscribeResult = { kind: NotificationKind };
 
 /** A time zone, stored in its canonical spelling (see `canonicalTimeZone`). */
 const timeZoneSchema = z
@@ -90,17 +105,49 @@ const timeZoneSchema = z
     return z.NEVER;
   });
 
-export const createLeagueSchema = z.object({
-  name: singleLine("league name", LEAGUE_NAME_MAX, "Enter a league name"),
-  timeZone: timeZoneSchema.default("America/New_York"),
-});
+export const createLeagueSchema = z
+  .object({
+    name: singleLine("league name", LEAGUE_NAME_MAX, "Enter a league name"),
+    timeZone: timeZoneSchema.default("America/New_York"),
+    /** Fixed for the league's life. Omitted means weekly, so the old web build keeps working. */
+    type: z.enum(LEAGUE_TYPES).default("weekly"),
+    /**
+     * How a weekly league is run. Omitted means hands-on for weekly (what the old web build creates) and
+     * automatic for the other types, which have no hands-on mode.
+     */
+    management: z.enum(LEAGUE_MANAGEMENT).optional(),
+    /** The type's settings for the first season (see `LEAGUE_TYPE_INFO[type].settings`); defaults fill the rest. */
+    settings: z.record(z.string(), z.unknown()).optional(),
+    /** A league the creator is an admin of whose current members join the new league as members. */
+    copyMembersFrom: z.uuid().nullable().optional(),
+  })
+  .superRefine((v, ctx) => {
+    const info = leagueTypeInfo(v.type);
+    if (v.management && !info.management.includes(v.management)) {
+      ctx.addIssue({ code: "custom", path: ["management"], message: `${info.name} runs itself.` });
+    }
+    const settings = info.settings.safeParse(v.settings ?? {});
+    if (!settings.success) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["settings"],
+        message: settings.error.issues[0]?.message ?? "Check the league's settings.",
+      });
+    }
+  });
+export type CreateLeague = z.infer<typeof createLeagueSchema>;
 
 export const updateLeagueSchema = z
   .object({
     name: singleLine("league name", LEAGUE_NAME_MAX, "Enter a league name").optional(),
     timeZone: timeZoneSchema.optional(),
+    /** Weekly pick'em only: switch between Automatic and Hands-on. */
+    management: z.enum(LEAGUE_MANAGEMENT).optional(),
   })
-  .refine((v) => v.name !== undefined || v.timeZone !== undefined, "Nothing to change");
+  .refine(
+    (v) => v.name !== undefined || v.timeZone !== undefined || v.management !== undefined,
+    "Nothing to change",
+  );
 
 export const updateMemberRoleSchema = z.object({ role: z.enum(["admin", "member"]) });
 
@@ -176,7 +223,21 @@ export type Me = {
   moderation: ModerationStatus;
 };
 
-export type LeagueSummary = { id: string; name: string; role: Role };
+export type LeagueSummary = {
+  id: string;
+  name: string;
+  role: Role;
+  type: LeagueType;
+  management: LeagueManagement;
+};
+
+/** What creating a league did. `skipped`: members of the copied league who couldn't be added, and why. */
+export type CreateLeagueResult = {
+  id: string;
+  /** How many members were copied in (not counting the creator). */
+  added: number;
+  skipped: { userId: string; displayName: string; reason: "player_limit" | "league_full" }[];
+};
 export type WeekSummary = {
   id: string;
   year: number;
@@ -207,6 +268,8 @@ export type LeagueDetail = {
   id: string;
   name: string;
   timeZone: string;
+  type: LeagueType;
+  management: LeagueManagement;
   role: Role;
   /** Only admins see the invite code. */
   inviteCode: string | null;
@@ -283,10 +346,6 @@ export type Standings = {
 };
 
 // ---------- Display helpers ----------
-
-export function weekLabel(number: number): string {
-  return `Week ${number}`;
-}
 
 /** "PHI -3.5", "PHI +3.5", or "PHI PK" for a team's line. */
 export function formatLine(team: string, line: number): string {
