@@ -38,6 +38,7 @@ const sections: [string, string[]][] = [
     "Your account",
     [
       "You're responsible for what you post. Picks stay private until the week is final. Email and notifications can be turned off in Settings.",
+      "You can delete your account any time from Settings → Delete account. Your email, name, devices and messages are deleted at once; picks from weeks already played stay in the results as Deleted player, so other players' standings don't change.",
     ],
   ],
 ];

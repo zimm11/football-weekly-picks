@@ -24,6 +24,7 @@ const codes = new Set<string>([
   "EMAIL_QUOTA_EXCEEDED",
   ...PUSH_ERROR_CODES,
   "DATABASE_TLS_REQUIRED",
+  "AUTH_UNAVAILABLE",
   "ECONNREFUSED",
   "ECONNRESET",
   "ETIMEDOUT",
@@ -68,6 +69,7 @@ const messages: Record<string, string> = {
   PUSH_REJECTED: "A push service permanently rejected a notification (other 4xx).",
   PUSH_SUBSCRIPTION_INVALID: "A device subscription has an unusable endpoint or keys.",
   DATABASE_TLS_REQUIRED: "Pooler-to-database TLS is disabled. Enable database SSL enforcement.",
+  AUTH_UNAVAILABLE: "Supabase Auth didn't answer.",
   ECONNREFUSED: "Connection refused.",
   ECONNRESET: "Connection reset.",
   ETIMEDOUT: "Connection timed out.",
@@ -96,6 +98,7 @@ const applicationMessages = new Set([
   "Reminder has no games",
   "Screening answer was unusable",
   "Report insert returned no row",
+  "Auth soft delete failed",
 ]);
 const operationMessages = {
   health: "Database health check failed.",
@@ -116,6 +119,7 @@ const operationMessages = {
   moderation_screen: "Content screening model request failed; the content was saved unchecked.",
   moderation_jobs: "Moderation job failed.",
   moderation_report: "Checking a reported message failed.",
+  account_delete: "Deleting an account in Supabase Auth failed; the scheduled job retries it.",
 };
 type Operation = keyof typeof operationMessages;
 
@@ -143,7 +147,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /apps\/api\/src\/(app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|moderation|moderationJobs|nfl|operator|outbox|push|pushQueue|pushSender|reminderTargets|screening|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /apps\/api\/src\/(accounts|app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|moderation|moderationJobs|nfl|operator|outbox|push|pushQueue|pushSender|reminderTargets|screening|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;
@@ -167,6 +171,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
             "VAPID_PRIVATE_KEY",
             "VAPID_SUBJECT",
             "MODERATION_MODE",
+            "SUPABASE_SECRET_KEY",
           ].includes(field),
         )
       : undefined;
@@ -184,7 +189,7 @@ export function logWarning(name: keyof typeof warnings) {
 
 /** A summary of one scheduled run: counts only, and only when it did something. */
 export function logJobRun(
-  event: "email_jobs" | "push_jobs" | "moderation_jobs",
+  event: "email_jobs" | "push_jobs" | "moderation_jobs" | "account_jobs",
   result: Record<string, number>,
 ) {
   if (Object.values(result).some((n) => n > 0)) console.log(JSON.stringify({ event, ...result }));

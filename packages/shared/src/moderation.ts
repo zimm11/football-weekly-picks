@@ -159,9 +159,10 @@ export type ModerationStatus = {
 /**
  * How a message is shown to the player reading it. `review`: their own message, waiting for review. `hidden`:
  * waiting for review, seen by others as a placeholder (admins still get the text). `removed`: taken down, for
- * everyone. `blocked`: from a player they blocked, collapsed until they choose to show it.
+ * everyone. `blocked`: from a player they blocked, collapsed until they choose to show it. `deleted`: its author
+ * deleted their account, so the text is gone.
  */
-export type PostState = "visible" | "review" | "hidden" | "removed" | "blocked";
+export type PostState = "visible" | "review" | "hidden" | "removed" | "blocked" | "deleted";
 
 export type ReportKind = "post" | "display_name" | "league_name";
 export type ReportSource = "player" | "recheck" | "appeal";

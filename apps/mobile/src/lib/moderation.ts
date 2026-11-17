@@ -1,4 +1,4 @@
-import type { MessagePost, PostState } from "@picks/shared";
+import { DELETED_MESSAGE_TEXT, type MessagePost, type PostState } from "@picks/shared";
 
 /** What a reader can do from a message's ⋯ menu. */
 export type PostAction = "report" | "block" | "unblock" | "remove" | "restore" | "appeal";
@@ -12,6 +12,8 @@ export function postActions(
   viewer: { canModerate: boolean; blockedAuthor: boolean },
 ): PostAction[] {
   const actions: PostAction[] = [];
+  // Its author deleted their account: there is nobody left to report, block or mute.
+  if (post.state === "deleted") return actions;
   if (!post.mine && post.state !== "removed") actions.push("report");
   if (!post.mine) actions.push(viewer.blockedAuthor ? "unblock" : "block");
   if (viewer.canModerate) actions.push(post.state === "removed" ? "restore" : "remove");
@@ -30,6 +32,7 @@ export function postPlaceholder(
   canModerate = false,
 ): { text: string; canShow: boolean } | null {
   if (state === "removed") return { text: "Message removed", canShow: false };
+  if (state === "deleted") return { text: DELETED_MESSAGE_TEXT, canShow: false };
   if (state === "blocked" && !revealed) return { text: "Message from a blocked player", canShow: true };
   if (state === "hidden" && !revealed) return { text: "Hidden while it's reviewed", canShow: canModerate };
   return null;

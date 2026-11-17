@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createDb } from "@picks/db";
+import { refuseDeletedAccounts, supabaseAccountAdmin } from "./accounts";
 import { createApp } from "./app";
 import { supabaseTokenVerifier } from "./auth";
 import { shiftedClock } from "./clock";
@@ -54,11 +55,19 @@ async function main() {
   // A mismatched VAPID pair is logged (VAPID_KEY_MISMATCH) and switches push off instead of failing every send.
   const push = sender && (await sender.ready?.()) ? sender : undefined;
   const nativePush = env.EXPO_PUSH_ENABLED ? expoPushSender(env.EXPO_ACCESS_TOKEN) : undefined;
+  const accounts = env.SUPABASE_SECRET_KEY
+    ? supabaseAccountAdmin(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY, env.SUPABASE_SECRET_KEY)
+    : undefined;
   const app = createApp({
     db,
+    accounts,
     push,
     nativePush,
-    verifyToken: supabaseTokenVerifier(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY),
+    // A deleted account is refused even while its access token is still valid.
+    verifyToken: refuseDeletedAccounts(
+      db,
+      supabaseTokenVerifier(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY),
+    ),
     nfl: espnProvider(),
     insights: liveInsights(),
     now: clock?.now,
@@ -83,7 +92,7 @@ async function main() {
     running = true;
     await runScheduledJobs(
       db,
-      { email, push, nativePush, operatorUserIds: env.OPERATOR_USER_IDS },
+      { email, push, nativePush, accounts, operatorUserIds: env.OPERATOR_USER_IDS },
       now(),
     ).finally(() => {
       running = false;

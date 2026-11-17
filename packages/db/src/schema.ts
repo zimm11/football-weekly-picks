@@ -94,6 +94,11 @@ export const profiles = pgTable("profiles", {
   mutedUntil: timestamp({ withTimezone: true }),
   /** Set by the operator: no posts, replies, reactions or name changes until lifted. Never limits picking. */
   suspendedAt: timestamp({ withTimezone: true }),
+  /**
+   * When the player deleted their account. The profile stays as "Deleted player" so results from weeks already
+   * played keep a name; everything personal is gone, and the account can't sign in or use the API again.
+   */
+  deletedAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
 }).enableRLS();
 

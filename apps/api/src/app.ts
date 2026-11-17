@@ -14,6 +14,7 @@ import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
+import { accountRoutes } from "./accounts";
 import { type AuthVariables, requireAuth } from "./auth";
 import { type AppDeps, body, fail, isOperator } from "./context";
 import { leagueRoutes } from "./leagues";
@@ -131,7 +132,8 @@ export function createApp(deps: AppDeps) {
     .route("/", operatorRoutes(deps))
     .route("/", unsubscribeRoutes(deps))
     .route("/", pushRoutes(deps))
-    .route("/", moderationRoutes(deps));
+    .route("/", moderationRoutes(deps))
+    .route("/", accountRoutes(deps));
 
   const app = new Hono<{ Variables: AuthVariables }>()
     .use(requestLogger)

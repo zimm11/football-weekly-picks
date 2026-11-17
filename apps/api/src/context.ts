@@ -14,6 +14,7 @@ import type { Member, Role } from "@picks/shared";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import type { AccountAdmin } from "./accounts";
 import type { VerifyToken } from "./auth";
 import type { InsightsProvider } from "./insights";
 import type { NflProvider } from "./nfl";
@@ -60,6 +61,8 @@ export type AppDeps = {
    * development, most tests) content is saved as `skipped` and nothing is refused.
    */
   screener?: Screener;
+  /** Supabase Auth's password check and admin soft delete, for account deletion. Absent without the secret key. */
+  accounts?: AccountAdmin;
 };
 
 /** Whether this account runs the app. Decided by user id, which a player cannot change, never by email. */

@@ -60,21 +60,22 @@ pnpm test:all           # unit, script, API, and E2E tests
 the generated `.env` includes working local credentials and the correct ports for this checkout.
 Running it again overwrites `.env`.
 
-| Variable                   | Purpose                                                      | Main checkout / default                                           |
-| -------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| `PORT`                     | API listen port; the local Worker uses `PORT + 1000`         | `8787`                                                            |
-| `DATABASE_URL`             | PostgreSQL connection string used by the API                 | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` locally |
-| `SUPABASE_URL`             | Supabase Auth project URL                                    | `http://127.0.0.1:54321` locally                                  |
-| `SUPABASE_PUBLISHABLE_KEY` | Public Supabase publishable key, or legacy `anon` key        | Generated from the local stack                                    |
-| `INBOX_URL`                | Local mailer: the stack's test inbox (refused in production) | `http://127.0.0.1:54324` locally                                  |
-| `APP_URL`                  | Web origin that links in emails point at                     | `http://localhost:8081` (the Expo web preview) locally            |
-| `UNSUBSCRIBE_SECRET`       | Signs unsubscribe links (32+ characters); turns email on     | A fixed local-only value                                          |
-| `EMAIL_FROM`               | Sender of notification emails                                | `POW Pick'em <noreply@pow-pickem.com>`                            |
-| `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                    | `1000` (`10000` locally)                                          |
-| `EMAIL_MONTHLY_LIMIT`      | Most notification emails sent per UTC calendar month         | `10000` (`100000` locally)                                        |
-| `VAPID_PUBLIC_KEY`         | Web Push public key; with the next two, turns push on        | Unset locally                                                     |
-| `VAPID_PRIVATE_KEY`        | Web Push private key (secret)                                | Unset locally                                                     |
-| `VAPID_SUBJECT`            | Contact for push services (`mailto:` or `https:`)            | Unset locally                                                     |
+| Variable                   | Purpose                                                                  | Main checkout / default                                           |
+| -------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `PORT`                     | API listen port; the local Worker uses `PORT + 1000`                     | `8787`                                                            |
+| `DATABASE_URL`             | PostgreSQL connection string used by the API                             | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` locally |
+| `SUPABASE_URL`             | Supabase Auth project URL                                                | `http://127.0.0.1:54321` locally                                  |
+| `SUPABASE_PUBLISHABLE_KEY` | Public Supabase publishable key, or legacy `anon` key                    | Generated from the local stack                                    |
+| `SUPABASE_SECRET_KEY`      | Secret key for account deletion's Auth admin call; never sent to clients | Generated from the local stack                                    |
+| `INBOX_URL`                | Local mailer: the stack's test inbox (refused in production)             | `http://127.0.0.1:54324` locally                                  |
+| `APP_URL`                  | Web origin that links in emails point at                                 | `http://localhost:8081` (the Expo web preview) locally            |
+| `UNSUBSCRIBE_SECRET`       | Signs unsubscribe links (32+ characters); turns email on                 | A fixed local-only value                                          |
+| `EMAIL_FROM`               | Sender of notification emails                                            | `POW Pick'em <noreply@pow-pickem.com>`                            |
+| `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                                | `1000` (`10000` locally)                                          |
+| `EMAIL_MONTHLY_LIMIT`      | Most notification emails sent per UTC calendar month                     | `10000` (`100000` locally)                                        |
+| `VAPID_PUBLIC_KEY`         | Web Push public key; with the next two, turns push on                    | Unset locally                                                     |
+| `VAPID_PRIVATE_KEY`        | Web Push private key (secret)                                            | Unset locally                                                     |
+| `VAPID_SUBJECT`            | Contact for push services (`mailto:` or `https:`)                        | Unset locally                                                     |
 
 The app fetches its public Auth configuration from `/api/config` at runtime, so its production web build
 needs no environment variables, and it calls the API on its own origin. Database credentials stay on the API
@@ -272,6 +273,22 @@ password. Locally, that email arrives in the test inbox listed by `pnpm ports`. 
 use **Change password** or **Change your name** from the account menu in the header. **Settings**
 (`/account`) holds notifications (by email and on this device), the home-screen app help, and the email
 address (a change is confirmed from both the old and the new address).
+
+### Deleting an account
+
+Settings → **Delete account** (required by the App Store, guideline 5.1.1(v)) asks for the password and deletes at once
+(`DELETE /api/me`, `src/accounts.ts`). Every table points at `auth.users`, so a plain delete would erase the player's
+past picks and rewrite everyone's standings. Instead one transaction clears what's personal: devices, queued email,
+blocks, reactions, read markers, picks in weeks that aren't final, and the text of their messages (threads they
+started keep everyone's replies, titled "Thread from a deleted player"). They leave every league, and a league they
+were the only member of is deleted. The profile becomes "Deleted player". Then Supabase Auth soft-deletes the user: the
+row stays as an anonymous anchor with a scrambled email and no sign-in, and the same email can sign up again as a new
+account. Picks from final weeks stay, so results and standings don't change. The account is refused from the moment
+the transaction commits, even with an unexpired token (`refuseDeletedAccounts`); if the Auth call fails, the cron
+retries it. A league's only admin must make someone else an admin first.
+
+It needs `SUPABASE_SECRET_KEY` (the project's secret key, for the Auth admin call); without it the app says deletion
+isn't available and points to support. `pnpm env:local` writes the local stack's key.
 
 ### Testing locks and inspecting data
 
@@ -588,8 +605,9 @@ Run these once from `apps/api` (`pnpm exec wrangler login` first):
    caching off: Hyperdrive's cache isn't cleared by writes, so membership checks and reads after a save
    would be up to a minute stale. If the database password changes, update the config with
    `pnpm exec wrangler hyperdrive update <id> --origin-password` as well as `SUPABASE_DB_URL`.
-3. Set the Worker's secrets: `pnpm exec wrangler secret put SUPABASE_URL`, then `SUPABASE_PUBLISHABLE_KEY` and,
-   optionally, `OPERATOR_USER_IDS`.
+3. Set the Worker's secrets: `pnpm exec wrangler secret put SUPABASE_URL`, then `SUPABASE_PUBLISHABLE_KEY`,
+   `SUPABASE_SECRET_KEY` (the project's secret key, which account deletion needs) and, optionally,
+   `OPERATOR_USER_IDS`.
 4. Add the domain to Cloudflare and point the registrar's nameservers at it, then attach `www.pow-pickem.com`
    to the Worker as a custom domain (Workers → `pow-pickem` → Settings → Domains & Routes).
 5. Configure Supabase Auth's Site URL and redirect URLs for the public web URL. The redirect URLs must cover
@@ -781,7 +799,8 @@ deployment until the pooler-to-database connection is encrypted; application cod
 that setting.
 
 Use a publishable key or legacy `anon` key for `SUPABASE_PUBLISHABLE_KEY`. Privileged keys are rejected
-before API startup because `/api/config` exposes the public key to browsers. Environment files are ignored
+before API startup because `/api/config` exposes the public key to browsers. `SUPABASE_SECRET_KEY` is the one
+privileged key, used only for the Auth admin call that deletes an account and never exposed. Environment files are ignored
 except for `.env.example`. `pnpm env:local` intentionally writes local credentials to `.env`; keep it private.
 
 API logs include route templates, request IDs, fixed explanations for known failures, vetted error codes,

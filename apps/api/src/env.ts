@@ -17,6 +17,11 @@ function isPublishableKey(value: string): boolean {
 const sharedFields = {
   SUPABASE_URL: z.url(),
   SUPABASE_PUBLISHABLE_KEY: z.string().refine(isPublishableKey, "Use a publishable key or legacy anon key"),
+  /**
+   * The project's secret (service-role) key. Only account deletion uses it, for one Auth admin call (a soft
+   * delete); without it, deletion is unavailable. Never sent to clients.
+   */
+  SUPABASE_SECRET_KEY: z.string().min(20).optional(),
   NODE_ENV: z.string().optional(),
   /**
    * Comma-separated Supabase user ids of the accounts that run the app. They get the operator screen

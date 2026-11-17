@@ -239,6 +239,11 @@ export async function enableNativePush(_preferences: PushPreferences, _userId: s
 export function disableNativePush(): Promise<void> {
   return disablePush();
 }
+/** After the account is deleted the server has removed this browser already: unsubscribe locally, no API call. */
+export async function forgetNativePush(): Promise<void> {
+  writeOwner(null);
+  await (await currentSubscription())?.unsubscribe().catch(() => false);
+}
 /** Alongside loading the app, never ahead of it: a push hiccup must not keep the player out. */
 export async function reconcileNativePush(userId: string): Promise<void> {
   await reconcilePushAccount(userId).catch((err: unknown) =>

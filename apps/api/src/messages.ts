@@ -309,7 +309,11 @@ export function messageRoutes({
       const t = await thread(leagueId, threadId, userId);
       const [rows, blocked, poster, appealed] = await Promise.all([
         db
-          .select({ post: messagePosts, authorName: profiles.displayName })
+          .select({
+            post: messagePosts,
+            authorName: profiles.displayName,
+            authorDeleted: sql<boolean>`${profiles.deletedAt} is not null`,
+          })
           .from(messagePosts)
           .leftJoin(profiles, eq(profiles.userId, messagePosts.authorId))
           .where(eq(messagePosts.threadId, threadId))
@@ -342,14 +346,15 @@ export function messageRoutes({
         canModerate: t.role === "admin",
         postingBlocked: postingBlocked(poster, now()),
         needsTerms: !poster?.termsAcceptedAt,
-        posts: rows.map(({ post, authorName }) => {
-          const view = postView(post, reader);
+        posts: rows.map(({ post, authorName, authorDeleted }) => {
+          const view = postView(post, reader, authorDeleted);
           const original = post.quotedPostId ? postsById.get(post.quotedPostId) : undefined;
-          const quoted = original && postView(original.post, reader);
+          const quoted = original && postView(original.post, reader, original.authorDeleted);
           return {
             id: post.id,
-            // A removed message keeps no reactions on show.
-            reactions: view.state === "removed" ? [] : (byPost.get(post.id) ?? []),
+            // A removed or deleted message keeps no reactions on show.
+            reactions:
+              view.state === "removed" || view.state === "deleted" ? [] : (byPost.get(post.id) ?? []),
             body: view.body,
             state: view.state,
             authorId: post.authorId,

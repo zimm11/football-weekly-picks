@@ -3,6 +3,7 @@ import { type BlockedPlayer, type NotificationSettings, SUPPORT_EMAIL } from "@p
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import { BackLink } from "../components/BackLink";
+import { DeleteAccount } from "../components/DeleteAccount";
 import { DeviceNotifications } from "../components/DeviceNotifications";
 import { useHomeScreenHelp } from "../components/HomeScreenInstall";
 import { Icon } from "../components/Icon";
@@ -143,6 +144,7 @@ export function AccountScreen() {
           <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
         </Pressable>
       </Card>
+      <DeleteAccount />
       {homeScreen.sheet}
     </Screen>
   );

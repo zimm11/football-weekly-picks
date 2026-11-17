@@ -5,6 +5,7 @@
 import { env } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHyperdriveDb, type Db } from "@picks/db";
+import { refuseDeletedAccounts, supabaseAccountAdmin } from "./accounts";
 import { createApp } from "./app";
 import { supabaseTokenVerifier } from "./auth";
 import { cloudflareMailer, mailpitMailer } from "./email";
@@ -82,9 +83,18 @@ function build() {
     config.MODERATION_MODE === "enforce"
       ? clefScreener({ run: (model, input) => env.AI.run(model as never, input as never) })
       : undefined;
+  // Account deletion is on once SUPABASE_SECRET_KEY is set (README, "Account deletion").
+  const accounts = config.SUPABASE_SECRET_KEY
+    ? supabaseAccountAdmin(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY, config.SUPABASE_SECRET_KEY)
+    : undefined;
   const app = createApp({
     db,
-    verifyToken: supabaseTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY),
+    accounts,
+    // A deleted account is refused even while its access token is still valid.
+    verifyToken: refuseDeletedAccounts(
+      db,
+      supabaseTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY),
+    ),
     nfl: espnProvider(),
     insights: liveInsights(),
     operatorUserIds: config.OPERATOR_USER_IDS,
@@ -105,6 +115,7 @@ function build() {
     push,
     nativePush,
     screener,
+    accounts,
     operatorUserIds: config.OPERATOR_USER_IDS,
     production: config.NODE_ENV !== "development",
   };
@@ -147,10 +158,10 @@ export default {
    */
   async scheduled(_controller, env, ctx) {
     if (!worker) return;
-    const { email, push, nativePush, screener, operatorUserIds, production } = worker;
+    const { email, push, nativePush, screener, accounts, operatorUserIds, production } = worker;
     // Each job logs its own failures through the safe logger, so nothing raw reaches the runtime's log.
     await withConnection(env, ctx, production, () =>
-      runScheduledJobs(db, { email, push, nativePush, screener, operatorUserIds }, new Date()),
+      runScheduledJobs(db, { email, push, nativePush, screener, accounts, operatorUserIds }, new Date()),
     );
   },
 } satisfies ExportedHandler<Env>;

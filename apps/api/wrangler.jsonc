@@ -46,8 +46,8 @@
   // 30 days and queue the operator's daily digest; then queue pick reminders due at 7pm league time and send or
   // retry what's waiting, by email and by push. They're idempotent, so a late or doubled run is harmless.
   "triggers": { "crons": ["*/5 * * * *"] },
-  // Secrets (`wrangler secret put`): SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, optionally OPERATOR_USER_IDS, and
-  // UNSUBSCRIBE_SECRET to turn email on, and VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT to turn push on. Optional vars: EMAIL_FROM, EMAIL_DAILY_LIMIT, EMAIL_MONTHLY_LIMIT, MODERATION_MODE.
+  // Secrets (`wrangler secret put`): SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY (account deletion),
+  // optionally OPERATOR_USER_IDS, and UNSUBSCRIBE_SECRET to turn email on, and VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT to turn push on. Optional vars: EMAIL_FROM, EMAIL_DAILY_LIMIT, EMAIL_MONTHLY_LIMIT, MODERATION_MODE.
   "vars": { "NODE_ENV": "production", "APP_URL": "https://www.pow-pickem.com" },
   "observability": {
     "enabled": true,

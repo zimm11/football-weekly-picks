@@ -124,6 +124,16 @@ export function disableNativePush(): Promise<void> {
   });
 }
 
+/**
+ * After the account is deleted: the server has already removed this device, so only the local record of who owns
+ * it is cleared. No API call, since the account can't make one any more.
+ */
+export function forgetNativePush(): Promise<void> {
+  return exclusive(async () => {
+    await SecureStore.deleteItemAsync(ownerKey());
+  });
+}
+
 export async function nativePushState(): Promise<NativePushState> {
   const [permission, config, previous] = await Promise.all([
     Notifications.getPermissionsAsync(),

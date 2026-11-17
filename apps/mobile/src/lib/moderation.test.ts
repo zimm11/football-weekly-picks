@@ -38,6 +38,15 @@ describe("postActions", () => {
   });
 });
 
+it("offers nothing on a message whose author deleted their account", () => {
+  expect(
+    postActions(
+      { state: "deleted", mine: false, canAppeal: false },
+      { canModerate: true, blockedAuthor: false },
+    ),
+  ).toEqual([]);
+});
+
 describe("postPlaceholder", () => {
   it("stands in for removed and hidden messages, and collapses a blocked player's until shown", () => {
     expect(postPlaceholder("removed", true)).toEqual({ text: "Message removed", canShow: false });
@@ -49,6 +58,7 @@ describe("postPlaceholder", () => {
     expect(postPlaceholder("blocked", true)).toBeNull();
     expect(postPlaceholder("visible", false)).toBeNull();
     expect(postPlaceholder("review", false)).toBeNull();
+    expect(postPlaceholder("deleted", true)).toEqual({ text: "Deleted player's message", canShow: false });
     // An admin may show a hidden message to review it.
     expect(postPlaceholder("hidden", false, true)?.canShow).toBe(true);
     expect(postPlaceholder("hidden", true, true)).toBeNull();

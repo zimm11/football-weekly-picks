@@ -7,7 +7,12 @@ import { getSupabase, messageOf, request } from "./api";
 import { authCallback } from "./links";
 import { clearMessageUnread } from "./messageUnread";
 import { openScreen } from "./navigation";
-import { disableNativePush, reconcileNativePush, subscribeNativeNotifications } from "./notifications";
+import {
+  disableNativePush,
+  forgetNativePush,
+  reconcileNativePush,
+  subscribeNativeNotifications,
+} from "./notifications";
 
 type Auth = {
   session: Session | null;
@@ -18,7 +23,8 @@ type Auth = {
   linkError?: string;
   refreshProfile: () => Promise<void>;
   retry: () => void;
-  signOut: () => Promise<void>;
+  /** `accountDeleted`: the account is gone, so nothing is asked of the API or Auth server; only this device forgets it. */
+  signOut: (options?: { accountDeleted?: boolean }) => Promise<void>;
 };
 const Context = createContext<Auth | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -215,7 +221,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           profileRef.current = null;
           setAttempt((value) => value + 1);
         },
-        signOut: async () => {
+        signOut: async (options) => {
+          if (options?.accountDeleted) {
+            await forgetNativePush().catch(() => undefined);
+            await (await getSupabase()).auth.signOut({ scope: "local" });
+            return;
+          }
           await disableNativePush();
           const { error } = await (await getSupabase()).auth.signOut();
           if (error) throw error;
