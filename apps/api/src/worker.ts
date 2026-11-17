@@ -78,6 +78,7 @@ function build() {
         })
       : undefined;
   const nativePush = config.EXPO_PUSH_ENABLED ? expoPushSender(config.EXPO_ACCESS_TOKEN) : undefined;
+  const nfl = espnProvider();
   // Every post and name is screened on Workers AI unless MODERATION_MODE=off (the emergency switch).
   const screener =
     config.MODERATION_MODE === "enforce"
@@ -95,7 +96,7 @@ function build() {
       db,
       supabaseTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY),
     ),
-    nfl: espnProvider(),
+    nfl,
     insights: liveInsights(),
     operatorUserIds: config.OPERATOR_USER_IDS,
     email,
@@ -114,6 +115,7 @@ function build() {
     email,
     push,
     nativePush,
+    nfl,
     screener,
     accounts,
     operatorUserIds: config.OPERATOR_USER_IDS,
@@ -153,15 +155,15 @@ export default {
   },
 
   /**
-   * The Cron Trigger (wrangler.jsonc): the moderation jobs, then queue due pick reminders and send what's waiting,
-   * by email and push.
+   * The Cron Trigger (wrangler.jsonc): the account and moderation jobs, leagues that run themselves, then queue
+   * due pick reminders and send what's waiting, by email and push.
    */
   async scheduled(_controller, env, ctx) {
     if (!worker) return;
-    const { email, push, nativePush, screener, accounts, operatorUserIds, production } = worker;
+    const { email, push, nativePush, nfl, screener, accounts, operatorUserIds, production } = worker;
     // Each job logs its own failures through the safe logger, so nothing raw reaches the runtime's log.
     await withConnection(env, ctx, production, () =>
-      runScheduledJobs(db, { email, push, nativePush, screener, accounts, operatorUserIds }, new Date()),
+      runScheduledJobs(db, { email, push, nativePush, nfl, screener, accounts, operatorUserIds }, new Date()),
     );
   },
 } satisfies ExportedHandler<Env>;

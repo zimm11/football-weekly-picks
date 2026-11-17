@@ -1,7 +1,8 @@
-import { type Db, games, picks, seasons, tiebreakerGuesses, weekRecapViews, weeks } from "@picks/db";
+import { type Db, games, picks, seasons, tiebreakerGuesses, weeks } from "@picks/db";
 import {
   checkPickSubmission,
   checkTiebreakerGuess,
+  coversWeek,
   createGameSchema,
   createWeekSchema,
   defaultPoints,
@@ -15,7 +16,7 @@ import {
   updateWeekSchema,
   type WeekView,
 } from "@picks/shared";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { type AuthVariables, requireAuth } from "./auth";
 import {
@@ -27,8 +28,8 @@ import {
   leagueParam,
   listMemberRecords,
   recordedParticipants,
-  recordWeekParticipants,
   requireAdmin,
+  requireLeagueType,
   requireMember,
   requireWeek,
   type WeekContext,
@@ -37,8 +38,26 @@ import {
 } from "./context";
 import { logError } from "./logging";
 import type { ProviderGame } from "./nfl";
+import type { AppServices } from "./services";
+import {
+  fillFinishedGames,
+  finalizeProblem,
+  finalizeWeek,
+  type GameRow,
+  gamesOf,
+  importSlate,
+  markRecapSeen,
+  openProblem,
+  openWeek,
+  pointsAfterKickoffChange,
+  reopenWeek,
+  writeFinals,
+} from "./weekOps";
 
-type GameRow = typeof games.$inferSelect;
+export { RESULTS_REFRESH_MS } from "./weekOps";
+
+/** The league types the shared pick'em week, game and pick routes serve. Any other type's week is a 404. */
+const PICKEM = ["weekly", "playoff"] as const;
 
 const toGame = (g: GameRow): Game => ({
   id: g.id,
@@ -51,30 +70,7 @@ const toGame = (g: GameRow): Game => ({
   awayScore: g.awayScore,
 });
 
-/**
- * How long after kickoff a game could first be over. Before then there is no point asking the provider for
- * its result. NFL games run about three hours; none finishes in two and a half.
- */
-const SHORTEST_GAME_MS = 150 * 60_000;
-
-/** How often an open week's results are fetched from the provider at most, however many players are looking. */
-export const RESULTS_REFRESH_MS = 60_000;
-
-/** A provider game that kicked off long enough ago to be over and still has no result here. */
-const awaitingResult = (g: GameRow, at: Date) =>
-  g.externalId !== null && !hasResult(g) && at.getTime() - g.kickoff.getTime() >= SHORTEST_GAME_MS;
-
-/**
- * A game's points when its kickoff moves: a game still worth its old slot's default takes the new slot's (a
- * Sunday afternoon game flexed to Sunday night goes from 1 to 2). Points the admin set by hand are kept.
- */
-const pointsAfterKickoffChange = (game: Pick<GameRow, "kickoff" | "points">, kickoff: Date) =>
-  game.points === defaultPoints(game.kickoff) ? defaultPoints(kickoff) : game.points;
-
-const gamesOf = (db: Db, weekId: string) =>
-  db.select().from(games).where(eq(games.weekId, weekId)).orderBy(asc(games.kickoff), asc(games.id));
-
-async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<WeekView> {
+export async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<WeekView> {
   // Re-read the week: the caller may have just changed it.
   const [week] = await db.select().from(weeks).where(eq(weeks.id, ctx.week.id));
   if (!week) fail(404, "Week not found");
@@ -152,128 +148,22 @@ async function buildWeekView(db: Db, ctx: WeekContext, userId: string): Promise<
   };
 }
 
-export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Date() }: AppDeps) {
+export function weekRoutes(
+  { db, verifyToken, nfl, insights, now = () => new Date() }: AppDeps,
+  services: AppServices,
+) {
   const auth = requireAuth(verifyToken);
 
-  /** Records that a player has been shown the week's results, so the recap isn't offered to them again. */
-  const markRecapSeen = (weekId: string, userId: string) =>
-    db
-      .insert(weekRecapViews)
-      .values({ weekId, userId, seenAt: now() })
-      .onConflictDoUpdate({
-        target: [weekRecapViews.weekId, weekRecapViews.userId],
-        set: { seenAt: now() },
-      });
-
-  /**
-   * Adds the provider's games to a week and refreshes kickoffs and spreads of the ones already there.
-   * Drafts only: once players have picked, spreads change only when the admin edits them by hand.
-   */
-  async function importGames(
-    weekId: string,
-    year: number,
-    number: number,
-    requestId?: string,
-  ): Promise<string | null> {
-    let provided: Awaited<ReturnType<typeof nfl.getWeek>>;
-    try {
-      provided = await nfl.getWeek(year, number);
-    } catch (err) {
-      logError("schedule_import", err, requestId);
-      return "Couldn't load the schedule. Add games by hand, or try the import again.";
-    }
-    if (provided.length === 0) return "No games are scheduled for that week yet.";
-    const existing = new Map((await gamesOf(db, weekId)).map((g) => [g.externalId, g]));
-    for (const g of provided) {
-      const current = existing.get(g.externalId);
-      if (current) {
-        await db
-          .update(games)
-          .set({
-            kickoff: g.kickoff,
-            spread: g.spread ?? current.spread,
-            points: pointsAfterKickoffChange(current, g.kickoff),
-          })
-          .where(eq(games.id, current.id));
-      } else {
-        // Two imports at once can both find the game missing; the second insert then adds nothing.
-        await db
-          .insert(games)
-          .values({
-            weekId,
-            externalId: g.externalId,
-            homeTeam: g.homeTeam,
-            awayTeam: g.awayTeam,
-            kickoff: g.kickoff,
-            spread: g.spread,
-            points: defaultPoints(g.kickoff),
-          })
-          .onConflictDoNothing({ target: [games.weekId, games.externalId] });
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Records the provider's final scores on the games that came from it. Spreads are never touched. Without
-   * `overwrite`, only games with no result yet are filled, so a score an admin typed in always stands.
-   */
-  async function writeFinals(
-    gameRows: GameRow[],
-    provided: ProviderGame[],
-    { overwrite }: { overwrite: boolean },
-  ) {
-    const finals = new Map(provided.filter((g) => g.homeScore !== null).map((g) => [g.externalId, g]));
-    for (const game of gameRows) {
-      const final = game.externalId ? finals.get(game.externalId) : undefined;
-      if (!final || (!overwrite && hasResult(game))) continue;
-      await db
-        .update(games)
-        .set({ homeScore: final.homeScore, awayScore: final.awayScore })
-        // Checked again in the write, in case the admin entered a score since the games were read.
-        .where(overwrite ? eq(games.id, game.id) : and(eq(games.id, game.id), isNull(games.homeScore)));
-    }
-  }
-
-  /**
-   * The provider's view of a week, fetched at most once per `RESULTS_REFRESH_MS` per server instance and shared
-   * by every league and player reading that week. A failed fetch is remembered for the same time, so a provider
-   * outage isn't asked again on every page load. Resolves to null when the provider couldn't be reached. Only
-   * the settled answer is kept (a Workers request must not wait on another request's fetch), so reads that
-   * miss at the same moment each ask.
-   */
-  const recentWeeks = new Map<string, { at: number; games: ProviderGame[] | null }>();
-  async function providerWeek(year: number, number: number, requestId?: string) {
-    const key = `${year}:${number}`;
-    const at = now().getTime();
-    const cached = recentWeeks.get(key);
-    if (cached && at >= cached.at && at - cached.at < RESULTS_REFRESH_MS) return cached.games;
-    const games = await nfl.getWeek(year, number).catch((err) => {
-      logError("results_autosync", err, requestId);
-      return null;
-    });
-    recentWeeks.set(key, { at, games });
-    return games;
-  }
-
-  /**
-   * Fills in results for an open week's games as they end, so each player sees how their picks went
-   * without waiting for an admin to pull them. Runs when the week is read; nothing is fetched unless a game
-   * has been going long enough to be over and still has no result. A provider failure changes nothing:
-   * the admin can still pull results or type scores in.
-   */
-  async function fillFinishedGames(ctx: WeekContext, requestId?: string) {
-    if (ctx.week.status !== "open") return;
-    const gameRows = await gamesOf(db, ctx.week.id);
-    const at = now();
-    if (!gameRows.some((g) => awaitingResult(g, at))) return;
-    const provided = await providerWeek(ctx.season.year, ctx.week.number, requestId);
-    if (provided) await writeFinals(gameRows, provided, { overwrite: false });
+  /** A week of a pick'em league (weekly or playoff) the caller can see. Another type's week is a 404. */
+  async function pickemWeek(weekId: string, userId: string) {
+    const ctx = await requireWeek(db, weekId, userId);
+    requireLeagueType(ctx.league, ...PICKEM);
+    return ctx;
   }
 
   /** Loads the week for an admin action and checks it is in one of the allowed states. */
   async function adminWeek(weekId: string, userId: string, allowed: WeekContext["week"]["status"][]) {
-    const ctx = await requireWeek(db, weekId, userId);
+    const ctx = await pickemWeek(weekId, userId);
     requireAdmin(ctx.role);
     if (!allowed.includes(ctx.week.status)) {
       fail(
@@ -296,7 +186,11 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
       .post("/leagues/:leagueId/weeks", auth, leagueParam, body(createWeekSchema), async (c) => {
         const { leagueId } = c.req.valid("param");
         const { year, number, importGames: shouldImport } = c.req.valid("json");
-        requireAdmin((await requireMember(db, leagueId, c.var.user.id)).role);
+        const { league, role } = await requireMember(db, leagueId, c.var.user.id);
+        requireLeagueType(league, ...PICKEM);
+        requireAdmin(role);
+        // Weekly pick'em plays weeks 1–18; a playoff league's rounds are created its own way.
+        if (!coversWeek(league.type, number)) fail(409, "That week isn't part of this league's season.");
 
         await db.insert(seasons).values({ leagueId, year }).onConflictDoNothing();
         const [season] = await db
@@ -312,13 +206,18 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
         if (!week) fail(409, "That week already exists.");
 
         const importError = shouldImport
-          ? await importGames(week.id, year, number, c.get("requestId"))
+          ? await importSlate(db, nfl, { id: week.id, year, number }, { requestId: c.get("requestId") })
           : null;
         return c.json({ id: week.id, importError }, 201);
       })
       .post("/weeks/:weekId/import", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["draft"]);
-        const error = await importGames(ctx.week.id, ctx.season.year, ctx.week.number, c.get("requestId"));
+        const error = await importSlate(
+          db,
+          nfl,
+          { id: ctx.week.id, year: ctx.season.year, number: ctx.week.number },
+          { requestId: c.get("requestId") },
+        );
         if (error) fail(502, error);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
@@ -343,6 +242,7 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
           awayTeam: input.awayTeam,
           kickoff,
           spread: input.spread,
+          spreadByAdmin: true,
           points: input.points ?? defaultPoints(kickoff),
         });
         return c.json(await buildWeekView(db, ctx, c.var.user.id), 201);
@@ -359,6 +259,8 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
           .set({
             kickoff,
             spread: input.spread,
+            // A spread the admin typed stands: automation never replaces it with the feed's.
+            spreadByAdmin: input.spread === undefined ? undefined : true,
             points: input.points ?? (kickoff ? pointsAfterKickoffChange(game, kickoff) : undefined),
             homeScore,
             awayScore,
@@ -376,11 +278,9 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
       // ---------- Admin: week lifecycle (draft → open → final) ----------
       .post("/weeks/:weekId/open", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["draft"]);
-        const gameRows = await gamesOf(db, ctx.week.id);
-        if (gameRows.length === 0) fail(409, "Add at least one game before opening the week.");
-        if (gameRows.some((g) => g.spread === null))
-          fail(409, "Every game needs a spread before the week opens.");
-        await db.update(weeks).set({ status: "open" }).where(eq(weeks.id, ctx.week.id));
+        const problem = openProblem(await gamesOf(db, ctx.week.id));
+        if (problem) fail(409, problem);
+        await openWeek(db, ctx.week.id);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
       /** Pulls final scores from the provider for games that came from it. Spreads are never touched here. */
@@ -394,45 +294,50 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
           fail(502, "Couldn't load results. Enter the scores by hand, or try again.");
         }
         // The admin asked for the provider's scores, so they replace any typed in.
-        await writeFinals(await gamesOf(db, ctx.week.id), provided, { overwrite: true });
+        await writeFinals(db, await gamesOf(db, ctx.week.id), provided, { overwrite: true });
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
       .post("/weeks/:weekId/finalize", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["open"]);
-        const gameRows = await gamesOf(db, ctx.week.id);
-        if (!gameRows.every(hasResult)) {
-          fail(409, "Every game needs a final score before the week can close.");
-        }
-        await db.transaction(async (tx) => {
-          // Updating the week row waits for any pick save in flight, so the participants read below see it.
-          await tx
-            .update(weeks)
-            .set({ status: "final", finalizedAt: now() })
-            .where(eq(weeks.id, ctx.week.id));
-          // Who this week is scored for, fixed now so that later leaving or rejoining can't rewrite it.
-          await recordWeekParticipants(tx, ctx.week.id, ctx.league.id);
-        });
+        const problem = finalizeProblem(await gamesOf(db, ctx.week.id));
+        if (problem) fail(409, problem);
         // The admin closing the week is shown the results right here, so they don't get the recap as well.
-        await markRecapSeen(ctx.week.id, c.var.user.id);
+        await db.transaction((tx) =>
+          finalizeWeek(tx, {
+            weekId: ctx.week.id,
+            leagueId: ctx.league.id,
+            at: now(),
+            actorId: c.var.user.id,
+          }),
+        );
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
       /** Lets the admin correct a score or spread after closing; picks are hidden again until it is re-closed. */
       .post("/weeks/:weekId/reopen", auth, weekParam, async (c) => {
         const ctx = await adminWeek(c.req.valid("param").weekId, c.var.user.id, ["final"]);
-        await db.update(weeks).set({ status: "open", finalizedAt: null }).where(eq(weeks.id, ctx.week.id));
+        await reopenWeek(db, ctx.week.id);
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
 
       // ---------- Players ----------
       .get("/weeks/:weekId", auth, weekParam, async (c) => {
-        const ctx = await requireWeek(db, c.req.valid("param").weekId, c.var.user.id);
-        await fillFinishedGames(ctx, c.get("requestId"));
+        const ctx = await pickemWeek(c.req.valid("param").weekId, c.var.user.id);
+        const requestId = c.get("requestId");
+        // A league that runs itself takes its next step first (throttled), so nobody waits for the cron.
+        await services.advanceLeagueOnRead(ctx.league, requestId);
+        await fillFinishedGames(
+          db,
+          services.results,
+          { id: ctx.week.id, status: ctx.week.status, year: ctx.season.year, number: ctx.week.number },
+          now(),
+          requestId,
+        );
         return c.json(await buildWeekView(db, ctx, c.var.user.id));
       })
       /** The player has been shown this closed week's recap. See `recapWeekId` on the league. */
       .post("/weeks/:weekId/recap/seen", auth, weekParam, async (c) => {
         const ctx = await requireWeek(db, c.req.valid("param").weekId, c.var.user.id);
-        if (ctx.week.status === "final") await markRecapSeen(ctx.week.id, c.var.user.id);
+        if (ctx.week.status === "final") await markRecapSeen(db, ctx.week.id, c.var.user.id, now());
         return c.json({ ok: true });
       })
       // Public background on a game (team form, market prices). Nothing here is drawn from anyone's picks.
@@ -442,7 +347,8 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
           .from(games)
           .where(eq(games.id, c.req.valid("param").gameId));
         if (!game) fail(404, "Game not found");
-        await requireWeek(db, game.weekId, c.var.user.id);
+        // The matchup sheet opens from survivor game cards too. Nothing in it comes from this league's picks.
+        requireLeagueType((await requireWeek(db, game.weekId, c.var.user.id)).league, ...PICKEM, "survivor");
         const requestId = c.get("requestId");
         // Each source fails on its own: the sheet shows whatever arrived.
         const [matchup, market] = await Promise.all([
@@ -464,7 +370,7 @@ export function weekRoutes({ db, verifyToken, nfl, insights, now = () => new Dat
       })
       .put("/weeks/:weekId/picks", auth, weekParam, body(submitPicksSchema), async (c) => {
         const userId = c.var.user.id;
-        const ctx = await requireWeek(db, c.req.valid("param").weekId, userId);
+        const ctx = await pickemWeek(c.req.valid("param").weekId, userId);
         const input = c.req.valid("json");
         const weekId = ctx.week.id;
 

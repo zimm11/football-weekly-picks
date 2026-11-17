@@ -22,7 +22,14 @@ import {
   parseEspnNews,
   parseEspnSummary,
 } from "../../src/insights";
-import { espnScoreboardSchema, type ProviderGame } from "../../src/nfl";
+import {
+  espnProvider,
+  espnScoreboardSchema,
+  espnScoreboardUrl,
+  type ProviderGame,
+  parseEspnScoreboard,
+  superBowlWeek,
+} from "../../src/nfl";
 import {
   expectNone,
   expectShape,
@@ -132,6 +139,129 @@ describe("ESPN scoreboard", () => {
         problems.push(`${name}: read ${spread}, but the ${line.favorite} team is favored`);
     }
     expectNone(problems, "Spreads the app reads wrongly");
+  });
+});
+
+// ---------- Scoreboard: the postseason (weeks 19–22), quarter lines, placeholders ----------
+
+describe("ESPN postseason scoreboard", () => {
+  let wildCard: Week;
+  let superBowl: ProviderGame[];
+  /** The coming postseason's Wild Card round, which ESPN lists as "TBD at TBD" until the teams are known. */
+  let comingRound: unknown;
+  beforeAll(async () => {
+    [wildCard, superBowl, comingRound] = await Promise.all([
+      scoreboard(lastSeason, 19),
+      espnProvider(fetchWithRetry).getWeek(lastSeason, 22),
+      getJson(espnScoreboardUrl(seasonYear(now), 19)),
+    ]);
+  }, 120_000);
+
+  it("serves the Wild Card round as postseason week 1", () => {
+    const meta = expectShape(
+      z.object({ season: z.object({ type: z.number() }), week: z.object({ number: z.number() }) }),
+      wildCard.raw,
+      `Scoreboard for ${lastSeason} week 19`,
+    );
+    expect(meta, "Week 19 should be ESPN's postseason (seasontype 3) week 1").toMatchObject({
+      season: { type: 3 },
+      week: { number: 1 },
+    });
+    expect(wildCard.games.length, `${lastSeason} Wild Card round game count`).toBe(6);
+    expectNone(gameProblems(wildCard.games), `Wild Card games in ${lastSeason} the app can't use`);
+  });
+
+  it("finds the Super Bowl's week in the calendar, and the game in it", () => {
+    expect(superBowlWeek(wildCard.raw), "The postseason calendar has no Super Bowl entry").not.toBeNull();
+    expect(superBowl.length, `${lastSeason} Super Bowl (week 22) game count`).toBe(1);
+    expectNone(gameProblems(superBowl), "The Super Bowl as the app reads it");
+    expect(superBowl[0]?.status, "The last Super Bowl should be final").toBe("final");
+  });
+
+  it("gives each finished game its cumulative score by quarter, overtime in the final", () => {
+    const problems: string[] = [];
+    for (const g of [...wildCard.games, ...superBowl]) {
+      const name = `${g.awayTeam} @ ${g.homeTeam}`;
+      const q = g.periodScores;
+      if (g.status !== "final") problems.push(`${name}: not marked final`);
+      if ((g.period ?? 0) < 4) problems.push(`${name}: finished in period ${g.period}, before the 4th`);
+      if (!q?.q1 || !q.half || !q.q3 || !q.final) {
+        problems.push(`${name}: missing a quarter (${Object.keys(q ?? {}).join(", ") || "none"})`);
+        continue;
+      }
+      for (const side of ["home", "away"] as const) {
+        if (!(q.q1[side] <= q.half[side] && q.half[side] <= q.q3[side] && q.q3[side] <= q.final[side])) {
+          problems.push(`${name}: ${side} scores go down between quarters`);
+        }
+      }
+      if (q.final.home !== g.homeScore || q.final.away !== g.awayScore) {
+        problems.push(`${name}: the final in the quarter line isn't the game's final score`);
+      }
+    }
+    expectNone(problems, "Quarter lines the app reads wrongly");
+  });
+
+  it("adds up each team's periods to its score, overtime included", () => {
+    const schema = z.object({
+      events: z.array(
+        z.object({
+          competitions: z.array(
+            z.object({
+              competitors: z.array(
+                z.object({
+                  score: z.coerce.number(),
+                  team: z.object({ abbreviation: z.string() }),
+                  linescores: z.array(z.object({ value: z.number() })),
+                }),
+              ),
+            }),
+          ),
+        }),
+      ),
+    });
+    const problems = expectShape(schema, wildCard.raw, "Wild Card line scores").events.flatMap((event) =>
+      (event.competitions[0]?.competitors ?? []).flatMap((team) => {
+        const sum = team.linescores.reduce((total, line) => total + line.value, 0);
+        return sum === team.score
+          ? []
+          : [`${team.team.abbreviation}: periods add to ${sum}, score ${team.score}`];
+      }),
+    );
+    expectNone(problems, "Line scores that don't add up");
+  });
+
+  it("lists a round's games as TBD, with negative team ids, until the teams are known", (ctx) => {
+    const schema = z.object({
+      events: z
+        .array(
+          z.object({
+            competitions: z.array(
+              z.object({
+                competitors: z.array(
+                  z.object({ team: z.object({ abbreviation: z.string(), id: z.string() }) }),
+                ),
+              }),
+            ),
+          }),
+        )
+        .default([]),
+    });
+    const { events } = expectShape(schema, comingRound, `Scoreboard for ${seasonYear(now)} week 19`);
+    if (events.length === 0) return ctx.skip("The coming Wild Card round isn't listed yet");
+    const teams = events.flatMap((e) => e.competitions[0]?.competitors.map((c) => c.team) ?? []);
+    const odd = teams.filter(
+      (t) => !KNOWN_TEAMS.has(t.abbreviation) && !(t.abbreviation === "TBD" && t.id.startsWith("-")),
+    );
+    expectNone(
+      odd.map((t) => `${t.abbreviation} (id ${t.id})`),
+      "Teams that are neither real nor the TBD placeholder",
+    );
+    const known = events.filter((e) =>
+      (e.competitions[0]?.competitors ?? []).every((c) => KNOWN_TEAMS.has(c.team.abbreviation)),
+    );
+    expect(parseEspnScoreboard(comingRound).length, "Placeholder games should be left out").toBe(
+      known.length,
+    );
   });
 });
 

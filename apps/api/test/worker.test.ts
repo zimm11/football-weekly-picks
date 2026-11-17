@@ -43,14 +43,20 @@ describe("Worker scheduled handler", () => {
     fakes.connection.$close.mockClear();
   });
 
-  it("still runs the moderation jobs when neither email nor push is configured", async () => {
+  it("still runs league automation and the moderation jobs when neither email nor push is configured", async () => {
     const worker = await loadWorker(base);
     const waited: Promise<unknown>[] = [];
     await worker.scheduled({}, bindings, { waitUntil: (p) => waited.push(p) });
     await Promise.all(waited);
     expect(fakes.runScheduledJobs).toHaveBeenCalledOnce();
     const [, deps] = fakes.runScheduledJobs.mock.calls[0] ?? [];
-    expect(deps).toMatchObject({ email: undefined, push: undefined, nativePush: undefined });
+    expect(deps).toMatchObject({
+      email: undefined,
+      push: undefined,
+      nativePush: undefined,
+      nfl: expect.any(Object),
+    });
+    expect(fakes.connection.$close).toHaveBeenCalledOnce();
   });
 
   it("runs the jobs on this run's own connection and closes it afterwards", async () => {

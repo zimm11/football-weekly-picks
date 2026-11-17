@@ -279,7 +279,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       id: ADMIN,
       displayName: null,
       isOperator: false,
-      notifications: { newThreads: true, pickReminders: true },
+      notifications: { newThreads: true, pickReminders: true, leagueEvents: true },
       moderation: { termsAccepted: false, mutedUntil: null, suspended: false },
     });
     // The first name step also agrees to the terms, which posting needs.
@@ -681,6 +681,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call<Me>(ADMIN, "GET", "/me")).body.notifications).toEqual({
       newThreads: false,
       pickReminders: true,
+      leagueEvents: true,
     });
 
     sentEmails = [];
@@ -693,6 +694,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(ADMIN, "PUT", "/me/notifications", { newThreads: true })).body).toEqual({
       newThreads: true,
       pickReminders: true,
+      leagueEvents: true,
     });
     // A player without a profile has no settings to change.
     await db.delete(profiles).where(eq(profiles.userId, OUTSIDER));
@@ -839,6 +841,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       id: leagueId,
       name: "Test League",
       role: "admin",
+      type: "weekly",
+      management: "manual",
     });
 
     expect((await call(PLAYER, "PATCH", creatorPath, { role: "member" })).status).toBe(200);

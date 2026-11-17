@@ -167,8 +167,8 @@ export function mailpitMailer(baseUrl: string, from: string, fetchImpl: typeof f
 
 // ---------- Unsubscribe tokens ----------
 
-export type EmailKind = "new_thread" | "pick_reminder";
-const KINDS: EmailKind[] = ["new_thread", "pick_reminder"];
+export type EmailKind = "new_thread" | "pick_reminder" | "league_event";
+const KINDS: EmailKind[] = ["new_thread", "pick_reminder", "league_event"];
 
 const sign = (secret: string, payload: string) =>
   createHmac("sha256", secret).update(`unsubscribe:${payload}`).digest("base64url");
