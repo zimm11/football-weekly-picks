@@ -178,8 +178,10 @@ storage; no storage means no suggestion).
 On iPhone and iPad (iOS 16.4+), first add POW Pick'em to the home screen and open it from its icon;
 ordinary iPhone browser tabs show those steps instead of asking for permission.
 
-Each device has its own switches for **New league threads** and **Missing-pick reminders**, beside the
-email switches (**By email**) in the same **Notifications** section of Settings. A new thread notifies the league's other current members who
+Each device has its own switches for **New league threads**, **Missing-pick reminders** and **Results and
+updates**, beside the email switches (**By email**) in the same **Notifications** section of Settings.
+Results and updates (a week opening or final in a league that runs itself, being added to a league) are the
+`league_event` kind; they name the league and the event, never a pick, a team or whether you're in or out. A new thread notifies the league's other current members who
 opted in (replies don't). Reminders start at 7pm league time the evening before a game day, only for games
 still to pick, and expire at that day's first kickoff; picks and membership are checked again just before
 sending. Notifications show league names and thread titles on the lock screen, never picks or message
@@ -257,6 +259,21 @@ Admins can revoke each other's admin access or remove each other, including the 
 **Revoke admin** keeps that person in the league as a player with their picks and results. Admins can
 also step down themselves, provided at least one active admin remains.
 
+### League types
+
+Every league has a type, fixed when it is created: **Weekly pick'em** (the game described here, and every
+league created before types existed), **Playoff pick'em**, **Squares** or **Survivor**. The registry in
+[`packages/shared/src/leagueTypes.ts`](packages/shared/src/leagueTypes.ts) says what each owns: its tabs,
+settings, weeks (1–18 the regular season; 19 Wild Card, 20 Divisional, 21 Conference, 22 Super Bowl), when picks
+show, and whether it runs itself. Until a type is released only operators (`OPERATOR_USER_IDS`) can create one,
+and the New league form shows its card to them alone; today Weekly pick'em is the only released type, and its
+**Automatic** management (the feed sets up, opens and closes each week) is operator-only too. A weekly league is
+otherwise **Hands-on**, as before; an admin can switch in **League → League settings** when Automatic is open
+to them. **Start with members from** on New league copies the current members of a league you are an admin of
+into the new one as members, each told once (a league event); anyone already in 25 leagues is skipped and named.
+To try the other types locally, run `pnpm worker:dev` with `OPERATOR_USER_IDS` set to the seeded admin's id
+(`11111111-1111-4111-8111-000000000001`).
+
 ### Leaving, removal, and limits
 
 Any member can use **League → Leave league**; an admin can remove another member from the **⋯** menu
@@ -271,7 +288,8 @@ account can be in at most 25 leagues; removed and departed members don't count t
 **Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
 password. Locally, that email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
 use **Change password** or **Change your name** from the account menu in the header. **Settings**
-(`/account`) holds notifications (by email and on this device), the home-screen app help, and the email
+(`/account`) holds notifications (by email and on this device: new threads, pick reminders, and results and
+updates), the home-screen app help, and the email
 address (a change is confirmed from both the old and the new address).
 
 ### Deleting an account
@@ -634,13 +652,14 @@ from `noreply@pow-pickem.com`:
   password or email change) are sent by Supabase Auth over Cloudflare's SMTP relay. Branded templates live in
   `supabase/templates/` and are wired up in `supabase/config.toml`.
 - **Notification emails** (a new message thread; a pick reminder at 7pm league time the evening before a game
-  day, to players with games still to pick) are sent by the Worker through its `send_email` binding (`EMAIL`
+  day, to players with games still to pick; results and updates, the `league_event` kind) are sent by the Worker through its `send_email` binding (`EMAIL`
   in `wrangler.jsonc`; no API key). They are queued in the `email_outbox` table, so each is sent once
-  (per-email dedupe keys) and retried with backoff if Cloudflare can't take it. Players turn either kind off
+  (per-email dedupe keys) and retried with backoff if Cloudflare can't take it. Players turn each kind off
   under **Settings** or with the link in each email, which also carries one-click
   `List-Unsubscribe` headers.
 
-The Worker's **Cron Trigger** (`*/5 * * * *` in `wrangler.jsonc`) runs the email job: it queues the pick
+The Worker's **Cron Trigger** (`*/5 * * * *` in `wrangler.jsonc`) first advances leagues that run themselves
+(`advanceLeagues`, logged as `automation_jobs`), then runs the email job: it queues the pick
 reminders that are due and sends or retries whatever is waiting. A new thread's emails go out straight after
 the post, in the same request's `waitUntil`; anything left over is picked up by the next run. The job is
 idempotent. Runs that did something log an `email_jobs` line with counts; failures log Cloudflare's error code

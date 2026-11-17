@@ -39,8 +39,8 @@ const playerSteps = [
   [
     "Get reminders",
     Platform.OS === "web"
-      ? "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default. To get them as notifications on this device too, or to turn either kind off, open Settings from the account menu. On iPhone and iPad, add POW Pick'em to your home screen first (iOS 16.4 or later)."
-      : "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default. To get them as notifications on this device too, or to turn either kind off, open Settings from the account menu.",
+      ? "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread, and results and updates from leagues that run themselves or that you are added to. Email is on by default. To get them as notifications on this device too, or to turn any kind off, open Settings from the account menu. On iPhone and iPad, add POW Pick'em to your home screen first (iOS 16.4 or later)."
+      : "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread, and results and updates from leagues that run themselves or that you are added to. Email is on by default. To get them as notifications on this device too, or to turn any kind off, open Settings from the account menu.",
   ],
   [
     "Manage your account",

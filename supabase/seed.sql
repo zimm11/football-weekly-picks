@@ -20,8 +20,10 @@
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
 -- Settings (account menu) holds notifications by email and per device, plus home-screen install help; on a phone
 -- the first save of picks offers the install help once. None of it shows in the home-screen app.
--- Device notifications are opt-in: new threads and 7pm league-time reminders for missing picks. Your leagues
--- suggests them once per browser.
+-- Device notifications are opt-in: new threads, 7pm league-time reminders for missing picks, and results and
+-- updates (league events). Your leagues suggests them once per browser.
+-- The league is Weekly pick'em, run hands-on. Each other league type adds its own seed file in supabase/seeds/
+-- (loaded after this one) rather than editing this file.
 -- No push subscriptions are seeded; VAPID is unset locally, so devices can't subscribe.
 -- Later weeks are deliberately absent: create them in the app so the import from ESPN gets exercised.
 -- Moderation: everyone but Alex has agreed to the Terms of use, so Alex sees the terms sheet before a first post.
