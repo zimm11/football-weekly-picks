@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Runs the production build locally the way Cloudflare runs it: the web build served as static assets and the
-// API in the Workers runtime (`wrangler dev`), against this checkout's local Supabase. Use it to check
-// Worker-only behavior before deploying; day-to-day development stays on `pnpm dev`.
+// Runs the production build locally the way Cloudflare runs it: the Expo web build served as static assets and
+// the API in the Workers runtime (`wrangler dev`), against this checkout's local Supabase. Use it to check
+// Worker-only behavior before deploying; day-to-day development stays on `pnpm dev`. E2E tests run against it.
 //
 //   pnpm worker:dev   → http://localhost:<PORT + 1000> (override with WORKER_PORT)
 //
@@ -46,8 +46,18 @@ const vars = [
 writeFileSync(envFile, `${vars.join("\n")}\n`, { mode: 0o600 });
 const cleanUp = () => rmSync(dir, { recursive: true, force: true });
 
+// EXPO_WEB_OUT names another build folder, so parallel runs (one per agent or worktree task) don't collide.
+// The default folder is the one wrangler.jsonc already points at, so `--assets` is only passed for another.
+const assets = process.env.EXPO_WEB_OUT ? path.resolve(ROOT, process.env.EXPO_WEB_OUT) : undefined;
 try {
-  execFileSync("pnpm", ["--filter", "@picks/web", "build"], { cwd: ROOT, stdio: "inherit" });
+  // The page calls its own origin, so a phone's API address must not be built in.
+  const { EXPO_PUBLIC_API_URL: _, ...env } = process.env;
+  const out = assets ?? path.join(ROOT, "apps/mobile/dist-web");
+  execFileSync(
+    "pnpm",
+    ["--filter", "@picks/mobile", "exec", "expo", "export", "--platform", "web", "--output-dir", out],
+    { cwd: ROOT, stdio: "inherit", env },
+  );
 } catch {
   cleanUp();
   process.exit(1);
@@ -57,6 +67,9 @@ const wrangler = spawn(
   "pnpm",
   [
     ...["exec", "wrangler", "dev", "--env-file", envFile, "--port", port],
+    ...(assets ? ["--assets", assets] : []),
+    // Its own local state, so two Workers on different ports can run side by side.
+    ...["--persist-to", path.join(dir, "state")],
     // Local Postgres has no TLS, so the Worker mustn't insist on it (see src/worker.ts).
     ...["--var", "NODE_ENV:development", "--show-interactive-dev-session=false"],
     // Links in emails point at this server, which serves the web app too.

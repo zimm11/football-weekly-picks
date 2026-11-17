@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPushEndpoint, pushSubscriptionSchema } from "./push";
+import { isPushEndpoint, nativePushSubscriptionSchema, pushSubscriptionSchema } from "./push";
 
 describe("push subscription validation", () => {
   it("takes an optional replaced endpoint, from a known provider only", () => {
@@ -51,4 +51,22 @@ describe("push subscription validation", () => {
     expect(pushSubscriptionSchema.safeParse({ ...value, keys: {} }).success).toBe(false);
     expect(pushSubscriptionSchema.safeParse({ ...value, newThreads: "true" }).success).toBe(false);
   });
+});
+
+it("native registration accepts only Expo token syntax and explicit preferences", () => {
+  const value = { token: "ExpoPushToken[synthetic-device_123]", newThreads: true, pickReminders: false };
+  expect(nativePushSubscriptionSchema.safeParse(value).success).toBe(true);
+  for (const token of [
+    "https://evil.test/push",
+    "ExpoPushToken[../../secret]",
+    "ExpoPushToken[]",
+    "ExponentPushToken[abc]extra",
+  ])
+    expect(nativePushSubscriptionSchema.safeParse({ ...value, token }).success).toBe(false);
+  expect(
+    nativePushSubscriptionSchema.safeParse({ ...value, oldToken: "ExponentPushToken[old-device]" }).success,
+  ).toBe(true);
+  expect(nativePushSubscriptionSchema.safeParse({ ...value, oldToken: "https://evil.test" }).success).toBe(
+    false,
+  );
 });

@@ -30,3 +30,14 @@ export type PushPreferences = z.infer<typeof pushPreferencesSchema>;
 export type PushSettings = { configured: boolean; publicKey: string | null };
 export type PushDevice = PushPreferences & { id: string };
 export type PushPayload = { title: string; body: string; url: string; tag: string };
+
+/** Native tokens are opaque Expo destinations, never arbitrary fetch URLs. */
+export const expoPushTokenSchema = z
+  .string()
+  .max(256)
+  .regex(/^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]{1,200}\]$/, "Invalid Expo push token.");
+export const nativePushDeviceSchema = z.object({ token: expoPushTokenSchema });
+export const nativePushSubscriptionSchema = nativePushDeviceSchema.extend({
+  ...pushPreferencesSchema.shape,
+  oldToken: expoPushTokenSchema.optional(),
+});

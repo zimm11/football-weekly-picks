@@ -7,9 +7,10 @@ import { mailpitMailer } from "./email";
 import { loadEnv } from "./env";
 import { liveInsights } from "./insights";
 import { runScheduledJobs } from "./jobs";
+import { withLocalWeb } from "./localWeb";
 import { logError } from "./logging";
 import { espnProvider } from "./nfl";
-import { webPushSender } from "./pushSender";
+import { expoPushSender, webPushSender } from "./pushSender";
 
 /** How often local development runs the scheduled jobs. Production's Cron Trigger is in wrangler.jsonc. */
 const LOCAL_JOB_INTERVAL_MS = 60_000;
@@ -52,9 +53,11 @@ async function main() {
       : undefined;
   // A mismatched VAPID pair is logged (VAPID_KEY_MISMATCH) and switches push off instead of failing every send.
   const push = sender && (await sender.ready?.()) ? sender : undefined;
+  const nativePush = env.EXPO_PUSH_ENABLED ? expoPushSender(env.EXPO_ACCESS_TOKEN) : undefined;
   const app = createApp({
     db,
     push,
+    nativePush,
     verifyToken: supabaseTokenVerifier(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY),
     nfl: espnProvider(),
     insights: liveInsights(),
@@ -68,18 +71,18 @@ async function main() {
     },
   });
 
-  const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
+  const server = serve({ fetch: withLocalWeb(app, env.MOBILE_DEV_ORIGIN).fetch, port: env.PORT }, (info) => {
     console.log(`API listening on http://localhost:${info.port}`);
   });
 
   // Production runs the scheduled jobs from the Worker's Cron Trigger; locally a timer stands in for it.
   let running = false;
   const jobs =
-    email || push
+    email || push || nativePush
       ? setInterval(async () => {
           if (running) return;
           running = true;
-          await runScheduledJobs(db, { email, push }, now()).finally(() => {
+          await runScheduledJobs(db, { email, push, nativePush }, now()).finally(() => {
             running = false;
           });
         }, LOCAL_JOB_INTERVAL_MS)

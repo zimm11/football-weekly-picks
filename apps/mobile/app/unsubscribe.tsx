@@ -1,0 +1,71 @@
+// biome-ignore-all lint/correctness/noReactNativeRawText: Action, Heading and Label render their children inside native Text.
+import type { UnsubscribeResult } from "@picks/shared";
+import { useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import { ScrollView, Text } from "react-native";
+import { request } from "../src/lib/api";
+import { useAuth } from "../src/lib/auth";
+import { Action, Card, Failure, go, s } from "../src/screens/leagueUi";
+
+/** Public route. Opening a link never changes preferences; only the explicit button posts. */
+export default function Unsubscribe() {
+  const params = useLocalSearchParams<{ token?: string | string[] }>();
+  const token = typeof params.token === "string" ? params.token : "";
+  const kind = token.split(".")[1];
+  const valid = kind === "new_thread" || kind === "pick_reminder";
+  const label = kind === "new_thread" ? "new-thread emails" : "pick reminder emails";
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string>();
+  const { session, refreshProfile } = useAuth();
+  async function unsubscribe() {
+    if (busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await request<UnsubscribeResult>(`/unsubscribe?token=${encodeURIComponent(token)}`, { method: "POST" });
+      setDone(true);
+      // Settings reads the signed-in player's cached profile, so it shows the change straight away.
+      if (session) await refreshProfile().catch(() => {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't unsubscribe. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <ScrollView style={s.page} contentContainerStyle={s.content}>
+      <Text accessibilityRole="header" style={s.title}>
+        {done ? "You're unsubscribed" : "Unsubscribe"}
+      </Text>
+      <Card>
+        {!valid ? (
+          <Failure message="This unsubscribe link isn't valid. Check you copied all of it." />
+        ) : done ? (
+          <Text accessibilityLiveRegion="polite" style={s.text}>
+            You won't get {label} any more.
+          </Text>
+        ) : (
+          <>
+            <Text style={s.text}>Stop getting {label} from POW Pick'em?</Text>
+            <Failure message={error} />
+            <Action
+              disabled={busy}
+              onPress={() => {
+                void unsubscribe();
+              }}
+            >
+              {busy ? "Unsubscribing…" : `Turn off ${label}`}
+            </Action>
+          </>
+        )}
+        <Text style={s.muted}>
+          {session ? "Choose which emails you get in Settings." : "Sign in to choose which emails you get."}
+        </Text>
+        <Action link secondary onPress={() => go(session ? "/account" : "/login")}>
+          {session ? "Settings" : "Sign in"}
+        </Action>
+      </Card>
+    </ScrollView>
+  );
+}

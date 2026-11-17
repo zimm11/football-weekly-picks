@@ -1,0 +1,34 @@
+# Cloudflare Static Assets headers for the Expo web build (`expo export --platform web` copies this folder to the
+# build's root). Every rule that matches a path applies, so the page, scripts, fonts, icons and the push service
+# worker all get the security headers below. /api/* runs the Worker first and sets its own.
+#
+# Content-Security-Policy, by directive:
+# - script-src 'self': the exported page loads its bundles with <script src> tags and has no inline script.
+# - style-src 'unsafe-inline': react-native-web writes the app's styles, and expo-font its @font-face rules, into
+#   <style> elements at runtime.
+# - img-src a.espncdn.com: team logos (components/TeamLogo.tsx). data: covers inlined small images.
+# - font-src 'self': the Barlow fonts are bundled as files under /assets. data: in case a small one is inlined.
+# - connect-src *.supabase.co: Supabase Auth. Local Supabase (127.0.0.1/localhost) is listed so `pnpm worker:dev`
+#   and the E2E tests against the Worker work with the same file.
+# - worker-src 'self': the push service worker (push-sw.js).
+# Links out (ESPN, Kalshi) are plain navigations, which the policy doesn't restrict.
+# HSTS without includeSubDomains or preload, by choice.
+/*
+  Strict-Transport-Security: max-age=15552000
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://a.espncdn.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co http://127.0.0.1:* http://localhost:*; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+
+# Metro puts a content hash in every bundle's file name under /_expo/static, and in every image and font file
+# name under /assets, so both can be cached forever.
+/_expo/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The push service worker keeps a stable name, so browsers must check for a new one on every visit.
+/push-sw.js
+  Cache-Control: no-cache

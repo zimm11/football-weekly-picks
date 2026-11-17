@@ -1,26 +1,25 @@
-// Draws the app icons into apps/web/public from the theme's colors and display font: `pnpm icons`.
-// The PNGs are committed, so this only needs running when the icon design changes. It renders with
-// Playwright's Chromium (`pnpm playwright:install`).
-import { readFileSync } from "node:fs";
+// Draws the app icons into the website's public folder (apps/mobile/public, copied into the Expo web build) from
+// the theme's colors and display font: `pnpm icons`. The PNGs are committed, so this only needs running when the
+// icon design changes. It renders with Playwright's Chromium (`pnpm playwright:install`).
+import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
 
 const root = new URL("..", import.meta.url);
-const out = (name) => fileURLToPath(new URL(`apps/web/public/${name}`, root));
-const fromWeb = createRequire(new URL("apps/web/package.json", root));
+const folders = ["apps/mobile/public"];
 const fromE2e = createRequire(new URL("e2e/package.json", root));
 
+// The display font, Barlow Condensed ExtraBold: the copy the Expo app bundles (app/_layout.tsx).
 const font = readFileSync(
-  fromWeb.resolve("@fontsource/barlow-condensed/files/barlow-condensed-latin-800-normal.woff2"),
+  new URL("apps/mobile/assets/fonts/BarlowCondensed_800ExtraBold.ttf", root),
 ).toString("base64");
 
-// Colors are the `chrome`, `foreground` and `pow` tokens from apps/web/src/styles.css.
+// Colors are the `chrome`, `foreground` and `pow` tokens (apps/mobile/src/components/theme.ts).
 // `scale` is how much of the square the wordmark fills: Android crops a maskable icon to a shape,
 // keeping only the middle 80%, so that one is drawn smaller.
 const page = (scale) => `<!doctype html>
 <style>
   @font-face { font-family: "Barlow Condensed"; font-weight: 800;
-    src: url(data:font/woff2;base64,${font}) format("woff2"); }
+    src: url(data:font/ttf;base64,${font}) format("truetype"); }
   html, body { margin: 0; height: 100%; background: #030817; }
   body { display: grid; place-items: center; }
   .mark { display: grid; justify-items: stretch; transform: scale(${scale}); }
@@ -45,9 +44,12 @@ try {
     const tab = await browser.newPage({ viewport: { width: size, height: size } });
     await tab.setContent(page(scale));
     await tab.evaluate(() => document.fonts.ready);
-    await tab.screenshot({ path: out(name) });
+    const png = await tab.screenshot();
     await tab.close();
-    console.log(`wrote apps/web/public/${name}`);
+    for (const dir of folders) {
+      writeFileSync(new URL(`${dir}/${name}`, root), png);
+      console.log(`wrote ${dir}/${name}`);
+    }
   }
 } finally {
   await browser.close();

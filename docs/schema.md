@@ -162,6 +162,7 @@ erDiagram
     text[] game_ids
     text status
     integer attempts
+    text native_receipt_id
     timestamptz next_attempt_at
     timestamptz expires_at
     timestamptz created_at
@@ -169,6 +170,7 @@ erDiagram
   push_subscriptions {
     uuid id PK
     uuid user_id FK
+    text transport
     text endpoint UK
     text p256dh
     text auth
@@ -397,6 +399,7 @@ Durable per-device delivery queue. Unique event keys prevent repeated cron calls
 | `game_ids` | text[] | no |  | Game ids are rechecked for missing picks immediately before a reminder is sent. Has a default. |
 | `status` | text | no |  | One of: `pending`, `sent`, `skipped`, `failed`. Has a default. |
 | `attempts` | integer | no |  | Has a default. |
+| `native_receipt_id` | text | yes |  | Accepted Expo ticket awaiting its APNs/FCM receipt; prevents resending while polling. |
 | `next_attempt_at` | timestamptz | no |  | Has a default. |
 | `expires_at` | timestamptz | no |  |  |
 | `created_at` | timestamptz | no |  | Has a default. |
@@ -411,9 +414,10 @@ A browser/device explicitly opted into push for one player. Endpoints and keys a
 | --- | --- | --- | --- | --- |
 | `id` | uuid | no | PK | Has a default. |
 | `user_id` | uuid | no | FK → `auth.users.id` |  |
-| `endpoint` | text | no | unique | Only supported HTTPS browser push services; never returned to other players or logged. |
-| `p256dh` | text | no |  |  |
-| `auth` | text | no |  |  |
+| `transport` | text | no |  | Delivery protocol. Existing browser subscriptions keep the web default. One of: `web`, `expo`. Has a default. |
+| `endpoint` | text | no | unique | Supported browser push URL or Expo push token; never returned to other players or logged. |
+| `p256dh` | text | no |  | Web Push encryption key; empty for Expo devices. |
+| `auth` | text | no |  | Web Push encryption secret; empty for Expo devices. |
 | `new_threads` | boolean | no |  | Preferences apply to this device, independently of the player's other devices. Has a default. |
 | `pick_reminders` | boolean | no |  | Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |

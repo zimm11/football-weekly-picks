@@ -363,4 +363,71 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
     await drainPush(db, push, at);
     expect(send).toHaveBeenCalledOnce();
   });
+  it("registers native devices privately, rotates only the owner's token and preserves preferences", async () => {
+    const nativePush = {
+      publicKey: "",
+      send: vi.fn<PushSender["send"]>(async () => ({ receiptId: "ticket-123" })),
+      receipt: vi.fn(async () => "sent" as const),
+    };
+    const nativeApp = createApp({
+      db,
+      verifyToken,
+      publicConfig,
+      nfl: { getWeek: async () => [] },
+      nativePush,
+      now: () => at,
+    });
+    const callNative = (user: string, method: string, body: unknown) =>
+      nativeApp.request("/api/push/native/device", {
+        method,
+        headers: { Authorization: `Bearer ${user}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const token = `ExpoPushToken[${randomUUID()}]`;
+    const value = { token, newThreads: false, pickReminders: true };
+    expect((await callNative(player, "PUT", value)).status).toBe(200);
+    expect((await callNative(other, "POST", { token })).status).toBe(200);
+    expect(await (await callNative(other, "POST", { token })).json()).toEqual({ device: null });
+    expect((await callNative(other, "PUT", value)).status).toBe(409);
+    const next = `ExpoPushToken[${randomUUID()}]`;
+    const changed = await callNative(player, "PUT", {
+      token: next,
+      oldToken: token,
+      newThreads: true,
+      pickReminders: false,
+    });
+    expect(await changed.json()).toMatchObject({ device: { newThreads: false, pickReminders: true } });
+    expect(await (await callNative(player, "POST", { token })).json()).toEqual({ device: null });
+    await callNative(player, "DELETE", { token: next });
+    expect(await (await callNative(player, "POST", { token: next })).json()).toEqual({ device: null });
+  });
+  it("keeps native tickets pending until receipts arrive without resending and preserves browser delivery", async () => {
+    const webDevice = await device();
+    const [native] = await db
+      .insert(pushSubscriptions)
+      .values({
+        userId: player,
+        transport: "expo",
+        endpoint: `ExponentPushToken[${randomUUID()}]`,
+        p256dh: "",
+        auth: "",
+      })
+      .returning();
+    assert(native);
+    const nativeSend = vi.fn<PushSender["send"]>(async () => ({ receiptId: "ticket-123" }));
+    const receipt = vi.fn(async () => "sent" as const);
+    const nativePush = { publicKey: "", send: nativeSend, receipt };
+    await queueThreadPush(db, leagueId, threadId, author, at);
+    expect(await drainPush(db, push, at, nativePush)).toMatchObject({ sent: 1, retrying: 1 });
+    expect(send.mock.calls[0]?.[0].endpoint).toBe(webDevice.endpoint);
+    expect(nativeSend).toHaveBeenCalledOnce();
+    const [delivery] = await db
+      .select()
+      .from(pushDeliveries)
+      .where(eq(pushDeliveries.subscriptionId, native.id));
+    expect(delivery).toMatchObject({ status: "pending", nativeReceiptId: "ticket-123" });
+    expect((await drainPush(db, push, new Date(at.getTime() + 15 * 60_000), nativePush)).sent).toBe(1);
+    expect(receipt).toHaveBeenCalledWith("ticket-123");
+    expect(nativeSend).toHaveBeenCalledOnce();
+  });
 });

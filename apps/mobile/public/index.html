@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!--
+      The page template for the web build (`expo export --platform web`, single-page output). Expo adds a script
+      tag for each bundle before the closing body tag. No inline script: the Content-Security-Policy in
+      public/_headers allows scripts from 'self' only.
+    -->
+    <meta charset="utf-8" />
+    <!-- The background is the splash's, so nothing flashes white before the app draws. -->
+    <meta name="theme-color" content="#030817" />
+    <link rel="stylesheet" href="/boot.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Pick every NFL game against the spread with your league, and call your Pick of the Week." />
+    <title>POW Pick'em</title>
+    <!-- Installing to a home screen: Android and desktop read the manifest, iOS the apple-* tags. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="POW Pick'em" />
+  </head>
+  <body>
+    <noscript>POW Pick'em needs JavaScript.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

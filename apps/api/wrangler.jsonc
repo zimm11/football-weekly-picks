@@ -1,4 +1,4 @@
-// The whole app is one Cloudflare Worker: Static Assets serve the React SPA (apps/web/dist) from the edge,
+// The whole app is one Cloudflare Worker: Static Assets serve the Expo web build (apps/mobile/dist-web) from the edge,
 // and /api/* runs the Hono API in src/worker.ts. One origin, so no proxy and no CORS.
 // Deploys go through .github/workflows/deploy.yml; see README "Deployment".
 {
@@ -14,7 +14,7 @@
   // postgres.js, node:crypto, node:async_hooks and Buffer.
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "../web/dist",
+    "directory": "../mobile/dist-web",
     "binding": "ASSETS",
     // Unknown paths get index.html, so client-side routes load the app.
     "not_found_handling": "single-page-application",

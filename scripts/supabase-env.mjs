@@ -37,7 +37,6 @@ const get = (...keys) => {
 
 const env = {
   PORT: String(ports.api),
-  WEB_PORT: String(ports.web),
   DATABASE_URL: get("DB_URL"),
   SUPABASE_URL: get("API_URL"),
   SUPABASE_PUBLISHABLE_KEY: get("PUBLISHABLE_KEY", "ANON_KEY"),
@@ -46,7 +45,8 @@ const env = {
   // The local stack's test inbox (Mailpit), where E2E tests read auth emails such as password resets.
   INBOX_URL: `http://127.0.0.1:${ports.supabase.mail}`,
   // Notification email goes to the same test inbox (INBOX_URL). These secrets are for the local stack only.
-  APP_URL: `http://localhost:${ports.web}`,
+  // Links in it open the Expo web preview of `pnpm dev`; `pnpm worker:dev` points them at the Worker instead.
+  APP_URL: `http://localhost:${ports.metro}`,
   UNSUBSCRIBE_SECRET: "local-only-unsubscribe-secret-not-for-production",
   // The test inbox has no quota, so local runs (and repeated E2E) shouldn't stop at production's budget.
   EMAIL_DAILY_LIMIT: "10000",

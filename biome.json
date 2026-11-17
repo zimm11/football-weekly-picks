@@ -15,11 +15,6 @@
       "!**/worker-configuration.d.ts"
     ]
   },
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
-    }
-  },
   "formatter": {
     "indentStyle": "space",
     "indentWidth": 2,
@@ -37,5 +32,22 @@
     "rules": {
       "preset": "recommended"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/mobile/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noReactNativeRawText": {
+              "level": "error",
+              "options": {
+                "skip": ["Body", "Title", "Heading", "Label", "Action", "Badge", "Eyebrow"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

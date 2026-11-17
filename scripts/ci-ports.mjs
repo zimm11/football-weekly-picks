@@ -13,7 +13,7 @@ function available(port) {
 export async function selectCiSlot(check = available) {
   for (let slot = 0; slot <= 99; slot++) {
     const p = getPorts(slot);
-    const ports = [p.web, p.api, ...Object.values(p.supabase)];
+    const ports = [p.worker, p.api, ...Object.values(p.supabase)];
     if ((await Promise.all(ports.map(check))).every(Boolean)) return slot;
   }
   throw new Error("No free CI port group available.");

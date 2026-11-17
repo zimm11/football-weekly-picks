@@ -49,6 +49,7 @@ export function messageRoutes({
   verifyToken,
   email,
   push,
+  nativePush,
   limits,
   now = () => new Date(),
   background = (task) => void task(),
@@ -234,14 +235,17 @@ export function messageRoutes({
             now: now(),
           });
         }
-        if (push) await queueThreadPush(tx, leagueId, t.id, c.var.user.id, now());
+        if (push || nativePush) await queueThreadPush(tx, leagueId, t.id, c.var.user.id, now());
         return t.id;
       });
       // Sent after the thread is committed, so a slow or failing provider never holds up posting.
       if (email && queued) {
         background(() => drainOutbox(db, email, now()).catch((err) => logError("email_jobs", err)));
       }
-      if (push) background(() => drainPush(db, push, now()).catch((err) => logError("push_delivery", err)));
+      if (push || nativePush)
+        background(() =>
+          drainPush(db, push, now(), nativePush).catch((err) => logError("push_delivery", err)),
+        );
       return c.json({ id }, 201);
     })
     .get("/leagues/:leagueId/messages/:threadId", auth, threadParam, async (c) => {
