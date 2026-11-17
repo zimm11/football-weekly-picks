@@ -1,0 +1,24 @@
+/*
+ * Linked from index.html, so it applies before the app's scripts run. An inline <style> would work too (the
+ * policy allows inline styles for react-native-web), but the page is kept free of inline code.
+ *
+ * The background is the splash's, so nothing flashes white first. The rest is react-native-web's recommended
+ * root setup (https://necolas.github.io/react-native-web/docs/setup/#root-element), as in Expo's default
+ * template: the page is exactly the viewport's height, the app's ScrollViews scroll instead of the body, and
+ * the root element fills the page.
+ */
+html {
+  background: #030817;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  overflow: hidden;
+}
+#root {
+  display: flex;
+  height: 100%;
+  flex: 1;
+}

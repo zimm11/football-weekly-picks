@@ -1,0 +1,40 @@
+/** The app's color and font tokens, shared by the iPhone app and the web build (see AGENTS.md, Design). */
+const palette = {
+  background: "#070d1f",
+  foreground: "#f1f4fb",
+  chrome: "#030817",
+  card: "#0f1834",
+  raised: "#17234a",
+  primary: "#4d7cff",
+  primaryForeground: "#04102e",
+  secondary: "#1a2750",
+  muted: "#16224a",
+  mutedForeground: "#94a0bd",
+  border: "#94a0bd1f",
+  input: "#94a0bd33",
+  pow: "#ff3d5e",
+  powForeground: "#ffffff",
+  destructive: "#ffa37a",
+  win: "#3ddc97",
+};
+export const colors = {
+  ...palette,
+  primaryTint: `${palette.primary}1f`,
+  powTint: `${palette.pow}1f`,
+  winTint: `${palette.win}1a`,
+  destructiveTint: `${palette.destructive}1a`,
+  popover: "#131f41",
+  overlay: "#00000099",
+  avatarForeground: "#ffffff",
+  avatars: ["#3b5bdb", "#2f9e77", "#c2410c", "#7c3aed", "#0e7490", "#b45309", "#be185d", "#4d7c0f"],
+};
+export const fonts = {
+  body: "Barlow",
+  medium: "BarlowMedium",
+  semibold: "BarlowSemiBold",
+  bold: "BarlowSemiBold",
+  display: "BarlowCondensed",
+  displaySemibold: "BarlowCondensedSemibold",
+  displayBold: "BarlowCondensed",
+  displayExtraBold: "BarlowCondensedExtraBold",
+};

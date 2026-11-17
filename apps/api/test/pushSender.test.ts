@@ -2,7 +2,7 @@ import type { Db } from "@picks/db";
 import { describe, expect, it, vi } from "vitest";
 import { loadEnv, loadWorkerEnv } from "../src/env";
 import { runPushJobs } from "../src/pushQueue";
-import { type PushSender, permanentPushCode, webPushSender } from "../src/pushSender";
+import { expoPushSender, type PushSender, permanentPushCode, webPushSender } from "../src/pushSender";
 import {
   base64UrlDecode,
   base64UrlEncode,
@@ -264,5 +264,74 @@ describe("push environment", () => {
       "Set all three VAPID variables",
     );
     expect(loadWorkerEnv({ ...shared, ...vapid }).VAPID_SUBJECT).toBe("mailto:a@b.c");
+  });
+});
+
+describe("Expo push transport", () => {
+  const target = { endpoint: "ExponentPushToken[synthetic-device]", p256dh: "", auth: "" };
+  it("posts only to the fixed Expo gateway and retains a ticket until its receipt is checked", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ data: { status: "ok", id: "ticket-123" } }))
+      .mockResolvedValueOnce(Response.json({ data: { "ticket-123": { status: "ok" } } }));
+    const sender = expoPushSender("secret-access-token", fetch);
+    expect(await sender.send(target, payload, 90)).toEqual({ receiptId: "ticket-123" });
+    expect(await sender.receipt?.("ticket-123")).toBe("sent");
+    expect(fetch.mock.calls[0]?.[0]).toBe("https://exp.host/--/api/v2/push/send");
+    expect(fetch.mock.calls[1]?.[0]).toBe("https://exp.host/--/api/v2/push/getReceipts");
+    const init = fetch.mock.calls[0]?.[1];
+    expect(init?.headers).toMatchObject({ Authorization: "Bearer secret-access-token" });
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      to: target.endpoint,
+      ttl: 90,
+      data: { url: payload.url },
+    });
+  });
+  it("removes a native device only for DeviceNotRegistered, including receipt failures", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const [error, result] of [
+      ["DeviceNotRegistered", "gone"],
+      ["InvalidCredentials", "failed"],
+      ["MessageTooBig", "failed"],
+      ["MessageRateExceeded", "resend"],
+    ] as const) {
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
+        Response.json({
+          data: {
+            "ticket-123": { status: "error", message: "private-provider-message", details: { error } },
+          },
+        }),
+      );
+      expect(await expoPushSender(undefined, fetch).receipt?.("ticket-123")).toBe(result);
+    }
+    expect(JSON.stringify(log.mock.calls)).not.toContain("private-provider-message");
+    log.mockRestore();
+  });
+  it("retries missing receipts, timeouts and gateway outages without dropping tokens", async () => {
+    for (const response of [
+      Response.json({ data: {} }),
+      new Response(null, { status: 429 }),
+      new Response(null, { status: 503 }),
+    ]) {
+      expect(
+        await expoPushSender(
+          undefined,
+          vi.fn(async () => response),
+        ).receipt?.("ticket-123"),
+      ).toBe("retry");
+    }
+    const fetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error("private transport error"));
+    expect(await expoPushSender(undefined, fetch).send(target, payload, 90)).toBe("retry");
+  });
+  it("refuses arbitrary URLs and malformed tokens before any network request", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    expect(
+      await expoPushSender(undefined, fetch).send(
+        { ...target, endpoint: "https://localhost/private" },
+        payload,
+        90,
+      ),
+    ).toBe("failed");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

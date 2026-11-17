@@ -1,0 +1,3 @@
+# Files Workers Static Assets leaves out when this build is uploaded (it already skips _headers and itself).
+# metadata.json is the EAS Update manifest Expo writes beside every export; the website has no use for it.
+metadata.json

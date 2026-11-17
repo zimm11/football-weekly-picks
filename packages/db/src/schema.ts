@@ -411,16 +411,25 @@ export const pushSubscriptions = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     userId: userRef(),
-    /** Only supported HTTPS browser push services; never returned to other players or logged. */
+    /** Delivery protocol. Existing browser subscriptions keep the web default. */
+    transport: text({ enum: ["web", "expo"] })
+      .notNull()
+      .default("web"),
+    /** Supported browser push URL or Expo push token; never returned to other players or logged. */
     endpoint: text().notNull().unique(),
+    /** Web Push encryption key; empty for Expo devices. */
     p256dh: text().notNull(),
+    /** Web Push encryption secret; empty for Expo devices. */
     auth: text().notNull(),
     /** Preferences apply to this device, independently of the player's other devices. */
     newThreads: boolean().notNull().default(true),
     pickReminders: boolean().notNull().default(true),
     createdAt: createdAt(),
   },
-  (t) => [index("push_subscriptions_user_idx").on(t.userId)],
+  (t) => [
+    index("push_subscriptions_user_idx").on(t.userId),
+    oneOf("push_subscriptions_transport_check", t.transport, ["web", "expo"]),
+  ],
 ).enableRLS();
 
 /** Durable per-device delivery queue. Unique event keys prevent repeated cron calls from queuing twice. */
@@ -443,6 +452,8 @@ export const pushDeliveries = pgTable(
     gameIds: text().array().notNull().default(sql`'{}'::text[]`),
     status: text({ enum: PUSH_STATUSES }).notNull().default("pending"),
     attempts: integer().notNull().default(0),
+    /** Accepted Expo ticket awaiting its APNs/FCM receipt; prevents resending while polling. */
+    nativeReceiptId: text(),
     nextAttemptAt: createdAt(),
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     createdAt: createdAt(),

@@ -10,16 +10,20 @@ import type { PushSender } from "./pushSender";
  * on its own: a push service outage never holds up email or the other way round, and within each channel a
  * failure to queue reminders (logged as `email_queue` / `push_queue`) never stops the send step.
  */
-export async function runScheduledJobs(db: Db, deps: { email?: EmailDeps; push?: PushSender }, now: Date) {
-  const { email, push } = deps;
+export async function runScheduledJobs(
+  db: Db,
+  deps: { email?: EmailDeps; push?: PushSender; nativePush?: PushSender },
+  now: Date,
+) {
+  const { email, push, nativePush } = deps;
   await Promise.all([
     email &&
       runEmailJobs(db, email, now).then(
         (result) => logJobRun("email_jobs", result),
         (error) => logError("email_jobs", error),
       ),
-    push &&
-      runPushJobs(db, push, now).then(
+    (push || nativePush) &&
+      runPushJobs(db, push, now, nativePush).then(
         (result) => logJobRun("push_jobs", result),
         (error) => logError("push_delivery", error),
       ),

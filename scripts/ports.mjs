@@ -87,7 +87,10 @@ export function getPorts(slot = resolveSlot()) {
     slot,
     projectId: slot === 0 ? "football-weekly-picks" : `football-weekly-picks-${slot}`,
     api: 8787 + slot,
-    web: 5173 + slot,
+    // `pnpm worker:dev` (and E2E): the Expo web build and the API in the Workers runtime, on one origin.
+    worker: 9787 + slot,
+    // Expo's dev server (`pnpm dev`, `pnpm mobile`), which also serves the browser preview.
+    metro: 8081 + slot,
     supabase: {
       shadowDb: sb,
       api: sb + 1,
@@ -113,7 +116,7 @@ export function supabaseCliEnv(ports = getPorts()) {
     SUPABASE_LOCAL_SMTP_PORT: String(ports.supabase.mail),
     SUPABASE_ANALYTICS_PORT: String(ports.supabase.analytics),
     SUPABASE_EDGE_RUNTIME_INSPECTOR_PORT: String(ports.supabase.inspector),
-    SUPABASE_AUTH_SITE_URL: `http://localhost:${ports.web}`,
+    SUPABASE_AUTH_SITE_URL: `http://localhost:${ports.worker}`,
   };
 }
 
@@ -122,7 +125,8 @@ if (import.meta.main) {
   console.log(
     [
       `Port slot ${p.slot}${p.slot === 0 ? " (default ports)" : ""}, Supabase project "${p.projectId}"`,
-      `  Web app          http://localhost:${p.web}`,
+      `  Web preview      http://localhost:${p.metro}   (pnpm dev)`,
+      `  Worker           http://localhost:${p.worker}   (pnpm worker:dev, E2E)`,
       `  API              http://localhost:${p.api}`,
       `  Supabase API     http://127.0.0.1:${p.supabase.api}`,
       `  Supabase Studio  http://127.0.0.1:${p.supabase.studio}`,

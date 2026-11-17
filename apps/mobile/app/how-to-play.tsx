@@ -1,0 +1,317 @@
+import { MAX_LEAGUE_MEMBERS, MAX_LEAGUES_PER_USER } from "@picks/shared";
+import { useRef, useState } from "react";
+import { Platform, ScrollView, Text, View } from "react-native";
+import { BackLink } from "../src/components/BackLink";
+import { Icon, type IconName } from "../src/components/Icon";
+import { Body, Button, Card, colors, fonts, styles, Title } from "../src/components/ui";
+import { useAuth } from "../src/lib/auth";
+import { openScreen } from "../src/lib/navigation";
+
+const playerSteps = [
+  [
+    "Get into your league",
+    `Create an account or sign in, then choose your display name. Open the invite link your admin sends and press Join league. You can belong to up to ${MAX_LEAGUES_PER_USER} leagues. Your leagues are always one tap away from the POW Pick'em logo.`,
+  ],
+  [
+    "Open Picks and choose your sides",
+    "Select your league, then the Picks tab. The current open week's sheet appears there. Tap a team in each matchup to pick it against the displayed spread. Stats, news & market under a game opens team form, injuries, news, and prediction-market prices for it. If there is no open week, wait for your admin to open one.",
+  ],
+  [
+    "Choose your POW and tiebreaker",
+    "Tap POW beside one of your selected teams. Enter your guess for the combined total points in the labeled tiebreaker game, usually Monday night.",
+  ],
+  [
+    "Press Save picks",
+    "Tapping a team does not save it. Press Save picks and look for “Picks saved.” You can save a partial sheet and return for the rest. Change and save a pick any time before its game kicks off.",
+  ],
+  [
+    "Check results and the season race",
+    "As each game ends, its result shows on your pick sheet: Won with the points you earned, Lost, or Push. Your week so far adds up your points, record, and POW; it's unofficial until the admin finalizes the week. Once the admin closes the week, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
+  ],
+  [
+    "Talk it over in Messages",
+    "The Messages tab is your league's message board. Start a thread or reply to one; a dot on the tab marks threads with posts you haven't read. Tap the smiley below any message or reply and choose an emoji; the reactions a message has appear beside it with a count of the players who chose each, and yours are highlighted. Tap one to add yours, or tap yours again to remove it. Reactions don't mark threads unread. Admins can permanently delete a thread and all its replies and reactions from its ⋯ menu after confirming. Admins can pin a thread as an announcement to keep it at the top of the board. The board shows the newest 30 threads; Load older threads brings in more. You can start five threads a day in a league, and reply as often as you like. Use Quote reply below a message to include it with your reply; Remove quote keeps your draft text. Posted quotes name the original author and link back to their message.",
+  ],
+  [
+    "Get reminders",
+    Platform.OS === "web"
+      ? "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default. To get them as notifications on this device too, or to turn either kind off, open Settings from the account menu. On iPhone and iPad, add POW Pick'em to your home screen first (iOS 16.4 or later)."
+      : "At 7pm in your league's time zone the evening before game day, you get a reminder if you still have games to pick that day, plus a note when someone starts a thread. Email is on by default. To get them as notifications on this device too, or to turn either kind off, open Settings from the account menu.",
+  ],
+  [
+    "Manage your account",
+    "Tap your name in the header to change your name or password, open Settings, or sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them.",
+  ],
+];
+const adminSteps = [
+  [
+    "Create your league and invite the crew",
+    `From Your leagues, enter a League name and press Create league. In the League tab, check the league time zone (used to show game days and times) in settings and copy the invite link to share with players. The league and its members carry over between seasons. A league can hold up to ${MAX_LEAGUE_MEMBERS} players.`,
+  ],
+  [
+    "Share the admin work",
+    "In the League tab, tap ⋯ beside a member and choose Make admin to give them the same access you have; Revoke admin takes it back and keeps them in the league as a player. Remove from league takes a member out while keeping their results from weeks already played. Make a new link replaces the invite link, so the old one stops working. A league always keeps at least one admin: if you're the only one, make someone else an admin before leaving or stepping down.",
+  ],
+  [
+    "Set up a draft week",
+    "Choose the Season above the league tabs. To begin another year, select Start a new season and enter its starting year. In the League tab, select a week (1–18) and press Create week; existing weeks open with Manage week instead. The season choice carries across Picks, Results, Standings, and League. Leave Import games and spreads from ESPN checked to load the slate, or add games by hand. You land on Manage week; drafts are visible only to admins.",
+  ],
+  [
+    "Review the slate, then open picks",
+    "Check kickoffs, spreads, and point values. Kickoffs you type are in the league's time zone, and a game moved to a new slot takes that slot's points unless you set them yourself. Add or remove games, choose the tiebreaker game if needed, and press Save changes after edits. When the slate is ready, press Open week for picks. Players can now find it on their Picks tab, and you're offered a league message to announce it.",
+  ],
+  [
+    "Make your picks and check submissions",
+    "Use Make your own picks to fill out the same sheet as everyone else. Return to Manage week to see who has picked and whether they chose a POW. Other players' picks remain private.",
+  ],
+  [
+    "Record scores and finalize the week",
+    "Results for games imported from ESPN fill in on their own as each game ends, whenever someone has the week open. To fetch them right away, press Pull results from ESPN in Manage week; it replaces any score typed in by hand. Or enter scores and press Save changes; a score you type is never overwritten automatically. Score boxes appear once a game kicks off; press Enter score to record one sooner. When every game has a final score, press Finalize week and confirm. This reveals everyone's picks, names the winner and any Low Point Loser, and updates season standings. You can write a league message with the final results shown for reference. Pulling results and finalizing never change spreads: the opening lines stay in place unless an admin edits them manually.",
+  ],
+  [
+    "Correct results when needed",
+    "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't pulled from ESPN again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, other players' picks are hidden and the week is excluded from standings.",
+  ],
+];
+function Steps({ items }: { items: string[][] }) {
+  return (
+    <Card>
+      {items.map(([title, detail], index) => (
+        <View
+          key={title}
+          style={{
+            flexDirection: "row",
+            gap: 16,
+            paddingTop: index ? 20 : 0,
+            paddingBottom: index === items.length - 1 ? 0 : 4,
+            borderTopWidth: index ? 1 : 0,
+            borderTopColor: colors.border,
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: colors.primaryTint,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ fontFamily: fonts.displayBold, fontSize: 20, color: colors.primary }}>
+              {index + 1}
+            </Text>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text
+              accessibilityRole="header"
+              aria-level={4}
+              style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
+            >
+              {title}
+            </Text>
+            <Body muted>{detail}</Body>
+          </View>
+        </View>
+      ))}
+    </Card>
+  );
+}
+function SectionHeading({ title, icon }: { title: string; icon: IconName }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+      <Icon name={icon} size={28} color={colors.primary} />
+      <Title style={{ fontSize: 30, lineHeight: 34 }}>{title}</Title>
+    </View>
+  );
+}
+export default function HowToPlay() {
+  const auth = useAuth();
+  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const [positions, setPositions] = useState<Record<string, number>>({});
+  return (
+    <ScrollView
+      ref={scroll}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={[styles.content, { gap: 32, paddingTop: 32 }]}
+    >
+      <View style={{ gap: 16 }}>
+        <BackLink fallbackLabel={auth.session ? "Your leagues" : "Home"} />
+        <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.primary }}>
+          The league playbook
+        </Text>
+        <Title style={{ fontSize: 48, lineHeight: 48 }}>How to play</Title>
+        <Body muted style={{ fontSize: 18, lineHeight: 28 }}>
+          POW Pick'em brings your crew together for the NFL regular season. Each week, pick games against the
+          spread, choose a Pick of the Week (POW), and compete for weekly wins and the season lead.
+        </Body>
+        <Button
+          link
+          title={auth.session ? "Go to your leagues" : "Sign in or create an account"}
+          style={{ alignSelf: "flex-start" }}
+          icon="chevron-right"
+          onPress={() => void openScreen("/")}
+        />
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {[
+          ["rules", "The pick rules"],
+          ["players", "For players"],
+          ["admins", "For admins"],
+        ].map(([id, title]) => (
+          <Button
+            link
+            key={id}
+            title={title ?? ""}
+            variant="secondary"
+            style={{ flexGrow: 1 }}
+            small
+            onPress={() => scroll.current?.scrollTo({ y: positions[id ?? ""] ?? 0, animated: true })}
+          />
+        ))}
+      </View>
+      <View
+        onLayout={(event) => setPositions((old) => ({ ...old, rules: event.nativeEvent.layout.y }))}
+        style={{ gap: 20 }}
+      >
+        <SectionHeading title="The pick rules" icon="trophy" />
+        <Card>
+          <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>Play the spread</Body>
+          <Body muted>
+            Pick the team you think will cover the displayed spread, rather than simply win the game. A minus
+            line means the team is favored; a plus line gives the underdog a head start.
+          </Body>
+          <View style={{ backgroundColor: colors.primaryTint, borderRadius: 12, padding: 16, gap: 4 }}>
+            <Body style={{ fontFamily: fonts.semibold }}>Example: Buffalo −3.5 vs. Miami +3.5</Body>
+            <Body muted>
+              Buffalo covers by winning by 4 or more. Miami covers by winning outright or losing by 3 or
+              fewer. Equal adjusted scores on a whole-number spread are a push.
+            </Body>
+          </View>
+          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+            A winning pick earns the game’s points. Losing or missing picks earn zero. A push earns zero and
+            is neither a win nor a loss. Use the spread shown in the app; it stays fixed unless an admin edits
+            it.
+          </Body>
+        </Card>
+        <Card>
+          <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>What each game is worth</Body>
+          {[
+            ["Sunday daytime", "1 point"],
+            ["Sunday night · 7pm ET or later", "2 points"],
+            ["Thursday & Monday", "3 points"],
+            ["Tuesday, Wednesday, Friday & Saturday", "2 points"],
+            ["Thanksgiving & Christmas Day", "4 points"],
+          ].map(([slot, points]) => (
+            <View
+              key={slot}
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                paddingBottom: 12,
+              }}
+            >
+              <Body muted style={{ fontSize: 14, flex: 1 }}>
+                {slot}
+              </Body>
+              <Body style={{ fontSize: 14, fontFamily: fonts.semibold }}>{points}</Body>
+            </View>
+          ))}
+          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+            Default game slots use Eastern time. Holiday values take priority. Admins can change game values,
+            so always check the points on your sheet.
+          </Body>
+        </Card>
+        <Card>
+          <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>One POW. Bigger stakes.</Body>
+          <Body muted>
+            Mark one pick as your Pick of the Week. If it covers, earn the game’s points plus{" "}
+            <Text style={{ color: colors.pow, fontFamily: fonts.semibold }}>5 bonus points</Text>. A losing or
+            pushed POW earns no bonus.
+          </Body>
+          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+            There is no automatic POW. Move it between unlocked games as often as you like. Once its game
+            kicks off, it stays there for the week.
+          </Body>
+        </Card>
+        <Card>
+          <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>Know the deadlines</Body>
+          <Body muted>Every game locks at its own kickoff, or as soon as a result is entered.</Body>
+          {[
+            ["Before kickoff", "Save or change your pick and move your POW as often as you like."],
+            [
+              "At kickoff",
+              "No new picks or changes on that game. Unsaved changes that lock are undone; the save bar tells you which.",
+            ],
+            ["Once your POW’s game kicks off", "Your POW cannot be moved or removed."],
+          ].map(([title, detail]) => (
+            <View
+              key={title}
+              style={{ padding: 12, borderRadius: 12, backgroundColor: colors.raised, gap: 4 }}
+            >
+              <Body style={{ fontFamily: fonts.semibold }}>{title}</Body>
+              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+                {detail}
+              </Body>
+            </View>
+          ))}
+          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+            Enter or change your tiebreaker guess until its game locks. A saved guess cannot be removed.
+          </Body>
+        </Card>
+        <Card>
+          <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>How winners are decided</Body>
+          <Body style={{ fontFamily: fonts.semibold }}>Weekly winner</Body>
+          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+            Most points, then games won, then closest to the tiebreaker game’s combined score. Equal distances
+            favor the guess that did not go over. Remaining ties share the win. The same order from the bottom
+            names the Low Point Loser; nobody is LPL if the entire league is tied.
+          </Body>
+          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+            A perfect week wins every game. A bullseye is an exact tiebreaker guess. A lone wolf is alone on
+            the covering side of a game at least three players picked. The tiebreaker is the admin’s chosen
+            game, otherwise the last Monday game, or last game if there is no Monday game.
+          </Body>
+          <Body style={{ fontFamily: fonts.semibold }}>Season standings</Body>
+          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+            Points from closed weeks, then POWs won, wins, Monday wins, and Sunday night wins. Remaining ties
+            share a rank. Picks stay private until an admin finalizes the week; admins can see submission
+            status, never other players’ choices.
+          </Body>
+        </Card>
+      </View>
+      <View
+        onLayout={(event) => setPositions((old) => ({ ...old, players: event.nativeEvent.layout.y }))}
+        style={{ gap: 20 }}
+      >
+        <SectionHeading title="For players" icon="users" />
+        <Steps items={playerSteps} />
+      </View>
+      <View
+        onLayout={(event) => setPositions((old) => ({ ...old, admins: event.nativeEvent.layout.y }))}
+        style={{ gap: 20 }}
+      >
+        <SectionHeading title="For admins" icon="list" />
+        <Body muted>
+          The person who creates a league is its first admin and can make other members admins too. Players
+          make picks; admins also prepare the slate and publish results. Each week moves from Draft →
+          Accepting picks → Games underway → Awaiting finalization → Final. Finalization is an admin action,
+          so results stay private until then.
+        </Body>
+        <Steps items={adminSteps} />
+      </View>
+      <View style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }}>
+        <Body muted>Ready for the next slate?</Body>
+        <Button
+          link
+          title={auth.session ? "Go to your leagues" : "Get started"}
+          icon="chevron-right"
+          onPress={() => void openScreen("/")}
+        />
+      </View>
+    </ScrollView>
+  );
+}

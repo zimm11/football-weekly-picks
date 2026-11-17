@@ -7,9 +7,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev": "node scripts/mobile-dev.mjs --web",
     "worker:dev": "pnpm --filter @picks/api dev:worker",
-    "build": "pnpm --filter @picks/web build && pnpm --filter @picks/api build",
+    "build": "pnpm --filter @picks/mobile build:web && pnpm --filter @picks/api build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && node --test scripts/*.test.mjs",
     "lint": "biome check .",
@@ -30,7 +30,12 @@
     "playwright:install": "pnpm --filter @picks/e2e exec playwright install --with-deps chromium webkit",
     "sb": "node scripts/supabase.mjs",
     "ports": "node scripts/ports.mjs",
-    "icons": "node scripts/icons.mjs"
+    "icons": "node scripts/icons.mjs",
+    "mobile": "node scripts/mobile-dev.mjs",
+    "mobile:prod": "pnpm --filter @picks/mobile exec expo start --go",
+    "mobile:eas": "pnpm --filter @picks/mobile exec npx --yes eas-cli@27.10.0",
+    "mobile:check": "pnpm --filter @picks/mobile typecheck && pnpm --filter @picks/mobile test",
+    "mobile:export": "pnpm --filter @picks/mobile export:ios"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",

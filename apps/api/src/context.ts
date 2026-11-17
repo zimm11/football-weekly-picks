@@ -44,6 +44,8 @@ export type AppDeps = {
   limits?: { membersPerLeague: number; leaguesPerUser: number; threadsPerDay?: number };
   /** Web Push transport. Without one (no VAPID keys), nothing is queued or sent and devices can't subscribe. */
   push?: PushSender;
+  /** Expo native push, configured independently of browser VAPID keys. */
+  nativePush?: PushSender;
   /**
    * Runs work after the response is sent: a new thread's emails and notifications. By default it just starts the
    * task. The Worker hands it to the request's `waitUntil` and keeps the request's database connection open until

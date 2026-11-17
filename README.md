@@ -8,7 +8,8 @@ The app supports regular-season weeks 1–18, invite-only leagues with shared ad
 seasons, private picks until finalization, and season standings with a week-by-week history. Each game has
 a matchup sheet with team stats, injuries, news, and prediction-market prices. Finalized weeks hand out
 awards and name a Low Point Loser, and each league has a message board. The interface is phone-first and
-dark, and the app can be added to a phone's home screen.
+dark, and the website can be added to a phone's home screen. One Expo (React Native) app is both the website
+and the iPhone app.
 
 - [Local setup](#local-setup)
 - [Trying the app locally](#trying-the-app-locally)
@@ -35,18 +36,22 @@ pnpm install --frozen-lockfile
 pnpm db:start    # start local Supabase; first start applies migrations and seed data
 pnpm env:local   # generate this checkout's .env from the running stack
 pnpm ports      # show this checkout's URLs
-pnpm dev        # run the web app and API together
+pnpm dev        # run the API and the Expo app, with its browser preview
 ```
 
-Open the web URL printed by `pnpm ports`. The main checkout uses `http://localhost:5173`; linked git
-worktrees get their own ports and database. No hosted Supabase project, Cloudflare account, or ESPN API key
-is needed for local development. The first Supabase start downloads its container images.
+`pnpm dev` (the same as `pnpm mobile --web`) opens the app's browser preview, the website in development with
+hot reload, at the web URL it prints. The main checkout uses `http://localhost:8081`; linked git worktrees get
+their own ports and database. It also prints a QR code for trying the app on an iPhone with Expo Go (see
+"Native iPhone app (Expo)" below), so it needs this computer on a network (Wi-Fi or Ethernet), even for the
+browser alone. To run the production build instead, as Cloudflare does and as E2E tests it, use
+`pnpm worker:dev`. No hosted Supabase project, Cloudflare account, or ESPN API key is needed for local
+development. The first Supabase start downloads its container images.
 
 To run all tests, use another terminal after setup:
 
 ```sh
 pnpm playwright:install  # one-time Chromium and WebKit installation
-pnpm test:all           # unit, component, script, API, and E2E tests
+pnpm test:all           # unit, script, API, and E2E tests
 ```
 
 ### Environment variables
@@ -57,13 +62,12 @@ Running it again overwrites `.env`.
 
 | Variable                   | Purpose                                                      | Main checkout / default                                           |
 | -------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| `PORT`                     | API listen port; also used by the dev proxy and E2E tests    | `8787`                                                            |
-| `WEB_PORT`                 | Vite dev server and E2E web port                             | `5173`                                                            |
+| `PORT`                     | API listen port; the local Worker uses `PORT + 1000`         | `8787`                                                            |
 | `DATABASE_URL`             | PostgreSQL connection string used by the API                 | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` locally |
 | `SUPABASE_URL`             | Supabase Auth project URL                                    | `http://127.0.0.1:54321` locally                                  |
 | `SUPABASE_PUBLISHABLE_KEY` | Public Supabase publishable key, or legacy `anon` key        | Generated from the local stack                                    |
 | `INBOX_URL`                | Local mailer: the stack's test inbox (refused in production) | `http://127.0.0.1:54324` locally                                  |
-| `APP_URL`                  | Web origin that links in emails point at                     | `http://localhost:5173` locally                                   |
+| `APP_URL`                  | Web origin that links in emails point at                     | `http://localhost:8081` (the Expo web preview) locally            |
 | `UNSUBSCRIBE_SECRET`       | Signs unsubscribe links (32+ characters); turns email on     | A fixed local-only value                                          |
 | `EMAIL_FROM`               | Sender of notification emails                                | `POW Pick'em <noreply@pow-pickem.com>`                            |
 | `EMAIL_DAILY_LIMIT`        | Most notification emails sent per UTC day                    | `1000` (`10000` locally)                                          |
@@ -72,8 +76,9 @@ Running it again overwrites `.env`.
 | `VAPID_PRIVATE_KEY`        | Web Push private key (secret)                                | Unset locally                                                     |
 | `VAPID_SUBJECT`            | Contact for push services (`mailto:` or `https:`)            | Unset locally                                                     |
 
-The web app fetches its public Auth configuration from `/api/config` at runtime, so its production build
-needs no environment variables. Database credentials stay on the API server.
+The app fetches its public Auth configuration from `/api/config` at runtime, so its production web build
+needs no environment variables, and it calls the API on its own origin. Database credentials stay on the API
+server.
 
 #### Simulating a different date and time (local only)
 
@@ -84,8 +89,8 @@ To test pick and POW locks or week phases without waiting for game day, start th
 CLOCK_OVERRIDE=2026-09-13T12:30:00-04:00 pnpm dev
 ```
 
-The API's clock starts at that moment and keeps running in real time. The web app picks up the same offset
-from `/api/config` and shows a **Simulated time** banner under the header. Restart `pnpm dev` to change or
+The API's clock starts at that moment and keeps running in real time. The app picks up the same offset
+from `/api/config`, so its locks and phases follow the simulated time too. Restart `pnpm dev` to change or
 clear it. The API refuses to start with `CLOCK_OVERRIDE` when `NODE_ENV=production`, so it can't reach the
 deployed service. Rows the database timestamps itself (such as message times) still use the real clock.
 
@@ -104,9 +109,10 @@ or `pnpm worker:dev`.
 
 ### Ports, worktrees, and stopping the stack
 
-Run `pnpm ports` in each checkout to see its web, API, Supabase, Studio, test inbox, and PostgreSQL URLs.
-The main checkout uses slot 0. Each linked worktree gets an isolated Supabase project and the next free
-slot `n`: web port `5173 + n`, API port `8787 + n`, and Supabase ports based at `54320 + 10n`.
+Run `pnpm ports` in each checkout to see its web preview, Worker, API, Supabase, Studio, test inbox, and
+PostgreSQL URLs. The main checkout uses slot 0. Each linked worktree gets an isolated Supabase project and the
+next free slot `n`: Expo (web preview) port `8081 + n`, API port `8787 + n`, local Worker port `9787 + n`, and
+Supabase ports based at `54320 + 10n`.
 `PICKS_PORT_SLOT=<n>` can override allocation; use the same override for all commands in that checkout.
 
 Always use `pnpm db:*` or `pnpm sb <args>` for Supabase commands. These wrappers select the checkout's
@@ -145,7 +151,7 @@ opens the league.
 Local sign-up needs no email confirmation. You can create an account with a made-up email address and
 a password of at least six characters. To join the seeded league, open `/join/local-invite` on your web
 URL, sign in, and press **Join league**. In the main checkout, that URL is
-`http://localhost:5173/join/local-invite`.
+`http://localhost:8081/join/local-invite`.
 
 Use a normal browser window for the admin and a private window or different browser profile for a player.
 Sessions are stored per browser profile, so both accounts can stay signed in side by side.
@@ -362,7 +368,8 @@ after a reopen only adds players. Weeks closed before that record existed use me
 
 ## Architecture and repository layout
 
-This is a TypeScript pnpm workspace with a React SPA, a Hono API, and Supabase Auth + PostgreSQL.
+This is a TypeScript pnpm workspace with an Expo (React Native) app that is both the website and the iPhone
+app, a Hono API, and Supabase Auth + PostgreSQL.
 
 ```text
 Browser ── /api/* ──> Hono API ── Drizzle ──> PostgreSQL
@@ -372,14 +379,16 @@ Browser ── /api/* ──> Hono API ── Drizzle ──> PostgreSQL
        (team logos)      └── ESPN game summary + Kalshi markets (matchup sheet)
 ```
 
-Vite proxies `/api` to the API during development. In production, one Cloudflare Worker serves both: its
-static assets are the web build, and `/api/*` runs the API, so browser API requests stay on the same origin. The browser signs in through
-Supabase Auth and sends its access token to the API as `Authorization: Bearer <access_token>`.
+In development the Expo web preview calls the API directly (CORS limited to this checkout's Metro origin, and
+only outside production). In production one Cloudflare Worker serves both: its static assets are the Expo web
+build, and `/api/*` runs the API, so browser API requests stay on the same origin. The iPhone app calls the
+same API at `www.pow-pickem.com`. Each client signs in through Supabase Auth and sends its access token to the
+API as `Authorization: Bearer <access_token>`.
 Application data goes through the API; app tables have row-level security enabled without client policies.
 
 | Path                                     | Responsibility                                                                                                          |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [`apps/web`](apps/web)                   | React 19, Vite, Tailwind CSS v4, shadcn/ui, and a small History API router; pages fetch data and components render it   |
+| [`apps/mobile`](apps/mobile)             | Expo Router, React Native and react-native-web: the iPhone app and, exported for the web, the website                   |
 | [`apps/api`](apps/api)                   | Hono routes for profiles, leagues, invites, weeks, picks, results, and messages; Worker and Node entrypoints, providers |
 | [`packages/shared`](packages/shared)     | Shared Zod schemas, types, scoring, locks, awards, season selection, and statistics                                     |
 | [`packages/db`](packages/db)             | Drizzle schema, PostgreSQL client, TLS policy, migration generation, and schema documentation generator                 |
@@ -390,7 +399,7 @@ Application data goes through the API; app tables have row-level security enable
 | [`docs/schema.md`](docs/schema.md)       | Generated ER diagram and table/column reference                                                                         |
 
 Useful starting points are [`apps/api/src/app.ts`](apps/api/src/app.ts) for API composition,
-[`apps/web/src/api.ts`](apps/web/src/api.ts) for the typed Hono client and Auth configuration, and
+[`apps/mobile/src/lib/api.ts`](apps/mobile/src/lib/api.ts) for the client's API requests and Auth configuration, and
 [`packages/db/src/schema.ts`](packages/db/src/schema.ts) for the database model. Request and response
 contracts live in `packages/shared`. Keep Hono routes chained so the client retains their inferred types.
 
@@ -403,8 +412,8 @@ a key, both are cached in memory, and either can fail on its own: the sheet show
 added by hand has no ESPN stats. The sheet contains public background only, never this league's picks.
 Team logos are loaded by the browser from ESPN's image CDN (`a.espncdn.com`).
 
-The web app has a manifest and icons so it can be installed to a home screen. A push-only service worker
-(`apps/web/public/push-sw.js`, served with `Cache-Control: no-cache` from `_headers`) shows notifications
+The website has a manifest and icons so it can be installed to a home screen. A push-only service worker
+(`apps/mobile/public/push-sw.js`, served with `Cache-Control: no-cache` from `_headers`) shows notifications
 and caches no pages or responses, so nothing works offline.
 
 ## Development and testing
@@ -413,21 +422,24 @@ and caches no pages or responses, so nothing works offline.
 
 Run workspace commands from the repository root:
 
-| Command              | Purpose                                                                            |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `pnpm dev`           | Start web and API development servers                                              |
-| `pnpm worker:dev`    | Run the production build in the Workers runtime against local Supabase             |
-| `pnpm build`         | Build web assets to `apps/web/dist` and a dry-run Worker bundle to `apps/api/dist` |
-| `pnpm lint`          | Check formatting and lint rules with Biome                                         |
-| `pnpm format`        | Apply Biome formatting and fixes                                                   |
-| `pnpm typecheck`     | Type-check workspace packages                                                      |
-| `pnpm test`          | Run unit, API, component, and Node script tests                                    |
-| `pnpm check`         | Run lint, type checking, and `pnpm test`                                           |
-| `pnpm test:e2e`      | Run full-stack Playwright tests                                                    |
-| `pnpm test:e2e:ui`   | Open Playwright's interactive test runner                                          |
-| `pnpm test:all`      | Run `pnpm test` followed by E2E tests                                              |
-| `pnpm test:contract` | Check ESPN's and Kalshi's live feeds against what the app reads                    |
-| `pnpm icons`         | Redraw the app icons in `apps/web/public` after changing `scripts/icons.mjs`       |
+| Command              | Purpose                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `pnpm dev`           | Start Supabase, the API and Expo with its browser preview (`pnpm mobile --web`)           |
+| `pnpm mobile`        | The same without opening the browser, for testing on an iPhone                            |
+| `pnpm worker:dev`    | Run the production build in the Workers runtime against local Supabase                    |
+| `pnpm build`         | Expo web build to `apps/mobile/dist-web`, then a dry-run Worker bundle to `apps/api/dist` |
+| `pnpm lint`          | Check formatting and lint rules with Biome                                                |
+| `pnpm format`        | Apply Biome formatting and fixes                                                          |
+| `pnpm typecheck`     | Type-check workspace packages                                                             |
+| `pnpm test`          | Run unit, API, app, and Node script tests                                                 |
+| `pnpm check`         | Run lint, type checking, and `pnpm test`                                                  |
+| `pnpm test:e2e`      | Run full-stack Playwright tests against the local Worker                                  |
+| `pnpm test:e2e:ui`   | Open Playwright's interactive test runner                                                 |
+| `pnpm test:all`      | Run `pnpm test` followed by E2E tests                                                     |
+| `pnpm test:contract` | Check ESPN's and Kalshi's live feeds against what the app reads                           |
+| `pnpm mobile:check`  | Type-check and test the Expo app                                                          |
+| `pnpm mobile:export` | Export the iOS JavaScript bundle (catches native-only bundling errors)                    |
+| `pnpm icons`         | Redraw the app icons in `apps/mobile/public` after changing `scripts/icons.mjs`           |
 
 `pnpm check` does not include E2E tests or production builds. `pnpm test:all` does not include lint or
 type checking. For a full local verification, run `pnpm check`, `pnpm test:e2e`, and `pnpm build` after
@@ -435,14 +447,14 @@ starting Supabase, generating `.env`, and installing the browsers.
 
 ### Test layers
 
-| Layer                               | Tool and location                                                         | Requirements                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Rules, schemas, and statistics      | Vitest in `packages/shared/src/**/*.test.ts`                              | No running services                                                                 |
-| Database tooling and safety scripts | Node test runner in `packages/db/scripts/` and `scripts/`                 | No running services                                                                 |
-| API                                 | Vitest + `app.request()` in `apps/api/test/`                              | Database suites require local Supabase and `DATABASE_URL`; they skip if it is unset |
-| Components and router               | Vitest browser mode + Playwright Chromium in `apps/web/src/**/*.test.tsx` | Installed Chromium; no running app or database                                      |
-| End-to-end                          | Playwright in `e2e/tests/`                                                | Local Supabase, generated `.env`, Chromium, and WebKit                              |
-| Feed contracts                      | Vitest in `apps/api/test/contract/`                                       | Network access to ESPN and Kalshi; run daily by `.github/workflows/contract.yml`    |
+| Layer                               | Tool and location                                         | Requirements                                                                        |
+| ----------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Rules, schemas, and statistics      | Vitest in `packages/shared/src/**/*.test.ts`              | No running services                                                                 |
+| Database tooling and safety scripts | Node test runner in `packages/db/scripts/` and `scripts/` | No running services                                                                 |
+| API                                 | Vitest + `app.request()` in `apps/api/test/`              | Database suites require local Supabase and `DATABASE_URL`; they skip if it is unset |
+| App logic                           | Vitest (Node) in `apps/mobile/src/**/*.test.ts`           | No running services                                                                 |
+| End-to-end                          | Playwright in `e2e/tests/`                                | Local Supabase, generated `.env`, Chromium, and WebKit                              |
+| Feed contracts                      | Vitest in `apps/api/test/contract/`                       | Network access to ESPN and Kalshi; run daily by `.github/workflows/contract.yml`    |
 
 ESPN's scoreboard, game summary, news and logo feeds are unofficial. The app reads them leniently, so a
 change empties part of the matchup sheet rather than breaking it, which also means nothing in the app
@@ -455,9 +467,8 @@ checks look up the games kicking off in the next three days on Kalshi exactly as
 that its prices agree with ESPN about who is favored. The daily workflow opens a GitHub issue (label
 `feed-contract`) when a check fails and closes it when they pass again.
 
-E2E starts the API and web servers automatically, or reuses `pnpm dev` outside CI. With
-`E2E_TARGET=worker` (as CI runs it) it tests the production build in the Workers runtime instead, through
-`pnpm worker:dev`. It refuses remote
+E2E always tests the production build in the Workers runtime, as CI does: it starts `pnpm worker:dev` (the
+Expo web build and the API on one origin), or reuses one already running outside CI. It refuses remote
 database and Auth services. Tests create their own data rather than depending on the seed. Traces and
 screenshots are disabled to keep credentials and invite links out of artifacts.
 
@@ -467,7 +478,8 @@ and schema changes also need E2E verification. Time-dependent rules accept a `no
 can use fixed dates.
 
 Pull request CI runs a Git history secret scan, lint, type checking, migration and schema documentation
-drift checks, unit/component/script tests, a web build, and a Worker bundle. A separate job starts
+drift checks, unit/app/script tests, the iOS JavaScript bundle, the Expo web build, and a Worker bundle. A
+separate job starts
 local Supabase, runs database-backed API tests, and runs E2E against the Worker. Playwright reports are retained for three days.
 
 ## Database workflow
@@ -500,12 +512,12 @@ running version. Use separate expand and contract changes when removing or repla
 The app is one [Cloudflare Worker](https://developers.cloudflare.com/workers/), `pow-pickem`, configured in
 [`apps/api/wrangler.jsonc`](apps/api/wrangler.jsonc):
 
-| Piece                      | Role                                                                                                   |
-| -------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Static Assets              | Serves `apps/web/dist` from Cloudflare's edge, falls back to `index.html` for SPA routes; never sleeps |
-| `src/worker.ts`            | Runs the Hono API for `/api/*` only, placed in AWS us-east-1 beside the Supabase project               |
-| Hyperdrive                 | Pools database connections and verifies Supabase's certificate (`verify-full` with the Supabase CA)    |
-| `apps/web/public/_headers` | Caches hashed files under `/assets/` forever; sets the site's security headers (CSP, HSTS, framing)    |
+| Piece                         | Role                                                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Static Assets                 | Serves the Expo web build (`apps/mobile/dist-web`) from Cloudflare's edge, falls back to `index.html`; never sleeps      |
+| `src/worker.ts`               | Runs the Hono API for `/api/*` only, placed in AWS us-east-1 beside the Supabase project                                 |
+| Hyperdrive                    | Pools database connections and verifies Supabase's certificate (`verify-full` with the Supabase CA)                      |
+| `apps/mobile/public/_headers` | Caches hashed files under `/_expo/static/` and `/assets/` forever; sets the site's security headers (CSP, HSTS, framing) |
 
 Workers start in milliseconds, so there is no cold-start wait. The app runs on **Workers Paid** ($5 a month),
 which email requires: on the free plan Cloudflare Email Sending can only send to your own verified addresses
@@ -521,7 +533,7 @@ is reachable only at `www.pow-pickem.com`. The zone forces HTTPS (Always Use HTT
 apex `pow-pickem.com` redirects to `www`.
 
 `pnpm worker:dev` runs the same Worker locally against local Supabase. Day-to-day development stays on
-`pnpm dev` (Node), which `src/index.ts` serves.
+`pnpm dev`, where `src/index.ts` serves the API on Node and Expo's dev server serves the app.
 
 ### Initial configuration
 
@@ -542,8 +554,9 @@ Run these once from `apps/api` (`pnpm exec wrangler login` first):
 4. Add the domain to Cloudflare and point the registrar's nameservers at it, then attach `www.pow-pickem.com`
    to the Worker as a custom domain (Workers → `pow-pickem` → Settings → Domains & Routes).
 5. Configure Supabase Auth's Site URL and redirect URLs for the public web URL. The redirect URLs must cover
-   `/reset-password` (password reset emails) and the pages people sign up from, such as `/join/<code>` (the
-   confirmation email returns them there).
+   `/reset-password` (password reset emails), `/auth/callback` (sign-up confirmation) and `/account` (email
+   change), or Supabase silently sends people to the Site URL instead. The iPhone app's `pow-pickem://` links
+   are listed in [`apps/mobile/README.md`](apps/mobile/README.md).
 6. In the GitHub **`production` environment**, add these secrets, and the variable `APP_URL` (the public URL,
    which the deploy checks afterwards):
 
@@ -650,7 +663,8 @@ Desktop WebKit emulation can't establish real iPhone delivery.
 CI → verified database connection → migrations → build → wrangler deploy → live health check
 ```
 
-The web build and the API go live together. A tab that was already open keeps its old web build, so keep
+The Expo web build and the API go live together. A tab that was already open keeps its old web build (one
+bundle, loaded with the page), and installed iPhone apps keep theirs until updated, so keep
 API changes compatible with it, and migrations compatible with the old API. The health endpoint checks
 database connectivity and returns HTTP 503 if that check fails. A failed live check doesn't undo the deploy:
 `pnpm --filter @picks/api exec wrangler rollback` returns to the previous version. Local seed data is not
@@ -737,8 +751,9 @@ pbpaste | node scripts/check-db-url.mjs
 | Supabase will not start                                 | Start Docker Desktop or OrbStack, then retry `pnpm db:start`. Inspect the stack with `pnpm db:status`.                |
 | API reports invalid configuration, or `.env` is missing | Run `pnpm db:start`, then `pnpm env:local`, and restart `pnpm dev`. Use `.env.example` to check variable names.       |
 | The app or tests use the wrong checkout                 | Compare `.env` with `pnpm ports`, regenerate it with `pnpm env:local`, and use `pnpm sb` for CLI commands.            |
-| Vite reports a port already in use                      | Stop the process using this checkout's web port. Vite deliberately fails instead of choosing another port.            |
-| Playwright cannot find a browser                        | Run `pnpm playwright:install`. Component tests need Chromium; E2E also needs WebKit.                                  |
+| `pnpm dev` reports a port already in use                | Stop the other `pnpm dev` or `pnpm mobile` in this checkout. The launcher refuses a busy port instead of switching.   |
+| `pnpm dev` finds no LAN address                         | Connect to a network, or pick one with `MOBILE_DEV_INTERFACE=en0`. Offline, use `pnpm worker:dev` for the browser.    |
+| Playwright cannot find a browser                        | Run `pnpm playwright:install`. E2E needs Chromium and WebKit.                                                         |
 | API database tests skip                                 | Start the local stack and generate `.env` so `DATABASE_URL` is available.                                             |
 | E2E rejects the environment                             | It requires loopback database and Auth URLs. Regenerate `.env` from local Supabase.                                   |
 | Seeded accounts or weeks are missing                    | For a disposable local database, `pnpm db:reset` reapplies migrations and seed, deleting existing local data.         |
@@ -751,3 +766,9 @@ pbpaste | node scripts/check-db-url.mjs
 
 See [`AGENTS.md`](AGENTS.md) for additional contributor guidance on UI conventions, API structure, and
 repository tooling.
+
+## Native iPhone app (Expo)
+
+The app lives in [`apps/mobile`](apps/mobile/README.md). It uses Expo Router and React Native with the same Hono API, Supabase accounts and shared TypeScript rules, and the same code, exported for the web, is the website.
+
+To try it on your iPhone against local data, install Expo Go, start Docker, and run `pnpm mobile` (or `pnpm dev`), then scan the QR code. It starts Supabase, the API and Expo with this worktree's ports and your LAN address; nothing to configure. `pnpm mobile:prod` runs the app against production instead. See the mobile README for the options, development builds, auth redirects, native push setup and release steps.

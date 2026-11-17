@@ -187,7 +187,7 @@ describe("email environment", () => {
   it("requires a link origin with the secret, and the secret with the test inbox", () => {
     expect(() => loadEnv({ ...base, UNSUBSCRIBE_SECRET: "u".repeat(32) })).toThrow(/APP_URL/);
     expect(() =>
-      loadEnv({ ...base, INBOX_URL: "http://127.0.0.1:54324", APP_URL: "http://localhost:5173" }),
+      loadEnv({ ...base, INBOX_URL: "http://127.0.0.1:54324", APP_URL: "http://localhost:8081" }),
     ).toThrow(/UNSUBSCRIBE_SECRET/);
     const env = loadEnv({
       ...base,

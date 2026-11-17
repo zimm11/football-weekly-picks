@@ -14,7 +14,7 @@ import { runScheduledJobs } from "./jobs";
 import { logError } from "./logging";
 import { espnProvider } from "./nfl";
 import type { EmailDeps } from "./outbox";
-import { webPushSender } from "./pushSender";
+import { expoPushSender, webPushSender } from "./pushSender";
 
 /** One request's (or one scheduled run's) database connection, and the work it handed to `background`. */
 type Scope = { db: Db; tasks: Promise<unknown>[] };
@@ -75,6 +75,7 @@ function build() {
           subject: config.VAPID_SUBJECT,
         })
       : undefined;
+  const nativePush = config.EXPO_PUSH_ENABLED ? expoPushSender(config.EXPO_ACCESS_TOKEN) : undefined;
   const app = createApp({
     db,
     verifyToken: supabaseTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY),
@@ -83,6 +84,7 @@ function build() {
     operatorUserIds: config.OPERATOR_USER_IDS,
     email,
     push,
+    nativePush,
     background,
     publicConfig: {
       supabaseUrl: config.SUPABASE_URL,
@@ -90,7 +92,7 @@ function build() {
     },
   });
   // `pnpm worker:dev` sets NODE_ENV=development; deployed Workers always run with wrangler.jsonc's "production".
-  return { app, email, push, production: config.NODE_ENV !== "development" };
+  return { app, email, push, nativePush, production: config.NODE_ENV !== "development" };
 }
 
 let worker: ReturnType<typeof build> | undefined;
@@ -126,9 +128,11 @@ export default {
 
   /** The Cron Trigger (wrangler.jsonc): queue due pick reminders, then send what's waiting, by email and push. */
   async scheduled(_controller, env, ctx) {
-    if (!worker || (!worker.email && !worker.push)) return;
-    const { email, push, production } = worker;
+    if (!worker || (!worker.email && !worker.push && !worker.nativePush)) return;
+    const { email, push, nativePush, production } = worker;
     // Each job logs its own failures through the safe logger, so nothing raw reaches the runtime's log.
-    await withConnection(env, ctx, production, () => runScheduledJobs(db, { email, push }, new Date()));
+    await withConnection(env, ctx, production, () =>
+      runScheduledJobs(db, { email, push, nativePush }, new Date()),
+    );
   },
 } satisfies ExportedHandler<Env>;

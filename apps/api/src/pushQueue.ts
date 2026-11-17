@@ -117,6 +117,7 @@ type Claim = {
   expiresAt: Date;
   device: typeof pushSubscriptions.$inferSelect;
   payload: PushPayload;
+  nativeReceiptId: string | null;
 };
 
 /**
@@ -125,12 +126,28 @@ type Claim = {
  * so no other job picks it up while the send is in flight, and a crash mid-send becomes an ordinary retry.
  * Anything that no longer deserves a notification is marked skipped here.
  */
-async function claimPush(db: Db, at: Date): Promise<Claim | "skipped" | null> {
+async function claimPush(
+  db: Db,
+  at: Date,
+  transports: ("web" | "expo")[],
+): Promise<Claim | "skipped" | null> {
   return db.transaction(async (tx) => {
     const [delivery] = await tx
       .select()
       .from(pushDeliveries)
-      .where(and(eq(pushDeliveries.status, "pending"), lte(pushDeliveries.nextAttemptAt, at)))
+      .where(
+        and(
+          eq(pushDeliveries.status, "pending"),
+          lte(pushDeliveries.nextAttemptAt, at),
+          inArray(
+            pushDeliveries.subscriptionId,
+            tx
+              .select({ id: pushSubscriptions.id })
+              .from(pushSubscriptions)
+              .where(inArray(pushSubscriptions.transport, transports)),
+          ),
+        ),
+      )
       .orderBy(asc(pushDeliveries.nextAttemptAt), asc(pushDeliveries.id))
       .limit(1)
       .for("update", { skipLocked: true });
@@ -202,7 +219,14 @@ async function claimPush(db: Db, at: Date): Promise<Claim | "skipped" | null> {
       .update(pushDeliveries)
       .set({ attempts, nextAttemptAt: new Date(at.getTime() + FIRST_RETRY_MS * 2 ** (attempts - 1)) })
       .where(eq(pushDeliveries.id, delivery.id));
-    return { id: delivery.id, attempts, expiresAt: delivery.expiresAt, device, payload };
+    return {
+      id: delivery.id,
+      attempts,
+      expiresAt: delivery.expiresAt,
+      device,
+      payload,
+      nativeReceiptId: delivery.nativeReceiptId,
+    };
   });
 }
 
@@ -211,32 +235,54 @@ async function claimPush(db: Db, at: Date): Promise<Claim | "skipped" | null> {
  * service never holds a database connection. Delivery is at least once: a crash after the provider accepts a
  * message retries it, and the notification tag then replaces the duplicate on the device.
  */
-export async function drainPush(db: Db, sender: PushSender, at: Date) {
+export async function drainPush(db: Db, sender: PushSender | undefined, at: Date, nativeSender?: PushSender) {
   const counts = { sent: 0, skipped: 0, retrying: 0, failed: 0 };
   // Misconfigured keys (logged once by the sender): leave everything queued rather than fail it all.
-  if (sender.ready && !(await sender.ready())) return counts;
+  const transports: ("web" | "expo")[] = [];
+  if (sender && (!sender.ready || (await sender.ready()))) transports.push("web");
+  if (nativeSender && (!nativeSender.ready || (await nativeSender.ready()))) transports.push("expo");
+  if (!transports.length) return counts;
   await db.delete(pushDeliveries).where(lt(pushDeliveries.createdAt, new Date(at.getTime() - RETENTION_MS)));
   const settle = (id: string, status: "sent" | "failed") =>
     db.update(pushDeliveries).set({ status }).where(eq(pushDeliveries.id, id));
   await Promise.all(
     Array.from({ length: SENDERS }, async () => {
       for (let i = 0; i < SENDS_PER_SENDER; i++) {
-        const claim = await claimPush(db, at);
+        const claim = await claimPush(db, at, transports);
         if (!claim) break;
         if (claim === "skipped") {
           counts.skipped++;
           continue;
         }
-        const result = await sender.send(
-          claim.device,
-          claim.payload,
-          Math.max(1, Math.floor((claim.expiresAt.getTime() - at.getTime()) / 1000)),
-        );
+        const transport = claim.device.transport === "expo" ? nativeSender : sender;
+        // Only configured transports were leased above.
+        if (!transport) continue;
+        const result = claim.nativeReceiptId
+          ? ((await transport.receipt?.(claim.nativeReceiptId)) ?? "failed")
+          : await transport.send(
+              claim.device,
+              claim.payload,
+              Math.max(1, Math.floor((claim.expiresAt.getTime() - at.getTime()) / 1000)),
+            );
+        if (typeof result === "object") {
+          await db
+            .update(pushDeliveries)
+            .set({ nativeReceiptId: result.receiptId, nextAttemptAt: new Date(at.getTime() + 15 * 60_000) })
+            .where(eq(pushDeliveries.id, claim.id));
+          counts.retrying++;
+          continue;
+        }
+        if (result === "resend") {
+          await db
+            .update(pushDeliveries)
+            .set({ nativeReceiptId: null })
+            .where(eq(pushDeliveries.id, claim.id));
+        }
         if (result === "gone") {
           // The device unsubscribed: forget it, which also drops everything still queued for it.
           await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, claim.device.id));
           counts.skipped++;
-        } else if (result === "retry" && claim.attempts < MAX_ATTEMPTS) {
+        } else if ((result === "retry" || result === "resend") && claim.attempts < MAX_ATTEMPTS) {
           counts.retrying++;
         } else {
           const status = result === "sent" ? "sent" : "failed";
@@ -256,12 +302,17 @@ export async function drainPush(db: Db, sender: PushSender, at: Date) {
  * The scheduled push job: queue due reminders, then send. Queueing and sending fail separately, so a reminder
  * that can't be queued never holds up retries and thread notifications already waiting.
  */
-export async function runPushJobs(db: Db, sender: PushSender, now: Date) {
+export async function runPushJobs(
+  db: Db,
+  sender: PushSender | undefined,
+  now: Date,
+  nativeSender?: PushSender,
+) {
   let queued = 0;
   try {
     queued = await queuePickPush(db, now);
   } catch (error) {
     logError("push_queue", error);
   }
-  return { queued, ...(await drainPush(db, sender, now)) };
+  return { queued, ...(await drainPush(db, sender, now, nativeSender)) };
 }

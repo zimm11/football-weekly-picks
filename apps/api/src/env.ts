@@ -53,6 +53,14 @@ const sharedFields = {
   EMAIL_DAILY_LIMIT: z.coerce.number().int().min(0).default(1000),
   EMAIL_MONTHLY_LIMIT: z.coerce.number().int().min(0).default(10000),
 
+  /** Explicit opt-in to native push after Expo/APNs credentials are configured. */
+  EXPO_PUSH_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  /** Expo enhanced push security token. Never exposed to clients. */
+  EXPO_ACCESS_TOKEN: z.string().min(1).optional(),
+
   // ---------- Web Push (all three or none: without them, push is switched off) ----------
   /** The VAPID public key (65-byte uncompressed P-256 point, base64url). Browsers subscribe with it. */
   VAPID_PUBLIC_KEY: z
@@ -118,6 +126,14 @@ function settingRules(
 const envSchema = z
   .object({
     PORT: z.coerce.number().default(8787),
+    /** Exact Expo browser origin supplied by the local launcher; never used by the Worker. */
+    MOBILE_DEV_ORIGIN: z
+      .url()
+      .refine((value) => {
+        const url = new URL(value);
+        return url.protocol === "http:" && value === url.origin && Boolean(url.port);
+      }, "Use an HTTP origin with an explicit port")
+      .optional(),
     // A pasted line break inside the URL becomes part of the password and fails authentication, so reject it up front.
     DATABASE_URL: z
       .string()
@@ -143,6 +159,10 @@ const envSchema = z
   .refine((env) => !(env.CLOCK_OVERRIDE && env.NODE_ENV === "production"), {
     path: ["CLOCK_OVERRIDE"],
     message: "CLOCK_OVERRIDE is for local testing and is not allowed when NODE_ENV=production",
+  })
+  .refine((env) => !(env.MOBILE_DEV_ORIGIN && env.NODE_ENV === "production"), {
+    path: ["MOBILE_DEV_ORIGIN"],
+    message: "MOBILE_DEV_ORIGIN is for local testing only",
   })
   .superRefine(settingRules);
 

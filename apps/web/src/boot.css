@@ -1,7 +1,0 @@
-/*
- * Linked from index.html, so it loads before the app's script: the splash's background, so nothing flashes
- * white first. (An inline style would need a looser Content-Security-Policy; see public/_headers.)
- */
-html {
-  background: #030817;
-}
