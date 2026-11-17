@@ -59,14 +59,14 @@ function Name({ entry }: { entry: Entry }) {
     </View>
   );
 }
-type TableRow = { id: string; name: ReactNode; values: ReactNode[]; mine?: boolean };
+export type TableRow = { id: string; name: ReactNode; values: ReactNode[]; mine?: boolean };
 /** A stat column: its natural width, plus an even share of any room left over on wide screens. */
 const column = (width = 66) => ({ flexBasis: width, flexGrow: 1, flexShrink: 0 });
 /** The web build's first column stays put while the rest scroll sideways. */
 const stickyFirst = { position: "sticky", left: 0, zIndex: 1 } as unknown as ViewStyle;
 /** Read by screen readers (and in the page's text) but not drawn. */
 export const srOnly = { position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 } as const;
-function StickyTable({
+export function StickyTable({
   label,
   columns,
   rows,

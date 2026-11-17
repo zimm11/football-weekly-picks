@@ -4,6 +4,7 @@ import type { Tx } from "./context";
 import { playoffHooks } from "./playoff";
 import { squaresHooks } from "./squares";
 import { survivorHooks } from "./survivor";
+import { weeklyHooks } from "./weekly";
 
 /**
  * What a league type does when something shared happens to one of its leagues. The shared routes (leagues.ts)
@@ -16,15 +17,18 @@ export type LeagueTypeHooks = {
    */
   memberRemoved?(tx: Tx, input: { leagueId: string; userId: string; at: Date }): Promise<void>;
   /**
-   * An admin starts a season (`POST /leagues/:leagueId/seasons`), inside its transaction. `settings` is already
-   * parsed with the type's schema. No feed call happens here: automation imports the first week afterwards.
+   * Start season (`POST /leagues/:id/seasons`), inside a transaction holding the league row lock. `settings` are
+   * already parsed with the type's schema (`parseSeasonSettings`). A hook only writes rows (the season and its
+   * settings, plus any empty week it needs) and never asks the feed: automation's prepare step imports a week
+   * with no games on the next read or cron run, and the route advances the league right after commit. Refuse with
+   * `fail(…)`. A type without the hook answers 409.
    */
   startSeason?(
     tx: Tx,
     input: {
       league: typeof leagues.$inferSelect;
       year: number;
-      settings: unknown /* already parsed */;
+      settings: unknown;
       at: Date;
       actorId: string;
     },
@@ -32,7 +36,7 @@ export type LeagueTypeHooks = {
 };
 
 export const TYPE_HOOKS: Record<LeagueType, LeagueTypeHooks> = {
-  weekly: {},
+  weekly: weeklyHooks,
   playoff: playoffHooks,
   squares: squaresHooks,
   survivor: survivorHooks,

@@ -92,7 +92,6 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
       game(`${prefix}-${i}`, teams[2 * i] ?? "", teams[2 * i + 1] ?? "", sunday(year, week, 18 + i)),
     );
 
-  const pending: Promise<unknown>[] = [];
   const app = createApp({
     db,
     verifyToken,
@@ -100,7 +99,8 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
     nfl,
     now: () => clock,
     email,
-    background: (task) => pending.push(task()),
+    // Queued notifications stay queued: these tests check what was queued, not what was sent.
+    background: () => {},
   });
   const call = async <T = unknown>(user: string, method: string, path: string, json?: unknown) => {
     const res = await app.request(`/api${path}`, {
@@ -173,7 +173,6 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
       .values(users.map((userId, i) => ({ userId, displayName: names[i] ?? "Player" })));
   });
   afterAll(async () => {
-    await Promise.allSettled(pending);
     if (created.length) await db.delete(leagues).where(inArray(leagues.id, created));
     await db.execute(
       sql`delete from auth.users where id in (${sql.join(
@@ -476,7 +475,7 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
       await view(ADMIN, leagueId);
       expect(await weekRow(leagueId, 21)).toBeUndefined();
       // A finished pool doesn't even ask the feed.
-      expect(asked.slice(before).filter((key) => key.startsWith("2026:2"))).toEqual([]);
+      expect(asked.slice(before).filter((key) => /^2026:2[0-2]$/.test(key))).toEqual([]);
       expect(await events(leagueId, "pool-over:%")).toHaveLength(4);
       // The grid: every pick shows now, each with its outcome.
       expect(end.picks.filter((p) => p.userId === ANN).map((p) => [p.team, p.outcome])).toEqual([
@@ -575,10 +574,27 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
     expect(season?.settings).toEqual({ lives: 3, startWeek: 4 });
     expect(await weekRow(league.id, 1)).toBeUndefined();
     expect((await weekRow(league.id, 4))?.status).toBe("draft");
-    // Once the start week has kicked off, the settings are fixed.
+    // Start season, through its route: an admin only; the week moves, and the route takes the pool its next step
+    // at once, so the new start week is already filled from the feed.
     feed.set("2029:4", [game("y29-4", "KC", "LV", sunday(2029, 4))]);
-    await cron();
-    at(sunday(2029, 4, 20));
+    feed.set("2029:5", [game("y29-5", "BUF", "MIA", sunday(2029, 5))]);
+    await join(ANN, league.id);
+    const route = (user: string, json: unknown) =>
+      call<{ error?: string }>(user, "POST", `/leagues/${league.id}/seasons`, json);
+    expect((await route(ANN, { year: 2029, settings: { lives: 2 } })).status).toBe(403);
+    expect((await route(DAN, { year: 2029, settings: { lives: 9 } })).status).toBe(400);
+    expect((await route(DAN, { year: 2029, settings: { lives: 2 }, startWeek: 5 })).status).toBe(201);
+    expect((await db.select().from(seasons).where(eq(seasons.leagueId, league.id)))[0]?.settings).toEqual({
+      lives: 2,
+      startWeek: 5,
+    });
+    expect(await weekRow(league.id, 4)).toBeUndefined();
+    expect((await weekRow(league.id, 5))?.status).toBe("open");
+    // Once the start week has kicked off, the settings are fixed.
+    at(sunday(2029, 5, 20));
+    expect((await route(DAN, { year: 2029, settings: { lives: 1 } })).body.error).toBe(
+      "This pool has started: its lives and start week are fixed.",
+    );
     await expect(start({ lives: 1 })).rejects.toThrow("This pool has started");
 
     // Another type's league and week: every survivor route is a 404, and the pick'em routes refuse survivor.

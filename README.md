@@ -159,6 +159,11 @@ its admin, Pat and Sam are members, Alex isn't): an open board on the Super Bowl
 squares for Pat, Commish and the guest Uncle Ray, and a finished 2025 board whose halftime square was empty. Press
 **Lock and draw** on its **Manage board** screen, or set `CLOCK_OVERRIDE` past kickoff to see it lock by itself.
 
+[`supabase/seeds/playoff.sql`](supabase/seeds/playoff.sql) adds **Playoff Bracket** (`/join/local-playoff`; a
+Guillotine league, Commish its admin, Pat and Sam members): its 2025 playoffs all final, with Sam out after the Wild
+Card, Pat out after the Divisional round and Commish the champion, and its 2026 playoffs waiting for ESPN's Wild
+Card round. Pat and Sam get the Super Bowl recap on their next visit.
+
 [`supabase/seeds/survivor.sql`](supabase/seeds/survivor.sql) adds **Last One Standing**, a survivor pool for
 the same four accounts (invite `/join/local-survivor`): two lives from Week 8, Weeks 8–10 closed with Commish
 and Pat still in, Sam and Alex out, and an empty Week 11 that the first read imports from ESPN and opens.
@@ -226,7 +231,8 @@ This local setting is not applied to production.
 
 1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has five tabs: **Picks**,
    **Results**, **Standings**, **Messages**, and **League**. The **Season** selector applies to every tab
-   except Messages, which is league-wide.
+   except Messages, which is league-wide. Sunday Crew is a Hands-on league: an Automatic one does steps 2, 3, 5
+   and 6 by itself (see "Automatic weekly pick'em" under League types).
 2. Open **League**, select an unused week, and press **Create week**. To prepare another year, choose
    **Start a new season** in the season selector; the season is created with its first week. Existing
    weeks open with **Manage week**. With **Import games and spreads from ESPN** checked, creation
@@ -295,6 +301,38 @@ score so far; an empty square that hits means no winner. Scores fill in from ESP
 settles, and an admin's typed correction is never overwritten. Members with no square get the evening-before
 reminder; everyone hears when the numbers are drawn (email and push) and each quarter's result (push only). A
 member who leaves before the lock gives their squares back; after it they stay.
+
+#### Automatic weekly pick'em
+
+An admin presses **Start season** on the League tab and picks the start week; the season then runs through Week
+18 with nobody pressing Open or Finalize. Each week is imported from ESPN once the one before is final (a week
+whose games have all kicked off is skipped, so a league switched to Automatic mid-season catches up), opens on
+Tuesday at 9 AM Eastern once every game has a line (spreads freeze then), fills in final scores as games end
+(never over a typed score), and finalizes once every game has one, usually Monday night. Everyone gets a "week
+open" and a "week final" notification; the offer to post a thread stays with Hands-on leagues. If a game still
+has no line 24 hours before the first kickoff, the admins are told once, and the week opens as soon as they type
+it in. The admin can still edit spreads and points until a week's first kickoff, choose the tiebreaker game, add
+or remove a game, and correct a score at any time: a final week is corrected in place (the standings follow and
+the recap shows again), without reopening it. Switching to Automatic picks the weeks up as they stand (a ready
+draft opens, an open week with every result in finalizes); switching back stops it and leaves every week as it
+is. Set up a week stays on the League tab as the admin's override.
+
+#### Playoff pick'em
+
+The weekly game over the four playoff rounds (Wild Card 19, Divisional 20, Conference 21, Super Bowl 22), worth
+1, 2, 3 and 4 points per win, with one champion after the Super Bowl. Rounds run themselves: the Wild Card round
+is created once ESPN lists all six games with real teams (polling starts on Week 18's Sunday), each round opens
+as soon as every game has a line and finalizes once every game has a result, and the next is prepared. The admin
+chooses the format with **Start season** (or on New league): **Traditional** (an optional POW, a win adds 3) or
+**Guillotine** (a POW every round, a win adds 1; a losing POW, or none by the round's last kickoff, puts the
+player out of picking from the next round, while a push keeps them in). The format can't change after the first
+Wild Card kickoff. An eliminated player keeps their points and place, sees the sheet read-only, and can still
+guess the Super Bowl's total; a player who joins after a round locked has no POW for it, so is out. The champion
+has the most points, then most wins, then the closest Super Bowl total guess without going over (players still
+level share it). There's no round winner or Low Point Loser. Standings show the overall table (a status column
+in Guillotine, "In" or "Out: Divisional") and the champion after the Super Bowl; each round has its recap. If
+ESPN's feed fails, the League tab's **Rounds** card creates a round by hand, and its manage screen keeps Import,
+Open and Finalize.
 
 #### Survivor
 

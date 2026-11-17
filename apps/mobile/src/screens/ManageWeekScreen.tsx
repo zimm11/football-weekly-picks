@@ -9,6 +9,7 @@ import {
   THREAD_TITLE_MAX,
   WEEK_PHASE_LABEL,
   type WeekView,
+  weekLabel,
   weekPhase,
   zonedParts,
 } from "@picks/shared";
@@ -48,6 +49,7 @@ import {
   useLeagueLoad,
 } from "./leagueUi";
 import { WeekResults } from "./WeekResults";
+import { ScoreCorrection } from "./weekly/ScoreCorrection";
 
 export function ManageWeekScreen({ weekId }: { weekId: string }) {
   const { me } = useAuth();
@@ -111,7 +113,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   ? "Week reopened."
                   : "Week updated.";
       notifyDone(done);
-      if (action === "open" || action === "finalize") {
+      // A league that runs itself announces opening and finalizing on its own (league events): no thread offer.
+      if ((action === "open" || action === "finalize") && updated.management !== "auto") {
         // The confirmation previews the winner and the Low Point Loser.
         const entries = updated.results?.entries ?? [];
         const winners = entries.filter((entry) => entry.isWinner);
@@ -159,6 +162,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
       </View>
     );
   const missing = view.games.filter((game) => game.homeScore === null || game.awayScore === null).length;
+  const automatic = view.management === "auto";
+  const playoff = view.leagueType === "playoff";
   return (
     <View style={s.page}>
       <ScrollView
@@ -201,7 +206,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                 textTransform: "uppercase",
               }}
             >
-              Week {view.number}{" "}
+              {weekLabel(view.number)}{" "}
               <Text style={{ fontFamily: fonts.displayBold, fontSize: 24, color: colors.mutedForeground }}>
                 · {view.year}
               </Text>
@@ -218,8 +223,9 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           {view.status === "draft" && (
             <>
               <Label>
-                Players can't see this week yet. Check the games and spreads, then open it. Spreads stay fixed
-                once the week is open unless you change them here.
+                {automatic
+                  ? `Players can't see this ${playoff ? "round" : "week"} yet. It opens by itself ${playoff ? "as soon as every game has a line" : "on Tuesday at 9 AM Eastern once every game has a line"}, and spreads freeze then. Open it now if you'd rather not wait.`
+                  : "Players can't see this week yet. Check the games and spreads, then open it. Spreads stay fixed once the week is open unless you change them here."}
               </Label>
               <Action
                 disabled={!!busy || !view.games.length}
@@ -264,8 +270,12 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               <Label>
                 {missing
                   ? `${missing} of ${view.games.length} games still need a final score.`
-                  : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}{" "}
-                Pulling results updates scores only; spreads stay as they were when the week opened.
+                  : automatic
+                    ? "All final scores are entered. It finalizes by itself in a few minutes, or finalize it now."
+                    : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}{" "}
+                {automatic
+                  ? "Results fill in from ESPN as games end, never over a score you typed."
+                  : "Pulling results updates scores only; spreads stay as they were when the week opened."}
               </Label>
               <Action
                 disabled={!!busy || missing > 0 || view.games.length === 0}
@@ -300,13 +310,18 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               </Action>
             </>
           )}
-          {view.status === "final" && (
+          {view.status === "final" && !automatic && (
             <Label>
               Reopen to correct a score or spread. Picks are hidden again until you close it. Spreads stay as
               they were when the week opened unless you edit them by hand.
             </Label>
           )}
-          {view.status === "final" && (
+          {view.status === "final" && automatic && (
+            <Label>
+              Correct a score below and the results and standings update in place. Nothing needs reopening.
+            </Label>
+          )}
+          {view.status === "final" && !automatic && (
             <Action
               secondary
               disabled={!!busy}
@@ -385,6 +400,9 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           </Card>
         )}
         <Failure message={week.error} retry={week.reload} />
+        {view.status === "final" && automatic && (
+          <ScoreCorrection view={view} onUpdated={week.setData} disabled={!!busy} />
+        )}
         {view.status === "final" && view.results ? (
           <View onLayout={(event) => setResultsY(event.nativeEvent.layout.y)}>
             <WeekResults view={view} userId={me?.id} />

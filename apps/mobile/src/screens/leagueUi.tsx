@@ -417,6 +417,7 @@ export function Select<T extends string | number>({
   onChange,
   disabled,
   compact,
+  compactWidth = 112,
 }: {
   label: string;
   value: T;
@@ -424,10 +425,12 @@ export function Select<T extends string | number>({
   onChange: (value: T) => void;
   disabled?: boolean;
   compact?: boolean;
+  /** A compact control's width, for labels longer than a year ("2026 playoffs"). */
+  compactWidth?: number;
 }) {
   const menu = useAnchor();
   return (
-    <View style={{ gap: 6, ...(compact ? { flexShrink: 0, width: 112 } : {}) }}>
+    <View style={{ gap: 6, ...(compact ? { flexShrink: 0, width: compactWidth } : {}) }}>
       {!compact && (
         <Text
           style={[
