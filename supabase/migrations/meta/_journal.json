@@ -120,6 +120,13 @@
       "when": 1794924079696,
       "tag": "20261117140119_league_types",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794959203822,
+      "tag": "20261117234643_profile_logos",
+      "breakpoints": true
     }
   ]
 }

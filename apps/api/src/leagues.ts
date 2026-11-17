@@ -588,6 +588,7 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
               ...e,
               ...omitUserId(statsOf.get(e.userId)),
               displayName: nameOf(e.userId),
+              avatarId: memberOf.get(e.userId)?.avatarId,
               removed: memberOf.get(e.userId)?.removedAt != null,
             })),
             weeks: finalWeeks.map((week, i) => ({

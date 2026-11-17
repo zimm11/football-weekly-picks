@@ -841,7 +841,7 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
                   tabIndex={Platform.OS === "web" ? -1 : undefined}
                 >
                   <View style={s.postHeader}>
-                    <Avatar name={post.authorName} />
+                    <Avatar avatarId={post.avatarId} name={post.authorName} />
                     <Text style={s.author}>{post.authorName}</Text>
                     <MessageTimestamp value={post.createdAt} now={clockNow()} />
                     {actions.length > 0 && (

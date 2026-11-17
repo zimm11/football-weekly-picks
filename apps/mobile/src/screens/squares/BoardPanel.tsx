@@ -81,6 +81,7 @@ export function BoardPanel({
   board,
   userId,
   displayName,
+  avatarId,
   header,
 }: {
   boardId: string;
@@ -88,6 +89,7 @@ export function BoardPanel({
   board: ReturnType<typeof useBoard>;
   userId: string;
   displayName: string;
+  avatarId?: number | null;
   /** Shown above the board once it has loaded (a standalone screen's league header). */
   header?: (view: BoardView) => ReactNode;
 }) {
@@ -107,7 +109,7 @@ export function BoardPanel({
       );
       return;
     }
-    changes.send({ row, col, claim: true, name: displayName, userId });
+    changes.send({ row, col, claim: true, name: displayName, avatarId, userId });
   }
   function tap(row: number, col: number, square: BoardSquare | undefined) {
     if (room.open && !square) return claim(row, col);
@@ -264,7 +266,7 @@ export function BoardDetails({
             key={player.userId ?? `guest:${player.name}`}
             style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10 }}
           >
-            <Avatar name={player.name} size="sm" />
+            <Avatar avatarId={player.avatarId} name={player.name} size="sm" />
             <Text style={[s.text, { flex: 1 }]}>
               {player.userId === userId ? `${player.name} (you)` : player.name}
             </Text>
@@ -300,7 +302,7 @@ export function SquareSheet({
     <Sheet title={square ? `${square.name}'s square` : "Open square"} close={close}>
       {square ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Avatar name={square.name} />
+          <Avatar avatarId={square.avatarId} name={square.name} />
           <Text style={[s.text, { flex: 1 }]}>{square.name}</Text>
           {square.guest && <Pill inline>Guest</Pill>}
         </View>

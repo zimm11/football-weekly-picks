@@ -70,6 +70,12 @@ const singleLine = (what: string, max: number, empty: string) =>
 export const toSingleLine = (text: string) =>
   text.replace(new RegExp(`${CONTROL_CHARACTERS.source}+`, "gu"), " ").trim();
 
+/** Stable IDs for the bundled profile logos. Null restores the player's initials. */
+export const PROFILE_LOGO_COUNT = 100;
+export const updateAvatarSchema = z.object({
+  avatarId: z.number().int().min(1).max(PROFILE_LOGO_COUNT).nullable(),
+});
+
 export const updateProfileSchema = z.object({
   displayName: singleLine("name", DISPLAY_NAME_MAX, "Enter a name"),
   /** Agrees to the Terms of use at the same time, as the first name step does. */
@@ -232,6 +238,7 @@ export type Me = {
   id: string;
   email?: string;
   displayName: string | null;
+  avatarId?: number | null;
   isOperator: boolean;
   notifications: NotificationSettings;
   moderation: ModerationStatus;
@@ -271,6 +278,7 @@ export type WeekSummary = {
 export type Member = {
   userId: string;
   displayName: string;
+  avatarId?: number | null;
   role: Role;
   /** The signed-in player has blocked this member. */
   blocked?: boolean;
@@ -320,7 +328,7 @@ export type Pick = { gameId: string; side: Side; isPow: boolean };
 
 export type WeekResults = {
   /** `removed`: no longer in the league, but played this week. */
-  entries: (WeekEntry & { displayName: string; removed: boolean })[];
+  entries: (WeekEntry & { displayName: string; avatarId?: number | null; removed: boolean })[];
   picks: { userId: string; gameId: string; side: Side }[];
 };
 
@@ -339,7 +347,9 @@ export type WeekView = {
   myPicks: Pick[];
   myTiebreakerTotal: number | null;
   /** Admins only: who has picked, without revealing the picks. */
-  submissions: { userId: string; displayName: string; pickCount: number; hasPow: boolean }[] | null;
+  submissions:
+    | { userId: string; displayName: string; avatarId?: number | null; pickCount: number; hasPow: boolean }[]
+    | null;
   /** Everyone's picks and scores. Null until the week is final. */
   results: WeekResults | null;
   /** The league's type and how it is run. Absent from older servers: read as weekly, hands-on. */
@@ -355,7 +365,12 @@ export type Standings = {
   years: number[];
   year: number | null;
   /** `removed`: no longer in the league, but played in a counted week. */
-  entries: (SeasonEntry & Omit<PlayerSeasonStats, "userId"> & { displayName: string; removed: boolean })[];
+  entries: (SeasonEntry &
+    Omit<PlayerSeasonStats, "userId"> & {
+      displayName: string;
+      avatarId?: number | null;
+      removed: boolean;
+    })[];
   /** Final weeks, in order, with their winner(s). Each entry's `weekly` lines up with this list. */
   weeks: ({
     id: string;
@@ -413,6 +428,7 @@ export type MessageThread = {
   id: string;
   title: string;
   authorName: string;
+  avatarId?: number | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -426,6 +442,7 @@ export type MessagePost = {
   /** A placeholder (`REMOVED_TEXT`, `HIDDEN_TEXT`) when the reader may not see the text. */
   body: string;
   authorName: string;
+  avatarId?: number | null;
   authorId: string;
   /** How to show it to this reader. */
   state: PostState;

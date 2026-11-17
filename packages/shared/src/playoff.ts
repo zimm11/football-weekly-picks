@@ -289,7 +289,7 @@ export type PlayoffStandingsView = {
   format: PlayoffFormat;
   /** Final rounds, in order. */
   rounds: { id: string; number: number }[];
-  entries: (PlayoffEntry & { displayName: string; removed: boolean })[];
+  entries: (PlayoffEntry & { displayName: string; avatarId?: number | null; removed: boolean })[];
   /** Display names of the champion(s), once the Super Bowl is final. */
   champions: string[];
   /** The Super Bowl's combined score, once it is final. */

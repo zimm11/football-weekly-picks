@@ -284,7 +284,7 @@ export function LeagueTools({
                 paddingVertical: 8,
               }}
             >
-              <Avatar name={target.displayName} size={32} />
+              <Avatar avatarId={target.avatarId} name={target.displayName} size={32} />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={[s.text, { fontFamily: fonts.medium }]}>
                   {target.displayName}

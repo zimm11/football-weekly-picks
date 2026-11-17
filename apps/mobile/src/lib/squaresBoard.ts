@@ -21,7 +21,14 @@ import { parseLeagueKickoff } from "./leagueLogic";
 export const squareKey = (row: number, col: number) => `${row}:${col}`;
 
 /** A change sent but not yet answered: a claim shows at once as the player's, a release as open. */
-export type PendingChange = { row: number; col: number; claim: boolean; name: string; userId: string | null };
+export type PendingChange = {
+  row: number;
+  col: number;
+  claim: boolean;
+  name: string;
+  avatarId?: number | null;
+  userId: string | null;
+};
 
 /** The board's squares with unanswered changes laid over them. */
 export function withPending(squares: BoardSquare[], pending: PendingChange[]): BoardSquare[] {
@@ -34,6 +41,7 @@ export function withPending(squares: BoardSquare[], pending: PendingChange[]): B
         col: change.col,
         userId: change.userId,
         name: change.name,
+        avatarId: change.avatarId,
         guest: change.userId === null,
       });
     } else byKey.delete(key);

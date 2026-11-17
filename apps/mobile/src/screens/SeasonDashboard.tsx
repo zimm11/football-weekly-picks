@@ -46,7 +46,7 @@ function RankChange({ change }: { change: number | null }) {
 function Name({ entry }: { entry: Entry }) {
   return (
     <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flex: 1 }}>
-      <Avatar name={entry.displayName} size={28} />
+      <Avatar avatarId={entry.avatarId} name={entry.displayName} size={28} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text numberOfLines={2} style={[s.text, { fontSize: 14, lineHeight: 18, fontFamily: fonts.medium }]}>
           {entry.displayName}

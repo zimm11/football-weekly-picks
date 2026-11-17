@@ -309,6 +309,7 @@ export type BoardSquare = {
   userId: string | null;
   /** The player's display name, or the guest's. */
   name: string;
+  avatarId?: number | null;
   guest: boolean;
 };
 
@@ -344,7 +345,7 @@ export type BoardView = BoardSummary & {
   /** The square that would win if the quarter ended now (while the game is on). */
   current: { row: number; col: number } | null;
   /** Everyone holding a square, with how many: players by name, guests marked. Most squares first. */
-  players: { userId: string | null; name: string; guest: boolean; count: number }[];
+  players: { userId: string | null; name: string; avatarId?: number | null; guest: boolean; count: number }[];
 };
 
 /** A game from the feed an admin can put a board on. */

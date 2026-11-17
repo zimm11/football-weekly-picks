@@ -1,6 +1,6 @@
 import { BOARD_SIZE, type BoardSquare, type BoardView, teamName } from "@picks/shared";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { avatarColor, avatarInitials } from "../../components/Avatar";
+import { Avatar, avatarColor, avatarInitials } from "../../components/Avatar";
 import { TeamLogo } from "../../components/TeamLogo";
 import { colors, fonts } from "../../components/ui";
 import { cellLabel, digitAt, SHORT_PERIOD, squareKey, winsOf } from "../../lib/squaresBoard";
@@ -12,7 +12,7 @@ const range = Array.from({ length: BOARD_SIZE }, (_, i) => i);
 
 /**
  * The 10 by 10 board: the home team's numbers across the top, the away team's down the side ("?" until the
- * draw). A cell shows its holder's initials in their avatar color (yours in primary); a winning square takes the
+ * draw). A cell shows its holder's profile logo or initials (yours in primary); a winning square takes the
  * win fill and its quarter's label, and the square that would win now says "Now", so neither is color alone.
  * On a phone the grid scrolls sideways inside its card while the column of numbers stays put.
  */
@@ -115,18 +115,22 @@ export function SquaresGrid({
                         borderColor: colors.win,
                       })}
                     >
-                      {square && (
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            fontFamily: fonts.semibold,
-                            fontSize: 13,
-                            lineHeight: 15,
-                            color: square || wins.length ? ink : colors.mutedForeground,
-                          }}
-                        >
-                          {avatarInitials(square.name)}
-                        </Text>
+                      {square?.avatarId ? (
+                        <Avatar name={square.name} avatarId={square.avatarId} size={24} />
+                      ) : (
+                        square && (
+                          <Text
+                            numberOfLines={1}
+                            style={{
+                              fontFamily: fonts.semibold,
+                              fontSize: 13,
+                              lineHeight: 15,
+                              color: square || wins.length ? ink : colors.mutedForeground,
+                            }}
+                          >
+                            {avatarInitials(square.name)}
+                          </Text>
+                        )
                       )}
                       {wins.length > 0 && (
                         <Text

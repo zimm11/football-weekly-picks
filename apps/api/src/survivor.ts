@@ -281,6 +281,7 @@ export function survivorView(
     players: (status?.players ?? []).map((p) => ({
       userId: p.userId,
       displayName: memberOf.get(p.userId)?.displayName ?? "Player",
+      avatarId: memberOf.get(p.userId)?.avatarId,
       removed: memberOf.get(p.userId)?.removedAt != null,
       alive: p.alive,
       livesLeft: p.livesLeft,

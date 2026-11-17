@@ -205,6 +205,7 @@ erDiagram
   profiles {
     uuid user_id PK, FK
     text display_name
+    integer avatar_id
     boolean email_new_threads
     boolean email_pick_reminders
     boolean email_league_events
@@ -540,6 +541,7 @@ What a player is called on leaderboards, and which emails they want.
 | --- | --- | --- | --- | --- |
 | `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
 | `display_name` | text | no |  |  |
+| `avatar_id` | integer | yes |  | Bundled profile logo (1–100). Null shows initials. |
 | `email_new_threads` | boolean | no |  | Email the player when someone starts a message thread in one of their leagues. Has a default. |
 | `email_pick_reminders` | boolean | no |  | Email the player the evening before a game day on which they still have games to pick. Has a default. |
 | `email_league_events` | boolean | no |  | Email the player about results and updates in their leagues (a week opening or final, being added, …). Has a default. |

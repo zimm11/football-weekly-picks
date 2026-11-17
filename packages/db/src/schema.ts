@@ -89,28 +89,34 @@ const userRef = () =>
     .references(() => authUsers.id, { onDelete: "cascade" });
 
 /** What a player is called on leaderboards, and which emails they want. */
-export const profiles = pgTable("profiles", {
-  userId: userRef().primaryKey(),
-  displayName: text().notNull(),
-  /** Email the player when someone starts a message thread in one of their leagues. */
-  emailNewThreads: boolean().notNull().default(true),
-  /** Email the player the evening before a game day on which they still have games to pick. */
-  emailPickReminders: boolean().notNull().default(true),
-  /** Email the player about results and updates in their leagues (a week opening or final, being added, …). */
-  emailLeagueEvents: boolean().notNull().default(true),
-  /** When the player agreed to the Terms of use. Posting, replying and reacting need it. */
-  termsAcceptedAt: timestamp({ withTimezone: true }),
-  /** No posts, replies or reactions anywhere until then: from repeated removals, or the operator. Never limits picking. */
-  mutedUntil: timestamp({ withTimezone: true }),
-  /** Set by the operator: no posts, replies, reactions or name changes until lifted. Never limits picking. */
-  suspendedAt: timestamp({ withTimezone: true }),
-  /**
-   * When the player deleted their account. The profile stays as "Deleted player" so results from weeks already
-   * played keep a name; everything personal is gone, and the account can't sign in or use the API again.
-   */
-  deletedAt: timestamp({ withTimezone: true }),
-  createdAt: createdAt(),
-}).enableRLS();
+export const profiles = pgTable(
+  "profiles",
+  {
+    userId: userRef().primaryKey(),
+    displayName: text().notNull(),
+    /** Bundled profile logo (1–100). Null shows initials. */
+    avatarId: integer(),
+    /** Email the player when someone starts a message thread in one of their leagues. */
+    emailNewThreads: boolean().notNull().default(true),
+    /** Email the player the evening before a game day on which they still have games to pick. */
+    emailPickReminders: boolean().notNull().default(true),
+    /** Email the player about results and updates in their leagues (a week opening or final, being added, …). */
+    emailLeagueEvents: boolean().notNull().default(true),
+    /** When the player agreed to the Terms of use. Posting, replying and reacting need it. */
+    termsAcceptedAt: timestamp({ withTimezone: true }),
+    /** No posts, replies or reactions anywhere until then: from repeated removals, or the operator. Never limits picking. */
+    mutedUntil: timestamp({ withTimezone: true }),
+    /** Set by the operator: no posts, replies, reactions or name changes until lifted. Never limits picking. */
+    suspendedAt: timestamp({ withTimezone: true }),
+    /**
+     * When the player deleted their account. The profile stays as "Deleted player" so results from weeks already
+     * played keep a name; everything personal is gone, and the account can't sign in or use the API again.
+     */
+    deletedAt: timestamp({ withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [check("profiles_avatar_id_range", sql`${t.avatarId} between 1 and 100`)],
+).enableRLS();
 
 /** A group of players who pick against each other, run by league admins. */
 export const leagues = pgTable(

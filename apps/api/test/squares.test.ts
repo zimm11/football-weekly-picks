@@ -318,9 +318,9 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
 
     const view = (await call<BoardView>(SAM, "GET", `/boards/${boardId}`)).body;
     expect(view.players).toEqual([
-      { userId: null, name: "Uncle Ray", guest: true, count: 3 },
-      { userId: ADMIN, name: "Commish", guest: false, count: 1 },
-      { userId: PAT, name: "Pat", guest: false, count: 1 },
+      { userId: null, name: "Uncle Ray", avatarId: null, guest: true, count: 3 },
+      { userId: ADMIN, name: "Commish", avatarId: null, guest: false, count: 1 },
+      { userId: PAT, name: "Pat", avatarId: null, guest: false, count: 1 },
     ]);
     expect(view.squares.find((s) => s.row === 0 && s.col === 1)).toMatchObject({
       name: "Uncle Ray",
@@ -395,7 +395,7 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
       .where(eq(squareClaims.userId, SAM));
     expect(left.map((r) => r.boardId)).toEqual([locked]);
     expect((await call<BoardView>(ADMIN, "GET", `/boards/${locked}`)).body.squares).toEqual([
-      { row: 1, col: 1, userId: SAM, name: "Sam", guest: false },
+      { row: 1, col: 1, userId: SAM, avatarId: null, name: "Sam", guest: false },
     ]);
   });
 

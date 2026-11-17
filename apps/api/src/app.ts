@@ -5,10 +5,11 @@ import {
   MODERATION_MESSAGES,
   type ModerationStatus,
   type NotificationSettings,
+  updateAvatarSchema,
   updateNotificationsSchema,
   updateProfileSchema,
 } from "@picks/shared";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
@@ -94,6 +95,7 @@ export function createApp(deps: AppDeps) {
         ...c.var.user,
         displayName: profile?.displayName ?? null,
         isOperator: isOperator(deps, c.var.user.id),
+        avatarId: profile?.avatarId ?? null,
         notifications: notificationsOf(profile),
         moderation: moderationOf(profile, now()),
       };
@@ -118,10 +120,21 @@ export function createApp(deps: AppDeps) {
         ...c.var.user,
         displayName,
         isOperator: isOperator(deps, userId),
+        avatarId: profile?.avatarId ?? null,
         notifications: notificationsOf(profile),
         moderation: moderationOf(profile, clock),
       };
       return c.json(me);
+    })
+    .put("/me/avatar", auth, body(updateAvatarSchema), async (c) => {
+      const { avatarId } = c.req.valid("json");
+      const [profile] = await db
+        .update(profiles)
+        .set({ avatarId })
+        .where(and(eq(profiles.userId, c.var.user.id), isNull(profiles.deletedAt)))
+        .returning({ avatarId: profiles.avatarId });
+      if (!profile) fail(409, "Choose a display name first.");
+      return c.json(profile);
     })
     .put("/me/notifications", auth, body(updateNotificationsSchema), async (c) => {
       const { newThreads, pickReminders, leagueEvents } = c.req.valid("json");
