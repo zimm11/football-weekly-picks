@@ -11,7 +11,7 @@ const sections: LegalSection[] = [
   [
     "What POW Pick'em is",
     [
-      "A free pick'em game for private leagues of friends: you pick NFL games against the spread and compare results with your league. These terms cover the iPhone app and www.pow-pickem.com. By creating an account you agree to them.",
+      "Free NFL games for private leagues of friends: weekly and playoff pick'em against the spread, survivor, and squares. These terms cover the iPhone app and www.pow-pickem.com. By creating an account you agree to them.",
       "It is for fun only. There are no entry fees, no prizes and no betting in the app, and no money changes hands through it. Spreads and prediction-market prices are shown as information about the games, not as an offer to bet. Don't use POW Pick'em for gambling that is illegal where you live.",
     ],
   ],
@@ -24,8 +24,8 @@ const sections: LegalSection[] = [
   [
     "Your league",
     [
-      "Each league is run by its admins, who are players like you. They set up each week, can edit spreads and scores, close the week, and can remove members. We don't settle disagreements inside a league.",
-      "Picks stay private until the week is final. After that, everyone in the league sees them, with the results and the standings.",
+      "Each league is run by its admins, who are players like you, with the app doing the weekly chores in a league set to run itself. Admins can edit spreads and scores, enter a survivor pick for a player, put a guest's name on a square, remove members, and add a league's members to a new league they start. We don't settle disagreements inside a league.",
+      "Pick'em picks stay private until the week is final; after that, everyone in the league sees them, with the results and the standings. A survivor pick shows once its game kicks off, and a squares board is open to the whole league.",
     ],
   ],
   [
@@ -38,7 +38,7 @@ const sections: LegalSection[] = [
   [
     "How posts are checked",
     [
-      "Every new thread, reply, display name and league name is checked automatically before it is saved. What breaks these rules is refused.",
+      "Every new thread, reply, display name, league name and guest name is checked automatically before it is saved. What breaks these rules is refused.",
       "Anyone can report a message or a name from its ⋯ menu, and block a player so their messages no longer show. We review reports within 24 hours. League admins can remove messages in their league.",
     ],
   ],

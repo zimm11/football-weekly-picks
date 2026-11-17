@@ -11,6 +11,7 @@ import {
   teamName,
   WEEK_PHASE_LABEL,
   type WeekView,
+  weekLabel,
   weekPhase,
 } from "@picks/shared";
 import { useFocusEffect } from "expo-router";
@@ -46,9 +47,17 @@ import {
   savedDraft,
 } from "../lib/pickDraft";
 import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
-import { formatRecord, gameDays, kickoffTime, pickStatus } from "../lib/weekPresentation";
+import {
+  formatRecord,
+  gameDays,
+  kickoffTime,
+  pickStatus,
+  weekHasPow,
+  weekUnit,
+} from "../lib/weekPresentation";
 import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
 import { MatchupSheet } from "./MatchupSheet";
+import { PlayoffStatusLine } from "./playoff/PlayoffStatus";
 import { WeekResults } from "./WeekResults";
 import { WeekAction, WeekBadge, WeekStat, w } from "./weekUi";
 
@@ -181,13 +190,14 @@ export function WeekScreen({
     setError(undefined);
   }
   function choose(game: Game, side: Side) {
+    if (viewRef.current?.playoff?.mayPick === false) return;
     if (!savingRef.current && !gameLocked(game, clockNow()))
       edit({ ...draftRef.current, sides: { ...draftRef.current.sides, [game.id]: side } });
   }
   function togglePow(game: Game) {
     const current = viewRef.current;
-    if (!current || savingRef.current || gameLocked(game, clockNow()) || !draftRef.current.sides[game.id])
-      return;
+    if (!current || current.playoff?.mayPick === false) return;
+    if (savingRef.current || gameLocked(game, clockNow()) || !draftRef.current.sides[game.id]) return;
     const savedPowGame = current.games.find((value) => value.id === savedDraft(current).pow);
     if (savedPowGame && gameLocked(savedPowGame, clockNow())) return;
     edit({ ...draftRef.current, pow: draftRef.current.pow === game.id ? null : game.id });
@@ -205,7 +215,7 @@ export function WeekScreen({
       if (!active.current) return;
       if (latest.status !== "open") {
         accept(latest, true);
-        setMessage("This week is no longer accepting picks.");
+        setMessage(`This ${weekUnit(latest)} is no longer accepting picks.`);
         return;
       }
       const reconciled = reconcileDraft(draftRef.current, latest, clockNow());
@@ -219,7 +229,9 @@ export function WeekScreen({
       const result = await request<WeekView>(`/weeks/${weekId}/picks`, { method: "PUT", body: parsed.data });
       if (!active.current) return;
       accept(result, true);
-      setMessage(`Picks saved.${reconciled.undone.length ? ` ${undoMessage(reconciled.undone)}` : ""}`);
+      // A playoff player the guillotine put out saves only their Super Bowl guess.
+      const what = result.playoff?.mayPick === false ? "Guess saved." : "Picks saved.";
+      setMessage(`${what}${reconciled.undone.length ? ` ${undoMessage(reconciled.undone)}` : ""}`);
       offerHomeScreen();
     } catch (err) {
       if (active.current) setError(errorText(err));
@@ -259,7 +271,15 @@ export function WeekScreen({
   const score = scoreSoFar(
     view.games.map((game) => ({ ...game, kickoff: new Date(game.kickoff) })),
     view.myPicks,
+    view.powBonus,
   );
+  // A league that runs itself finalizes by itself; a playoff player the guillotine put out only watches.
+  const automatic = view.management === "auto";
+  const closed = view.playoff?.mayPick === false;
+  const unit = weekUnit(view);
+  const powBonus = view.powBonus ?? 5;
+  // A playoff league's Super Bowl has no POW: its one pick is worth the round's points.
+  const hasPow = weekHasPow(view);
   const picked = view.games.filter((game) => draft.sides[game.id]).length;
   const phase = weekPhase(view.status, view.games, now);
   const tab = view.status === "final" ? "results" : "picks";
@@ -291,17 +311,17 @@ export function WeekScreen({
             </WeekBadge>
             <Text
               accessibilityRole="header"
-              accessibilityLabel={`Week ${view.number} · ${view.year}`}
+              accessibilityLabel={`${weekLabel(view.number)} · ${view.year}`}
               style={s.title}
             >
-              Week {view.number}
+              {weekLabel(view.number)}
               {!embedded && <Text style={s.year}> · {view.year}</Text>}
             </Text>
           </View>
           {view.role === "admin" && (
             <WeekAction
               link
-              label="Manage week"
+              label={`Manage ${unit}`}
               onPress={() => void openScreen(`/weeks/${weekId}/manage`)}
               secondary
               compact
@@ -312,30 +332,34 @@ export function WeekScreen({
           <View style={w.card}>
             <Text style={s.cardTitle}>Awaiting finalization</Text>
             <Text style={w.muted}>
-              All final scores are entered. Picks stay private and this week does not count in standings until
-              the admin finalizes it.
+              {automatic
+                ? "All final scores are in. It finalizes by itself in a few minutes; picks stay private until then."
+                : "All final scores are entered. Picks stay private and this week does not count in standings until the admin finalizes it."}
             </Text>
           </View>
         )}
         {phase === "underway" &&
           !view.games.some((game) => game.homeScore === null && new Date(game.kickoff) > now) && (
             <Text style={w.muted}>
-              All games have locked. Results fill in as games end; the week counts once an admin finalizes it.
+              {automatic
+                ? `All games have locked. Results fill in as games end, and the ${unit} finalizes by itself after the last one.`
+                : "All games have locked. Results fill in as games end; the week counts once an admin finalizes it."}
             </Text>
           )}
         {view.status === "draft" && (
           <View style={w.card}>
-            <Text style={w.body}>This week hasn't been opened for picks yet.</Text>
+            <Text style={w.body}>This {unit} hasn't been opened for picks yet.</Text>
           </View>
         )}
         {view.status === "final" && <WeekResults view={view} userId={session?.user.id} />}
         {view.status === "open" && (
           <>
-            <PickStatusBanner view={view} dirty={dirty} now={now} />
+            <PlayoffStatusLine view={view} />
+            {!closed && <PickStatusBanner view={view} dirty={dirty} now={now} />}
             {score.wins + score.losses + score.pushes > 0 && (
-              <View style={w.card} accessibilityLabel="Your week so far">
+              <View style={w.card} accessibilityLabel={`Your ${unit} so far`}>
                 <View style={[w.between, { alignItems: "baseline", flexWrap: "wrap" }]}>
-                  <Text style={s.cardTitle}>Your week so far</Text>
+                  <Text style={s.cardTitle}>Your {unit} so far</Text>
                   <Text style={w.muted}>
                     {score.pending === 0
                       ? "All your games are in"
@@ -351,19 +375,29 @@ export function WeekScreen({
                     compact
                   />
                   <WeekStat label="Record" value={formatRecord(score)} style={s.runningStat} compact />
-                  <WeekStat
-                    label="POW"
-                    value={
-                      score.pow
-                        ? ({ won: "Won", lost: "Lost", push: "Push", pending: "To play" } as const)[score.pow]
-                        : "None"
-                    }
-                    tone={score.pow === "won" ? colors.win : score.pow === "pending" ? colors.pow : undefined}
-                    style={s.runningStat}
-                    compact
-                  />
+                  {hasPow && (
+                    <WeekStat
+                      label="POW"
+                      value={
+                        score.pow
+                          ? ({ won: "Won", lost: "Lost", push: "Push", pending: "To play" } as const)[
+                              score.pow
+                            ]
+                          : "None"
+                      }
+                      tone={
+                        score.pow === "won" ? colors.win : score.pow === "pending" ? colors.pow : undefined
+                      }
+                      style={s.runningStat}
+                      compact
+                    />
+                  )}
                 </View>
-                <Text style={w.small}>Unofficial until an admin finalizes the week.</Text>
+                <Text style={w.small}>
+                  {automatic
+                    ? `Unofficial until the ${unit} is final.`
+                    : "Unofficial until an admin finalizes the week."}
+                </Text>
               </View>
             )}
             <View style={{ gap: 0 }}>
@@ -382,9 +416,9 @@ export function WeekScreen({
               </Pressable>
               {showLocks && (
                 <Text style={[w.muted, { paddingBottom: 4 }]}>
-                  Each game locks at kickoff. Until then you can change your pick and put your POW on it or
-                  take it off. Once your POW's game kicks off, your POW stays there. It is worth 5 extra
-                  points if it wins. If you don't choose a POW, you don't get one.
+                  {hasPow
+                    ? `Each game locks at kickoff. Until then you can change your pick and put your POW on it or take it off. Once your POW's game kicks off, your POW stays there. It is worth ${powBonus} extra ${powBonus === 1 ? "point" : "points"} if it wins. If you don't choose a POW, you don't get one.`
+                    : "The game locks at kickoff. Until then you can change your pick. The Super Bowl has no POW."}
                 </Text>
               )}
             </View>
@@ -394,7 +428,10 @@ export function WeekScreen({
                   {group.day}
                 </Text>
                 {group.games.map((game) => {
-                  const locked = gameLocked(game, now);
+                  // Kicked off (or has a result). A player the guillotine put out can't pick the rest either,
+                  // but those games aren't locked: the status line above says why.
+                  const kickedOff = gameLocked(game, now);
+                  const locked = closed || kickedOff;
                   const scored = { ...game, kickoff: new Date(game.kickoff) };
                   const covered = coveringSide(scored);
                   const savedSide = saved.sides[game.id];
@@ -404,7 +441,7 @@ export function WeekScreen({
                       : covered === "push"
                         ? "Push"
                         : covered === savedSide
-                          ? `Won +${pickPoints(scored, { side: savedSide, isPow: saved.pow === game.id })}`
+                          ? `Won +${pickPoints(scored, { side: savedSide, isPow: saved.pow === game.id }, view.powBonus)}`
                           : "Lost";
                   return (
                     <View key={game.id} style={s.gameCard}>
@@ -413,7 +450,7 @@ export function WeekScreen({
                           {kickoffTime(game.kickoff, view.timeZone)}
                         </Text>
                         {game.id === view.tiebreakerGameId && <WeekBadge>Tiebreaker game</WeekBadge>}
-                        {locked && covered === null && <WeekBadge icon="lock">Locked</WeekBadge>}
+                        {kickedOff && covered === null && <WeekBadge icon="lock">Locked</WeekBadge>}
                         {covered !== null && (
                           <WeekBadge>
                             Final {game.awayScore}–{game.homeScore}
@@ -477,29 +514,33 @@ export function WeekScreen({
                             </Pressable>
                           );
                         })}
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`POW: ${matchup(game)}`}
-                          accessibilityState={{
-                            selected: draft.pow === game.id,
-                            disabled: locked || powFrozen || !draft.sides[game.id] || saving,
-                          }}
-                          aria-pressed={draft.pow === game.id}
-                          disabled={locked || powFrozen || !draft.sides[game.id] || saving}
-                          onPress={() => togglePow(game)}
-                          style={({ pressed }) => [
-                            s.pow,
-                            draft.pow === game.id && s.powSelected,
-                            (locked || powFrozen || !draft.sides[game.id]) &&
-                              draft.pow !== game.id &&
-                              s.disabled,
-                            pressed && s.pressed,
-                          ]}
-                        >
-                          <Text style={[s.powText, draft.pow === game.id && { color: colors.powForeground }]}>
-                            POW
-                          </Text>
-                        </Pressable>
+                        {hasPow && (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`POW: ${matchup(game)}`}
+                            accessibilityState={{
+                              selected: draft.pow === game.id,
+                              disabled: locked || powFrozen || !draft.sides[game.id] || saving,
+                            }}
+                            aria-pressed={draft.pow === game.id}
+                            disabled={locked || powFrozen || !draft.sides[game.id] || saving}
+                            onPress={() => togglePow(game)}
+                            style={({ pressed }) => [
+                              s.pow,
+                              draft.pow === game.id && s.powSelected,
+                              (locked || powFrozen || !draft.sides[game.id]) &&
+                                draft.pow !== game.id &&
+                                s.disabled,
+                              pressed && s.pressed,
+                            ]}
+                          >
+                            <Text
+                              style={[s.powText, draft.pow === game.id && { color: colors.powForeground }]}
+                            >
+                              POW
+                            </Text>
+                          </Pressable>
+                        )}
                       </View>
                       <Pressable
                         accessibilityRole="button"
@@ -535,14 +576,14 @@ export function WeekScreen({
                 />
               </View>
             )}
-            {!draft.pow && (
+            {!draft.pow && !closed && hasPow && (
               <Text style={w.muted}>
                 {needsPow
-                  ? "No POW chosen. Tap POW on a pick whose game hasn't locked yet; if you don't, you won't have one this week."
-                  : "No POW this week: every game has locked."}
+                  ? `No POW chosen. Tap POW on a pick whose game hasn't locked yet; if you don't, you won't have one this ${unit}.`
+                  : `No POW this ${unit}: every game has locked.`}
               </Text>
             )}
-            <Text style={w.muted}>Everyone's picks are revealed when the week closes.</Text>
+            <Text style={w.muted}>Everyone's picks are revealed when the {unit} closes.</Text>
           </>
         )}
         {error && view.status !== "open" && (
@@ -554,28 +595,31 @@ export function WeekScreen({
           </View>
         )}
       </ScrollView>
-      {view.status === "open" && (
+      {/* A player the guillotine put out has nothing to save but the Super Bowl guess. */}
+      {view.status === "open" && (!closed || !!tiebreaker) && (
         <View style={s.savebar}>
-          <View
-            accessibilityRole="progressbar"
-            accessibilityLabel="Games picked"
-            accessibilityValue={{ min: 0, max: view.games.length, now: picked }}
-            style={s.progress}
-          >
+          {!closed && (
             <View
-              style={[s.progressFill, { width: `${(picked / Math.max(1, view.games.length)) * 100}%` }]}
-            />
-          </View>
+              accessibilityRole="progressbar"
+              accessibilityLabel="Games picked"
+              accessibilityValue={{ min: 0, max: view.games.length, now: picked }}
+              style={s.progress}
+            >
+              <View
+                style={[s.progressFill, { width: `${(picked / Math.max(1, view.games.length)) * 100}%` }]}
+              />
+            </View>
+          )}
           <View style={s.saveContents}>
             <WeekAction
-              label={saving ? "Saving…" : "Save picks"}
+              label={saving ? "Saving…" : closed ? "Save guess" : "Save picks"}
               style={{ minWidth: 144 }}
               disabled={saving}
               onPress={() => void save()}
             />
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={w.muted}>
-                {picked} of {view.games.length} picked
+                {closed ? "Your Super Bowl total guess" : `${picked} of ${view.games.length} picked`}
               </Text>
               {dirty && !message && !error && <WeekBadge tone="loss">Unsaved changes</WeekBadge>}
               {(message || error) && (
@@ -606,14 +650,14 @@ function PickStatusBanner({ view, dirty, now }: { view: WeekView; dirty: boolean
   const title = dirty
     ? "Not saved yet"
     : complete
-      ? "You're set for the week"
+      ? `You're set for the ${weekUnit(view)}`
       : left
         ? `${left === 1 ? "game" : "games"} left to pick`
         : `${extras === 1 ? "thing" : "things"} left to do`;
   const detail = dirty
     ? `You've made changes. Press Save to keep them. ${savedLine} so far.`
     : complete
-      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : " No POW this week."} Nothing more to do. You can still change a pick until kickoff.`
+      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : weekHasPow(view) ? ` No POW this ${weekUnit(view)}.` : ""} Nothing more to do. You can still change a pick until kickoff.`
       : `${savedLine}.${needsPow ? " Choose your POW." : ""}${needsTotal ? " Add your tiebreaker guess." : ""}`;
   const tone = dirty ? colors.destructive : complete ? colors.win : colors.primary;
   return (

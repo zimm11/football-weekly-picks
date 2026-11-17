@@ -55,6 +55,7 @@ async function main() {
   // A mismatched VAPID pair is logged (VAPID_KEY_MISMATCH) and switches push off instead of failing every send.
   const push = sender && (await sender.ready?.()) ? sender : undefined;
   const nativePush = env.EXPO_PUSH_ENABLED ? expoPushSender(env.EXPO_ACCESS_TOKEN) : undefined;
+  const nfl = espnProvider();
   const accounts = env.SUPABASE_SECRET_KEY
     ? supabaseAccountAdmin(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY, env.SUPABASE_SECRET_KEY)
     : undefined;
@@ -68,7 +69,7 @@ async function main() {
       db,
       supabaseTokenVerifier(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY),
     ),
-    nfl: espnProvider(),
+    nfl,
     insights: liveInsights(),
     now: clock?.now,
     operatorUserIds: env.OPERATOR_USER_IDS,
@@ -87,12 +88,13 @@ async function main() {
   // Production runs the scheduled jobs from the Worker's Cron Trigger; locally a timer stands in for it. Node has
   // no Workers AI binding, so nothing is screened here (README, "Content moderation").
   let running = false;
+  // Always on, since automation needs only the schedule provider.
   const jobs = setInterval(async () => {
     if (running) return;
     running = true;
     await runScheduledJobs(
       db,
-      { email, push, nativePush, accounts, operatorUserIds: env.OPERATOR_USER_IDS },
+      { email, push, nativePush, nfl, accounts, operatorUserIds: env.OPERATOR_USER_IDS },
       now(),
     ).finally(() => {
       running = false;

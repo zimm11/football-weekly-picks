@@ -14,6 +14,9 @@ import {
   profiles,
   pushSubscriptions,
   seasons,
+  squareBoards,
+  squareClaims,
+  survivorPicks,
   tiebreakerGuesses,
   userBlocks,
   weeks,
@@ -212,6 +215,48 @@ describe.skipIf(!process.env.DATABASE_URL)("account deletion (requires `pnpm db:
     // They're out of the league from now on.
     const [membership] = await db.select().from(leagueMembers).where(eq(leagueMembers.userId, PAT));
     expect(membership?.removedAt).not.toBeNull();
+  });
+
+  it("does the same in the other games: open survivor picks and unlocked squares go, settled ones stay", async () => {
+    const [finalGame] = await db.select().from(games).where(eq(games.weekId, finalWeek));
+    const [openGame] = await db.select().from(games).where(eq(games.weekId, openWeek));
+    assert(finalGame && openGame);
+    await db.insert(survivorPicks).values([
+      { weekId: finalWeek, gameId: finalGame.id, userId: PAT, side: "home" },
+      { weekId: openWeek, gameId: openGame.id, userId: PAT, side: "home" },
+    ]);
+    const digits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const [open, drawn] = await db
+      .insert(squareBoards)
+      .values([
+        { leagueId, homeTeam: "KC", awayTeam: "PHI", kickoff: new Date("2030-02-10T23:30:00Z") },
+        {
+          leagueId,
+          homeTeam: "SEA",
+          awayTeam: "BUF",
+          kickoff: new Date("2026-02-08T23:30:00Z"),
+          homeDigits: digits,
+          awayDigits: digits,
+          drawnAt: new Date("2026-02-08T23:30:00Z"),
+        },
+      ])
+      .returning();
+    assert(open && drawn);
+    await db.insert(squareClaims).values([
+      { boardId: open.id, row: 0, col: 0, userId: PAT },
+      { boardId: open.id, row: 1, col: 1, userId: SAM },
+      { boardId: drawn.id, row: 0, col: 0, userId: PAT },
+    ]);
+
+    await remove(PAT);
+    const survivor = await db.select().from(survivorPicks).where(eq(survivorPicks.userId, PAT));
+    expect(survivor.map((p) => p.weekId)).toEqual([finalWeek]);
+    // The open board's square is free again; the drawn board keeps its square, under "Deleted player".
+    const squares = await db.select().from(squareClaims).where(eq(squareClaims.userId, PAT));
+    expect(squares.map((sq) => sq.boardId)).toEqual([drawn.id]);
+    expect(await db.select().from(squareClaims).where(eq(squareClaims.boardId, open.id))).toHaveLength(1);
+    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, PAT));
+    expect(profile).toMatchObject({ displayName: DELETED_PLAYER_NAME, emailLeagueEvents: false });
   });
 
   it("locks the account out at once, even with a token that hasn't expired", async () => {

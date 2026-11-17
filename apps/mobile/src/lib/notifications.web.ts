@@ -100,10 +100,16 @@ export async function savePush(
       keys: { p256dh: value.keys.p256dh, auth: value.keys.auth },
       newThreads: preferences.newThreads,
       pickReminders: preferences.pickReminders,
+      ...(preferences.leagueEvents !== undefined && { leagueEvents: preferences.leagueEvents }),
       ...(oldEndpoint && oldEndpoint !== subscription.endpoint ? { oldEndpoint } : {}),
     },
   });
-  writeOwner({ userId, newThreads: result.device.newThreads, pickReminders: result.device.pickReminders });
+  writeOwner({
+    userId,
+    newThreads: result.device.newThreads,
+    pickReminders: result.device.pickReminders,
+    leagueEvents: result.device.leagueEvents,
+  });
   return result.device;
 }
 
@@ -196,7 +202,11 @@ export async function reconcilePushAccount(userId: string, deps: Partial<Reconci
     try {
       await save(
         subscription,
-        { newThreads: owner.newThreads, pickReminders: owner.pickReminders },
+        {
+          newThreads: owner.newThreads,
+          pickReminders: owner.pickReminders,
+          leagueEvents: owner.leagueEvents,
+        },
         userId,
         oldEndpoint,
       );

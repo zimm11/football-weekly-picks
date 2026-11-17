@@ -24,6 +24,7 @@ export function pushRoutes({ db, verifyToken, push, nativePush }: AppDeps) {
           id: pushSubscriptions.id,
           newThreads: pushSubscriptions.newThreads,
           pickReminders: pushSubscriptions.pickReminders,
+          leagueEvents: pushSubscriptions.leagueEvents,
         })
         .from(pushSubscriptions)
         .where(
@@ -46,6 +47,7 @@ export function pushRoutes({ db, verifyToken, push, nativePush }: AppDeps) {
             endpoint: pushSubscriptions.endpoint,
             newThreads: pushSubscriptions.newThreads,
             pickReminders: pushSubscriptions.pickReminders,
+            leagueEvents: pushSubscriptions.leagueEvents,
           })
           .from(pushSubscriptions)
           .where(eq(pushSubscriptions.userId, c.var.user.id));
@@ -65,9 +67,19 @@ export function pushRoutes({ db, verifyToken, push, nativePush }: AppDeps) {
               ),
             );
         }
+        // A client from before the third switch sends no `leagueEvents`: the device keeps what it has.
+        const same = devices.find((d) => d.endpoint === value.endpoint);
         const preferences = replaced
-          ? { newThreads: replaced.newThreads, pickReminders: replaced.pickReminders }
-          : { newThreads: value.newThreads, pickReminders: value.pickReminders };
+          ? {
+              newThreads: replaced.newThreads,
+              pickReminders: replaced.pickReminders,
+              leagueEvents: replaced.leagueEvents,
+            }
+          : {
+              newThreads: value.newThreads,
+              pickReminders: value.pickReminders,
+              leagueEvents: value.leagueEvents ?? same?.leagueEvents ?? true,
+            };
         const others = devices.filter((d) => d !== replaced);
         if (others.length >= 10 && !others.some((d) => d.endpoint === value.endpoint))
           fail(409, "You can enable up to 10 devices. Disable notifications on another device first.");
@@ -93,6 +105,7 @@ export function pushRoutes({ db, verifyToken, push, nativePush }: AppDeps) {
             id: pushSubscriptions.id,
             newThreads: pushSubscriptions.newThreads,
             pickReminders: pushSubscriptions.pickReminders,
+            leagueEvents: pushSubscriptions.leagueEvents,
           });
         if (!saved)
           fail(
@@ -110,6 +123,7 @@ export function pushRoutes({ db, verifyToken, push, nativePush }: AppDeps) {
           id: pushSubscriptions.id,
           newThreads: pushSubscriptions.newThreads,
           pickReminders: pushSubscriptions.pickReminders,
+          leagueEvents: pushSubscriptions.leagueEvents,
         })
         .from(pushSubscriptions)
         .where(
@@ -136,9 +150,18 @@ export function pushRoutes({ db, verifyToken, push, nativePush }: AppDeps) {
           value.oldToken && value.oldToken !== value.token
             ? devices.find((d) => d.transport === "expo" && d.endpoint === value.oldToken)
             : undefined;
+        const same = devices.find((d) => d.transport === "expo" && d.endpoint === value.token);
         const preferences = replaced
-          ? { newThreads: replaced.newThreads, pickReminders: replaced.pickReminders }
-          : { newThreads: value.newThreads, pickReminders: value.pickReminders };
+          ? {
+              newThreads: replaced.newThreads,
+              pickReminders: replaced.pickReminders,
+              leagueEvents: replaced.leagueEvents,
+            }
+          : {
+              newThreads: value.newThreads,
+              pickReminders: value.pickReminders,
+              leagueEvents: value.leagueEvents ?? same?.leagueEvents ?? true,
+            };
         if (replaced)
           await tx
             .delete(pushSubscriptions)
@@ -168,6 +191,7 @@ export function pushRoutes({ db, verifyToken, push, nativePush }: AppDeps) {
             id: pushSubscriptions.id,
             newThreads: pushSubscriptions.newThreads,
             pickReminders: pushSubscriptions.pickReminders,
+            leagueEvents: pushSubscriptions.leagueEvents,
           });
         if (!saved)
           fail(

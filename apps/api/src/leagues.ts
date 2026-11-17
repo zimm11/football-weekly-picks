@@ -11,22 +11,29 @@ import {
 } from "@picks/db";
 import {
   activeMute,
+  type CreateLeagueResult,
   createLeagueSchema,
+  defaultManagement,
   effectiveTiebreakerId,
   type InvitePreview,
   type LeagueDetail,
   type LeagueSummary,
+  leagueTypeInfo,
   lowPointLosers,
   MAX_LEAGUE_MEMBERS,
   MAX_LEAGUES_PER_USER,
   MODERATION_MESSAGES,
+  mayUseManagement,
   type PlayerSeasonStats,
+  parseSeasonSettings,
   preferredSeasonYear,
   type Role,
   type Standings,
   scoreWeek,
   seasonStandings,
   seasonStats,
+  seasonYear,
+  startSeasonSchema,
   updateLeagueSchema,
   updateMemberRoleSchema,
   weekPhase,
@@ -49,12 +56,17 @@ import {
   recordedParticipants,
   requireAdmin,
   requireDisplayName,
+  requireLeagueType,
   requireMember,
   type Tx,
   toMember,
   weekParticipants,
 } from "./context";
+import { deliverLeagueEventsSoon, queueLeagueEvent } from "./leagueEvents";
 import { blockedBy, openReportCount, requireNotSuspended, screen } from "./moderation";
+import type { AppServices } from "./services";
+import { startSurvivorSeason } from "./survivor";
+import { TYPE_HOOKS } from "./typeHooks";
 
 const memberParam = param(z.object({ leagueId: z.uuid(), userId: z.uuid() }));
 
@@ -69,13 +81,8 @@ const newInviteCode = () => randomBytes(9).toString("base64url");
 
 const defaultLimits = { membersPerLeague: MAX_LEAGUE_MEMBERS, leaguesPerUser: MAX_LEAGUES_PER_USER };
 
-export function leagueRoutes({
-  db,
-  verifyToken,
-  screener,
-  now = () => new Date(),
-  limits = defaultLimits,
-}: AppDeps) {
+export function leagueRoutes(deps: AppDeps, services: AppServices) {
+  const { db, verifyToken, screener, now = () => new Date(), limits = defaultLimits } = deps;
   const auth = requireAuth(verifyToken);
 
   /** Active members of a league, or active leagues of a user, depending on the filter. */
@@ -92,10 +99,14 @@ export function leagueRoutes({
    * after any league row lock, never before, so it can't deadlock with membership changes.
    */
   async function requireRoomForAnotherLeague(tx: Tx, userId: string) {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`leagues-of:${userId}`}, 0))`);
-    if ((await countMemberships(tx, eq(leagueMembers.userId, userId))) >= limits.leaguesPerUser) {
+    if (!(await roomForAnotherLeague(tx, userId))) {
       fail(409, `You're already in ${limits.leaguesPerUser} leagues, the most one player can be in.`);
     }
+  }
+  /** Takes the player's league-count lock (see above) and says whether they can be in one more league. */
+  async function roomForAnotherLeague(tx: Tx, userId: string) {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`leagues-of:${userId}`}, 0))`);
+    return (await countMemberships(tx, eq(leagueMembers.userId, userId))) < limits.leaguesPerUser;
   }
 
   async function leagueByInvite(code: string) {
@@ -131,10 +142,18 @@ export function leagueRoutes({
             : "At least one admin must remain. Make another member an admin first.",
         );
       }
+      const at = now();
       await tx
         .update(leagueMembers)
-        .set(role === null ? { removedAt: now(), role: "member" } : { role })
+        .set(role === null ? { removedAt: at, role: "member" } : { role })
         .where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, userId)));
+      if (role === null) {
+        const [league] = await tx
+          .select({ type: leagues.type })
+          .from(leagues)
+          .where(eq(leagues.id, leagueId));
+        if (league) await TYPE_HOOKS[league.type].memberRemoved?.(tx, { leagueId, userId, at });
+      }
     });
   }
 
@@ -142,35 +161,121 @@ export function leagueRoutes({
     new Hono<{ Variables: AuthVariables }>()
       .get("/leagues", auth, async (c) => {
         const rows: LeagueSummary[] = await db
-          .select({ id: leagues.id, name: leagues.name, role: leagueMembers.role })
+          .select({
+            id: leagues.id,
+            name: leagues.name,
+            role: leagueMembers.role,
+            type: leagues.type,
+            management: leagues.management,
+          })
           .from(leagueMembers)
           .innerJoin(leagues, eq(leagues.id, leagueMembers.leagueId))
           .where(and(eq(leagueMembers.userId, c.var.user.id), isNull(leagueMembers.removedAt)))
           .orderBy(asc(leagues.createdAt));
         return c.json(rows);
       })
+      /**
+       * Creates a league of any type, its creator as admin. `copyMembersFrom` names a league the creator is an
+       * admin of: its current members join as members in the same transaction, under the same caps and locks as
+       * a join, and each gets a league event. A player already at the league limit is skipped and named.
+       */
       .post("/leagues", auth, body(createLeagueSchema), async (c) => {
-        const { name, timeZone } = c.req.valid("json");
-        await requireDisplayName(db, c.var.user.id);
-        await requireNotSuspended(db, c.var.user.id);
-        await screen(screener, { kind: "league_name", text: name }, MODERATION_MESSAGES.rejectedName);
-        const id = await db.transaction(async (tx) => {
-          await requireRoomForAnotherLeague(tx, c.var.user.id);
+        const input = c.req.valid("json");
+        const userId = c.var.user.id;
+        const management = input.management ?? defaultManagement(input.type);
+        if (!mayUseManagement(input.type, management)) {
+          fail(400, `${leagueTypeInfo(input.type).name} leagues run themselves.`);
+        }
+        const settings = parseSeasonSettings(input.type, input.settings);
+        await requireDisplayName(db, userId);
+        await requireNotSuspended(db, userId);
+        await screen(screener, { kind: "league_name", text: input.name }, MODERATION_MESSAGES.rejectedName);
+        const source = input.copyMembersFrom ? await requireMember(db, input.copyMembersFrom, userId) : null;
+        if (source) requireAdmin(source.role);
+        const at = now();
+        const result = await db.transaction(async (tx) => {
+          const copied = source
+            ? (await listMemberRecords(tx, source.league.id)).filter(
+                (m) => isActive(m) && m.userId !== userId,
+              )
+            : [];
+          // Every player's league-count lock, in one order (creator included), so two creates copying each
+          // other's members can't deadlock. No league row lock is held while waiting, as joins require.
+          for (const id of [userId, ...copied.map((m) => m.userId)].sort())
+            await roomForAnotherLeague(tx, id);
+          await requireRoomForAnotherLeague(tx, userId);
           const [league] = await tx
             .insert(leagues)
-            .values({ name, timeZone, inviteCode: newInviteCode() })
+            .values({
+              name: input.name,
+              timeZone: input.timeZone,
+              type: input.type,
+              management,
+              inviteCode: newInviteCode(),
+            })
             .returning({ id: leagues.id });
           if (!league) throw new Error("League insert returned no row");
-          await tx
-            .insert(leagueMembers)
-            .values({ leagueId: league.id, userId: c.var.user.id, role: "admin", joinedAt: now() });
-          return league.id;
+          await tx.insert(leagueMembers).values({ leagueId: league.id, userId, role: "admin", joinedAt: at });
+          if (leagueTypeInfo(input.type).seasonOnCreate) {
+            await tx.insert(seasons).values({ leagueId: league.id, year: seasonYear(at), settings });
+          }
+          // A survivor pool also gets its start week, which automation imports on the first read.
+          if (input.type === "survivor") {
+            await startSurvivorSeason(
+              tx,
+              {
+                leagueId: league.id,
+                year: seasonYear(at),
+                settings: parseSeasonSettings("survivor", settings),
+                at,
+              },
+              { strict: false },
+            );
+          }
+          const added: string[] = [];
+          const skipped: CreateLeagueResult["skipped"] = [];
+          for (const member of copied) {
+            if (1 + added.length >= limits.membersPerLeague) {
+              skipped.push({ userId: member.userId, displayName: member.displayName, reason: "league_full" });
+            } else if (!(await roomForAnotherLeague(tx, member.userId))) {
+              skipped.push({
+                userId: member.userId,
+                displayName: member.displayName,
+                reason: "player_limit",
+              });
+            } else {
+              await tx
+                .insert(leagueMembers)
+                .values({ leagueId: league.id, userId: member.userId, joinedAt: at });
+              added.push(member.userId);
+            }
+          }
+          const queued = added.length
+            ? await queueLeagueEvent(
+                tx,
+                deps,
+                {
+                  leagueId: league.id,
+                  event: "added",
+                  userIds: added,
+                  headline: `You've been added to ${input.name}`,
+                  detail: `${input.name} started with the members of ${source?.league.name ?? "another league"}. If you'd rather not play, you can leave from its League tab.`,
+                  path: `/leagues/${league.id}`,
+                },
+                at,
+              )
+            : { emails: 0, pushes: 0 };
+          return { id: league.id, added: added.length, skipped, queued };
         });
-        return c.json({ id }, 201);
+        deliverLeagueEventsSoon(deps, result.queued, at);
+        const created: CreateLeagueResult = { id: result.id, added: result.added, skipped: result.skipped };
+        return c.json(created, 201);
       })
       .get("/leagues/:leagueId", auth, leagueParam, async (c) => {
         const { leagueId } = c.req.valid("param");
         const { league, role, joinedAt } = await requireMember(db, leagueId, c.var.user.id);
+        // A league that runs itself takes its next step first (throttled), so the weeks below are current.
+        await services.advanceLeagueOnRead(league, c.get("requestId"));
         const weekRows = await db
           .select({
             id: weeks.id,
@@ -222,6 +327,8 @@ export function leagueRoutes({
           id: league.id,
           name: league.name,
           timeZone: league.timeZone,
+          type: league.type,
+          management: league.management,
           role,
           inviteCode: role === "admin" ? league.inviteCode : null,
           members: await (async () => {
@@ -267,6 +374,11 @@ export function leagueRoutes({
         const { league, role } = await requireMember(db, leagueId, c.var.user.id);
         requireAdmin(role);
         const changes = c.req.valid("json");
+        if (changes.management !== undefined && changes.management !== league.management) {
+          // Only weekly pick'em has a choice.
+          if (!mayUseManagement(league.type, changes.management))
+            fail(409, `${leagueTypeInfo(league.type).name} leagues run themselves.`);
+        }
         const renaming = changes.name !== undefined && changes.name !== league.name;
         if (renaming) await requireNotSuspended(db, c.var.user.id);
         if (renaming && changes.name)
@@ -277,6 +389,38 @@ export function leagueRoutes({
           );
         await db.update(leagues).set(changes).where(eq(leagues.id, leagueId));
         return c.json({ ok: true });
+      })
+      /**
+       * Start season: a season with the type's settings, by the type's own `startSeason` hook (an Automatic weekly
+       * season with its start week, a playoff season with its format, a survivor pool). A type without the hook
+       * answers 409: squares has no seasons, and a hands-on weekly season starts with its first week instead. The
+       * league is advanced right after, so the first slate shows up at once.
+       */
+      .post("/leagues/:leagueId/seasons", auth, leagueParam, body(startSeasonSchema), async (c) => {
+        const { leagueId } = c.req.valid("param");
+        const input = c.req.valid("json");
+        const { league, role } = await requireMember(db, leagueId, c.var.user.id);
+        requireAdmin(role);
+        const startSeason = TYPE_HOOKS[league.type].startSeason;
+        if (!startSeason) fail(409, `${leagueTypeInfo(league.type).name} leagues don't start seasons.`);
+        const parsed = leagueTypeInfo(league.type).settings.safeParse({
+          ...input.settings,
+          ...(input.startWeek !== undefined && { startWeek: input.startWeek }),
+        });
+        if (!parsed.success) fail(400, parsed.error.issues[0]?.message ?? "Check the season's settings.");
+        await db.transaction(async (tx) => {
+          const [locked] = await tx.select().from(leagues).where(eq(leagues.id, leagueId)).for("update");
+          if (!locked) fail(404, "League not found");
+          await startSeason(tx, {
+            league: locked,
+            year: input.year,
+            settings: parsed.data,
+            at: now(),
+            actorId: c.var.user.id,
+          });
+        });
+        await services.advanceLeagueOnRead(league, c.get("requestId"), { force: true });
+        return c.json({ ok: true }, 201);
       })
       .patch(
         "/leagues/:leagueId/members/:userId",
@@ -375,7 +519,9 @@ export function leagueRoutes({
         ),
         async (c) => {
           const { leagueId } = c.req.valid("param");
-          await requireMember(db, leagueId, c.var.user.id);
+          const { league } = await requireMember(db, leagueId, c.var.user.id);
+          // Weekly pick'em's table and scoring; each other type has its own standings route.
+          requireLeagueType(league, "weekly");
           const seasonRows = await db
             .select()
             .from(seasons)

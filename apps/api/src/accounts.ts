@@ -13,6 +13,9 @@ import {
   profiles,
   pushDeliveries,
   pushSubscriptions,
+  squareBoards,
+  squareClaims,
+  survivorPicks,
   tiebreakerGuesses,
   userBlocks,
   weekRecapViews,
@@ -24,7 +27,7 @@ import {
   DELETED_THREAD_TITLE,
   deleteAccountSchema,
 } from "@picks/shared";
-import { and, eq, inArray, isNull, like, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, like, ne, notInArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { type AuthVariables, requireAuth, type VerifyToken } from "./auth";
 import { type AppDeps, body, fail, type Tx } from "./context";
@@ -142,6 +145,18 @@ async function deleteAccountData(tx: Tx, userId: string, deletedLeagues: string[
     .delete(tiebreakerGuesses)
     .where(and(eq(tiebreakerGuesses.userId, userId), inArray(tiebreakerGuesses.weekId, unfinished)));
   await tx.delete(weekRecapViews).where(eq(weekRecapViews.userId, userId));
+  // The same for the other games: a survivor pick in a week that isn't final, and squares on boards that haven't
+  // locked (as leaving a squares league gives them back). A drawn board keeps its squares, under "Deleted player".
+  await tx
+    .delete(survivorPicks)
+    .where(and(eq(survivorPicks.userId, userId), inArray(survivorPicks.weekId, unfinished)));
+  const openBoards = tx
+    .select({ id: squareBoards.id })
+    .from(squareBoards)
+    .where(and(isNull(squareBoards.drawnAt), gt(squareBoards.kickoff, now)));
+  await tx
+    .delete(squareClaims)
+    .where(and(eq(squareClaims.userId, userId), inArray(squareClaims.boardId, openBoards)));
 
   // Their messages: text cleared (a placeholder shows instead), titles of their threads replaced. Others' replies
   // and the thread positions stay put. Nothing more is sent about their threads.
@@ -201,6 +216,7 @@ async function deleteAccountData(tx: Tx, userId: string, deletedLeagues: string[
     displayName: DELETED_PLAYER_NAME,
     emailNewThreads: false,
     emailPickReminders: false,
+    emailLeagueEvents: false,
     termsAcceptedAt: null,
     mutedUntil: null,
     suspendedAt: null,

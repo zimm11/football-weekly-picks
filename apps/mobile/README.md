@@ -105,7 +105,7 @@ Data collected, all linked to the player, none used for tracking, each for **App
 | --------------------------------- | ---------------------------------------------------------------------- |
 | Contact Info → Email Address      | The account's email: sign-in, and notification emails                  |
 | Contact Info → Name               | The display name                                                       |
-| User Content → Gameplay Content   | Picks, the Pick of the Week and tiebreaker guesses                     |
+| User Content → Gameplay Content   | Picks, the Pick of the Week, tiebreaker guesses and claimed squares    |
 | User Content → Other User Content | Message-board threads, replies and reactions; reports and blocks       |
 | User Content → Customer Support   | Feedback: the message, the screen it was sent from and the device type |
 | Identifiers → User ID             | The account ID                                                         |

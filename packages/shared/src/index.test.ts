@@ -24,6 +24,7 @@ describe("request schemas", () => {
     expect(createLeagueSchema.parse({ name: "  Sunday Crew  " })).toEqual({
       name: "Sunday Crew",
       timeZone: "America/New_York",
+      type: "weekly",
     });
   });
 

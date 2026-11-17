@@ -96,6 +96,7 @@ const applicationMessages = new Set([
   "League insert returned no row",
   "Season upsert returned no row",
   "Reminder has no games",
+  "Invalid league event name",
   "Screening answer was unusable",
   "Report insert returned no row",
   "Auth soft delete failed",
@@ -116,6 +117,11 @@ const operationMessages = {
   email_send: "Sending an email failed.",
   email_jobs: "Email job failed.",
   email_queue: "Queueing pick reminder emails failed.",
+  automation_jobs: "League automation run failed.",
+  automation_due: "Finding leagues with automation due failed.",
+  automation_league: "Advancing one league's automation failed.",
+  league_event: "Queueing a league event's notifications failed.",
+  squares_board: "Advancing one squares board failed.",
   moderation_screen: "Content screening model request failed; the content was saved unchecked.",
   moderation_jobs: "Moderation job failed.",
   moderation_report: "Checking a reported message failed.",
@@ -147,7 +153,7 @@ export function logError(operation: Operation, error: unknown, requestId?: strin
   const frame =
     error instanceof Error
       ? error.stack?.match(
-          /apps\/api\/src\/(accounts|app|auth|context|email|env|index|insights|jobs|leagues|logging|messages|moderation|moderationJobs|nfl|operator|outbox|push|pushQueue|pushSender|reminderTargets|screening|templates|unsubscribe|webPush|weeks|worker)\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
+          /apps\/api\/src\/((?:automation\/|reminders\/)?(?:accounts|app|auth|context|email|env|index|insights|jobs|leagueEvents|leagues|logging|messages|moderation|moderationJobs|nfl|operator|outbox|pickem|playoff|push|pushQueue|pushSender|reminderTargets|screening|services|squares|survivor|templates|typeHooks|unsubscribe|webPush|weekOps|weekly|weeks|worker))\.(ts|js):(\d{1,6}):(\d{1,6})\b/,
         )
       : undefined;
   const location = frame ? `${frame[1]}.${frame[2]}:${frame[3]}:${frame[4]}` : undefined;
@@ -189,7 +195,7 @@ export function logWarning(name: keyof typeof warnings) {
 
 /** A summary of one scheduled run: counts only, and only when it did something. */
 export function logJobRun(
-  event: "email_jobs" | "push_jobs" | "moderation_jobs" | "account_jobs",
+  event: "email_jobs" | "push_jobs" | "automation_jobs" | "moderation_jobs" | "account_jobs",
   result: Record<string, number>,
 ) {
   if (Object.values(result).some((n) => n > 0)) console.log(JSON.stringify({ event, ...result }));

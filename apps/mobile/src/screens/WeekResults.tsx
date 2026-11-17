@@ -32,6 +32,8 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
   const powPush = myPow && coveringSide({ ...myPow, kickoff: new Date(myPow.kickoff) }) === "push";
   const winners = results.entries.filter((entry) => entry.isWinner);
   const powHits = results.entries.filter((entry) => entry.powWon).length;
+  // A playoff round has no winner and no Low Point Loser: one champion, after the Super Bowl.
+  const playoff = view.leagueType === "playoff";
   return (
     <View style={{ gap: 16 }}>
       <View role="region" aria-label="Week summary" style={s.stats}>
@@ -60,7 +62,7 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
           />
         )}
         <WeekStat
-          label="Winning score"
+          label={playoff ? "Top score" : "Winning score"}
           value={topPoints ?? "—"}
           detail={winners.length > 1 ? `Shared by ${winners.length}` : undefined}
           style={s.stat}
@@ -97,6 +99,8 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
             games={view.games}
             actual={actual}
             mine={entry.userId === userId}
+            playoff={playoff}
+            powBonus={view.powBonus}
           />
         ))}
       </View>
@@ -117,15 +121,19 @@ function PlayerResult({
   games,
   actual,
   mine,
+  playoff = false,
+  powBonus,
 }: {
   entry: Results["entries"][number];
   results: Results;
   games: Game[];
   actual: number | null;
   mine: boolean;
+  playoff?: boolean;
+  powBonus?: number;
 }) {
   const [gridWidth, setGridWidth] = useState(0);
-  const lpl = lowPointLosers(results.entries).includes(entry.userId);
+  const lpl = !playoff && lowPointLosers(results.entries).includes(entry.userId);
   return (
     <View role="row" style={[s.playerCard, mine && s.mine]}>
       <View role="cell" style={{ gap: 12 }}>
@@ -182,7 +190,7 @@ function PlayerResult({
                     : "lost";
             const abbr = pick ? (pick.side === "home" ? game.homeTeam : game.awayTeam) : null;
             const pow = entry.powGameId === game.id;
-            const earned = pick ? pickPoints(scored, { side: pick.side, isPow: pow }) : null;
+            const earned = pick ? pickPoints(scored, { side: pick.side, isPow: pow }, powBonus) : null;
             const label = `${matchup(game)}, ${pick && abbr ? formatLine(abbr, lineFor(pick.side, game.spread ?? 0)) : "No pick"}${pow ? ", POW" : ""}, ${outcome === "none" ? "no pick" : outcome}${earned === null ? "" : `, ${earned} points`}. Final ${game.awayScore ?? "pending"} to ${game.homeScore ?? "pending"}.`;
             return (
               <View
@@ -243,6 +251,7 @@ export function WeekAwardCards({ view, showWinner = false }: { view: WeekView; s
     tiebreakerGameId: view.tiebreakerGameId,
   });
   const name = (id: string) => results.entries.find((entry) => entry.userId === id)?.displayName ?? "Player";
+  const playoff = view.leagueType === "playoff";
   const points = (ids: string[]) =>
     `${results.entries.find((entry) => entry.userId === ids[0])?.points ?? 0} points`;
   const list: {
@@ -262,7 +271,7 @@ export function WeekAwardCards({ view, showWinner = false }: { view: WeekView; s
       icon: "trophy",
       tone: colors.primary,
     });
-  if (awards.lowPointLosers.length)
+  if (awards.lowPointLosers.length && !playoff)
     list.push({
       key: "lpl",
       title: awards.lowPointLosers.length === 1 ? "Low Point Loser" : "Low Point Losers",
@@ -274,7 +283,7 @@ export function WeekAwardCards({ view, showWinner = false }: { view: WeekView; s
   if (awards.perfectWeeks.length)
     list.push({
       key: "perfect",
-      title: "Perfect week",
+      title: playoff ? "Perfect round" : "Perfect week",
       names: awards.perfectWeeks.map(name),
       detail: "Picked every game and won them all.",
       icon: "star",

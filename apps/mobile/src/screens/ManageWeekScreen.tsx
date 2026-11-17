@@ -9,6 +9,7 @@ import {
   THREAD_TITLE_MAX,
   WEEK_PHASE_LABEL,
   type WeekView,
+  weekLabel,
   weekPhase,
   zonedParts,
 } from "@picks/shared";
@@ -26,6 +27,7 @@ import { announceMessagesChanged } from "../lib/messageUnread";
 import { notifyDone, notifyError } from "../lib/notify";
 import { rememberSeason } from "../lib/seasonSelection";
 import { confirmDiscard } from "../lib/unsaved";
+import { weekUnit } from "../lib/weekPresentation";
 import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
 import { timeZones } from "./LeagueTools";
 import {
@@ -48,6 +50,7 @@ import {
   useLeagueLoad,
 } from "./leagueUi";
 import { WeekResults } from "./WeekResults";
+import { ScoreCorrection } from "./weekly/ScoreCorrection";
 
 export function ManageWeekScreen({ weekId }: { weekId: string }) {
   const { me } = useAuth();
@@ -111,7 +114,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   ? "Week reopened."
                   : "Week updated.";
       notifyDone(done);
-      if (action === "open" || action === "finalize") {
+      // A league that runs itself announces opening and finalizing on its own (league events): no thread offer.
+      if ((action === "open" || action === "finalize") && updated.management !== "auto") {
         // The confirmation previews the winner and the Low Point Loser.
         const entries = updated.results?.entries ?? [];
         const winners = entries.filter((entry) => entry.isWinner);
@@ -151,14 +155,17 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
   if (view.role !== "admin")
     return (
       <View style={s.content}>
-        <Heading>Week management</Heading>
-        <Text style={s.text}>Only league admins can manage a week.</Text>
+        <Heading>{weekUnit(view) === "round" ? "Round management" : "Week management"}</Heading>
+        <Text style={s.text}>Only league admins can manage a {weekUnit(view)}.</Text>
         <Action link onPress={() => go(`/weeks/${weekId}`)}>
-          Go to the week
+          Go to the {weekUnit(view)}
         </Action>
       </View>
     );
   const missing = view.games.filter((game) => game.homeScore === null || game.awayScore === null).length;
+  const automatic = view.management === "auto";
+  const playoff = view.leagueType === "playoff";
+  const unit = weekUnit(view);
   return (
     <View style={s.page}>
       <ScrollView
@@ -201,7 +208,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                 textTransform: "uppercase",
               }}
             >
-              Week {view.number}{" "}
+              {weekLabel(view.number)}{" "}
               <Text style={{ fontFamily: fonts.displayBold, fontSize: 24, color: colors.mutedForeground }}>
                 · {view.year}
               </Text>
@@ -209,17 +216,22 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           </View>
           {view.status !== "draft" && (
             <Action link compact secondary onPress={() => go(`/weeks/${weekId}`)}>
-              {view.status === "open" ? "Make your own picks" : "See the week as players do"}
+              {view.status === "open" ? "Make your own picks" : `See the ${unit} as players do`}
             </Action>
           )}
         </View>
-        <Card label="Week admin">
-          <Eyebrow>Manage week</Eyebrow>
+        <Card label={playoff ? "Round admin" : "Week admin"}>
+          <Eyebrow>Manage {unit}</Eyebrow>
           {view.status === "draft" && (
             <>
               <Label>
-                Players can't see this week yet. Check the games and spreads, then open it. Spreads stay fixed
-                once the week is open unless you change them here.
+                {!automatic
+                  ? "Players can't see this week yet. Check the games and spreads, then open it. Spreads stay fixed once the week is open unless you change them here."
+                  : playoff
+                    ? "Players can't see this round yet. It opens by itself as soon as every game has a line, and spreads freeze then. Open it now if you'd rather not wait."
+                    : view.games.length
+                      ? "Players can't see this week yet. It opens by itself on Tuesday at 9 AM Eastern, or as soon as every game has a line after that, and spreads freeze then. Open it now if you'd rather not wait."
+                      : "Players can't see this week yet. On Tuesday at 9 AM Eastern its games and that morning's lines come in from ESPN and it opens for picks, all at once. Import it now only if you'd rather set it up by hand."}
               </Label>
               <Action
                 disabled={!!busy || !view.games.length}
@@ -227,7 +239,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   void act("open", `/weeks/${weekId}/open`);
                 }}
               >
-                {busy === "open" ? "Opening…" : "Open week for picks"}
+                {busy === "open" ? "Opening…" : `Open ${unit} for picks`}
               </Action>
               <Action
                 secondary
@@ -264,23 +276,29 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               <Label>
                 {missing
                   ? `${missing} of ${view.games.length} games still need a final score.`
-                  : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}{" "}
-                Pulling results updates scores only; spreads stay as they were when the week opened.
+                  : automatic
+                    ? "All final scores are entered. It finalizes by itself in a few minutes, or finalize it now."
+                    : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}{" "}
+                {automatic
+                  ? "Results fill in from ESPN as games end, never over a score you typed."
+                  : "Pulling results updates scores only; spreads stay as they were when the week opened."}
               </Label>
               <Action
                 disabled={!!busy || missing > 0 || view.games.length === 0}
                 onPress={() =>
                   confirm(
-                    "Finalize the week?",
-                    "Everyone's picks and the winner will be revealed.",
-                    "Finalize week",
+                    `Finalize the ${unit}?`,
+                    playoff
+                      ? "Everyone's picks will be revealed, and the standings updated."
+                      : "Everyone's picks and the winner will be revealed.",
+                    `Finalize ${unit}`,
                     () => {
                       void act("finalize", `/weeks/${weekId}/finalize`);
                     },
                   )
                 }
               >
-                {busy === "finalize" ? "Finalizing…" : "Finalize week"}
+                {busy === "finalize" ? "Finalizing…" : `Finalize ${unit}`}
               </Action>
               <Action
                 secondary
@@ -300,13 +318,18 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               </Action>
             </>
           )}
-          {view.status === "final" && (
+          {view.status === "final" && !automatic && (
             <Label>
               Reopen to correct a score or spread. Picks are hidden again until you close it. Spreads stay as
               they were when the week opened unless you edit them by hand.
             </Label>
           )}
-          {view.status === "final" && (
+          {view.status === "final" && automatic && (
+            <Label>
+              Correct a score below and the results and standings update in place. Nothing needs reopening.
+            </Label>
+          )}
+          {view.status === "final" && !automatic && (
             <Action
               secondary
               disabled={!!busy}
@@ -385,6 +408,9 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           </Card>
         )}
         <Failure message={week.error} retry={week.reload} />
+        {view.status === "final" && automatic && (
+          <ScoreCorrection view={view} onUpdated={week.setData} disabled={!!busy} />
+        )}
         {view.status === "final" && view.results ? (
           <View onLayout={(event) => setResultsY(event.nativeEvent.layout.y)}>
             <WeekResults view={view} userId={me?.id} />

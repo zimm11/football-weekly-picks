@@ -36,6 +36,16 @@ test("signed-out visitors can explore the landing page and public guide", async 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "POW Pick'em", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Beat the spread/ })).toBeVisible();
+  // The other games are a quieter strip under the weekly pitch, each opening its own How to play tab.
+  await page.getByRole("link", { name: "How Survivor works" }).click();
+  await expect(page).toHaveURL(/\/how-to-play\?section=survivor$/);
+  await expect(page.getByRole("tab", { name: "Survivor" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Survivor", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The pick rules" })).not.toBeAttached();
+  await page.getByRole("tab", { name: "Weekly pick'em" }).click();
+  await expect(page).toHaveURL(/\/how-to-play\?section=weekly$/);
+  await expect(page.getByRole("heading", { name: "The pick rules" })).toBeVisible();
+  await page.goto("/");
   await page
     .getByRole("navigation", { name: "Main navigation" })
     .getByRole("link", { name: "Sign in", exact: true })
@@ -50,9 +60,9 @@ test("signed-out visitors can explore the landing page and public guide", async 
   await expect(page).toHaveURL(/\/how-to-play$/);
   await expect(page.getByRole("heading", { name: "The pick rules" })).toBeVisible();
   await page.getByRole("link", { name: "For admins", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Create your league and invite the crew" }),
-  ).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "Set up a draft week" })).toBeInViewport();
+  // What every league shares sits under the tabs, whichever game is chosen.
+  await expect(page.getByRole("heading", { name: "Start a league of your own" })).toBeAttached();
   await page.reload();
   await expect(page.getByRole("heading", { name: "How to play", exact: true })).toBeAttached();
   await page
@@ -161,6 +171,7 @@ test("admins have equal authority and can step down while keeping one admin", as
   // Three players, several reloads and a menu per admin action: this runs close to the default 30s.
   test.slow();
   await page.getByLabel("League name").fill("Shared administration");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Shared administration" })).toBeVisible();
   const leagueUrl = page.url();
@@ -243,6 +254,7 @@ test("admins choose one season across tabs and manage existing weeks without dup
   signedIn: _,
 }) => {
   await page.getByLabel("League name").fill("Season choices");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
   await page.getByLabel("Import games and spreads from ESPN").uncheck();
@@ -277,6 +289,7 @@ test("upcoming picks take priority over unfinished past weeks and season changes
   signedIn: _,
 }) => {
   await page.getByLabel("League name").fill("Pick priorities");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
 
@@ -326,6 +339,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   // The admin starts a league, which lands on its League tab, and sets up a week by hand (no schedule import,
   // so the test stays offline).
   await page.getByLabel("League name").fill("E2E League");
+  await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "E2E League" })).toBeVisible();
   const inviteUrl = await page.getByLabel(/Invite link/).inputValue();

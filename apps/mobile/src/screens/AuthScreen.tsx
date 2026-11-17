@@ -1,7 +1,13 @@
-import { DISPLAY_NAME_MAX, MINIMUM_AGE, updateProfileSchema } from "@picks/shared";
+import {
+  DISPLAY_NAME_MAX,
+  LEAGUE_TYPE_INFO,
+  type LeagueType,
+  MINIMUM_AGE,
+  updateProfileSchema,
+} from "@picks/shared";
 import { usePathname, useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { PreferenceToggle } from "../components/PreferenceToggle";
 import { Splash } from "../components/Splash";
@@ -314,7 +320,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
           {
             icon: "trophy" as const,
             title: "Chase first place",
-            detail: "See everyone's picks and the standings after the admin closes the week.",
+            detail: "See everyone's picks and the standings once the week is final.",
           },
         ].map((item) => (
           <Card key={item.title} style={{ flex: wide ? 1 : undefined, gap: 8 }}>
@@ -337,6 +343,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
           </Card>
         ))}
       </View>
+      <MoreWays wide={wide} onOpen={(type) => router.push(`/how-to-play?section=${type}` as never)} />
       <View
         onLayout={(event) => setFormY(event.nativeEvent.layout.y)}
         style={{ flexDirection: wide ? "row" : "column", gap: 24 }}
@@ -356,7 +363,8 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
           <View style={{ flexDirection: "row", gap: 12 }}>
             <Icon name="trophy" color={colors.primary} />
             <Body muted style={{ fontSize: 14, lineHeight: 20, flex: 1 }}>
-              Running the league? The guide walks you through invites, week setup, and results.
+              Running the league? Let it run itself from ESPN, or run each week by hand. The guide covers
+              both.
             </Body>
           </View>
           <Button
@@ -372,6 +380,59 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
     </ScrollView>
   );
 }
+/** The other games a league can play: a quieter strip under the weekly pitch, each linking to its rules. */
+const OTHER_GAMES: { type: Exclude<LeagueType, "weekly">; pitch: string }[] = [
+  { type: "playoff", pitch: "Pick'em through the playoffs, with one champion after the Super Bowl." },
+  { type: "squares", pitch: "A 10 by 10 board on one game. Quarter scores pick the winning squares." },
+  { type: "survivor", pitch: "One team a week, never the same one twice. Last player standing wins." },
+];
+
+function MoreWays({ wide, onOpen }: { wide: boolean; onOpen: (type: LeagueType) => void }) {
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ gap: 4 }}>
+        <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.primary }}>
+          More ways to play
+        </Text>
+        <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+          A league can play one of these instead, with the same invites, messages and reminders.
+        </Body>
+      </View>
+      <View style={{ flexDirection: wide ? "row" : "column", gap: 8 }}>
+        {OTHER_GAMES.map(({ type, pitch }) => (
+          <Pressable
+            key={type}
+            accessibilityRole="link"
+            accessibilityLabel={`How ${LEAGUE_TYPE_INFO[type].name} works`}
+            onPress={() => onOpen(type)}
+            style={({ pressed }) => ({
+              flex: wide ? 1 : undefined,
+              minHeight: 44,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              padding: 12,
+              borderRadius: 12,
+              backgroundColor: pressed ? colors.raised : colors.card,
+            })}
+          >
+            <Icon name={LEAGUE_TYPE_INFO[type].icon} color={colors.mutedForeground} size={20} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ fontFamily: fonts.semibold, fontSize: 15, color: colors.foreground }}>
+                {LEAGUE_TYPE_INFO[type].name}
+              </Text>
+              <Body muted style={{ fontSize: 13, lineHeight: 18 }}>
+                {pitch}
+              </Body>
+            </View>
+            <Icon name="chevron-right" color={colors.mutedForeground} size={16} />
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function ExamplePick() {
   return (
     <Card>

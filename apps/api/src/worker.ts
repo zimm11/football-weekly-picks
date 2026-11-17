@@ -8,6 +8,7 @@ import { createHyperdriveDb, type Db } from "@picks/db";
 import { refuseDeletedAccounts, supabaseAccountAdmin } from "./accounts";
 import { createApp } from "./app";
 import { supabaseTokenVerifier } from "./auth";
+import { devHarness } from "./devHarness";
 import { cloudflareMailer, mailpitMailer } from "./email";
 import { loadWorkerEnv } from "./env";
 import { liveInsights } from "./insights";
@@ -78,6 +79,13 @@ function build() {
         })
       : undefined;
   const nativePush = config.EXPO_PUSH_ENABLED ? expoPushSender(config.EXPO_ACCESS_TOKEN) : undefined;
+  // Local E2E only (DEV_HARNESS, refused in production): a scripted feed and a movable clock.
+  const harness = config.DEV_HARNESS
+    ? devHarness((at, nfl, onlyLeagues) =>
+        runScheduledJobs(db, { email, push, nativePush, nfl, onlyLeagues }, at),
+      )
+    : undefined;
+  const nfl = harness?.nfl ?? espnProvider();
   // Every post and name is screened on Workers AI unless MODERATION_MODE=off (the emergency switch).
   const screener =
     config.MODERATION_MODE === "enforce"
@@ -95,8 +103,9 @@ function build() {
       db,
       supabaseTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY),
     ),
-    nfl: espnProvider(),
+    nfl,
     insights: liveInsights(),
+    ...(harness && { now: harness.now }),
     operatorUserIds: config.OPERATOR_USER_IDS,
     email,
     push,
@@ -114,6 +123,9 @@ function build() {
     email,
     push,
     nativePush,
+    nfl,
+    harness,
+    now: harness?.now ?? (() => new Date()),
     screener,
     accounts,
     operatorUserIds: config.OPERATOR_USER_IDS,
@@ -148,20 +160,36 @@ async function withConnection<T>(
 export default {
   async fetch(request, env, ctx) {
     if (!worker) return Response.json({ error: "Internal server error" }, { status: 500 });
-    const { app, production } = worker;
+    const { app, harness, production } = worker;
+    if (harness) {
+      const { pathname } = new URL(request.url);
+      if (pathname.startsWith("/api/dev/")) {
+        return withConnection(env, ctx, production, async () => harness.routes.fetch(request));
+      }
+      if (pathname === "/api/config") {
+        // The app reads the clock offset once per page load, so a test reloads after moving the clock.
+        const res = await withConnection(env, ctx, production, async () => app.fetch(request, env, ctx));
+        if (!res.ok) return res;
+        // Keep the API's own headers (security headers, no-store); only the body changes length.
+        const headers = new Headers(res.headers);
+        headers.delete("content-length");
+        const body = { ...(await res.json<object>()), clockOffsetMs: harness.clockOffsetMs() };
+        return new Response(JSON.stringify(body), { status: res.status, headers });
+      }
+    }
     return withConnection(env, ctx, production, async () => app.fetch(request, env, ctx));
   },
 
   /**
-   * The Cron Trigger (wrangler.jsonc): the moderation jobs, then queue due pick reminders and send what's waiting,
-   * by email and push.
+   * The Cron Trigger (wrangler.jsonc): the account and moderation jobs, leagues that run themselves, then queue
+   * due pick reminders and send what's waiting, by email and push.
    */
   async scheduled(_controller, env, ctx) {
     if (!worker) return;
-    const { email, push, nativePush, screener, accounts, operatorUserIds, production } = worker;
+    const { email, push, nativePush, nfl, now, screener, accounts, operatorUserIds, production } = worker;
     // Each job logs its own failures through the safe logger, so nothing raw reaches the runtime's log.
     await withConnection(env, ctx, production, () =>
-      runScheduledJobs(db, { email, push, nativePush, screener, accounts, operatorUserIds }, new Date()),
+      runScheduledJobs(db, { email, push, nativePush, nfl, screener, accounts, operatorUserIds }, now()),
     );
   },
 } satisfies ExportedHandler<Env>;

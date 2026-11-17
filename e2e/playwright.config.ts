@@ -11,6 +11,8 @@ try {
   process.loadEnvFile(new URL("../.env", import.meta.url));
 } catch {}
 assertLocalTestEnv(process.env);
+/** Specs that move the dev harness's clock or script its feed. */
+const SIMULATED = /\.sim\.spec\.ts$/;
 const workerUrl = `http://localhost:${process.env.WORKER_PORT ?? Number(process.env.PORT ?? 8787) + 1000}`;
 
 export default defineConfig({
@@ -30,12 +32,23 @@ export default defineConfig({
     screenshot: "off",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile-safari", use: { ...devices["iPhone 15"] } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: SIMULATED },
+    { name: "mobile-safari", use: { ...devices["iPhone 15"] }, testIgnore: SIMULATED },
+    // Journeys that drive the dev harness (tests/harness.ts): its clock and feed are shared by the whole Worker,
+    // so they run one at a time, after the parallel projects. `--project=simulated --no-deps` runs them alone.
+    {
+      name: "simulated",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: SIMULATED,
+      workers: 1,
+      dependencies: ["chromium", "mobile-safari"],
+    },
   ],
   webServer: [
     {
       command: "pnpm worker:dev",
+      // The scripted feed and movable clock for the simulated journeys (apps/api/src/devHarness.ts).
+      env: { DEV_HARNESS: "1" },
       url: `${workerUrl}/api/health`,
       reuseExistingServer: !isCI,
       cwd: "..",

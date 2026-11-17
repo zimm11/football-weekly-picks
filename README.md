@@ -154,6 +154,20 @@ a password of at least six characters. To join the seeded league, open `/join/lo
 URL, sign in, and press **Join league**. In the main checkout, that URL is
 `http://localhost:8081/join/local-invite`.
 
+[`supabase/seeds/squares.sql`](supabase/seeds/squares.sql) adds **Squares Crew** (`/join/local-squares`; Commish is
+its admin, Pat and Sam are members, Alex isn't): an open board on the Super Bowl, typed in for 2027-02-14, with
+squares for Pat, Commish and the guest Uncle Ray, and a finished 2025 board whose halftime square was empty. Press
+**Lock and draw** on its **Manage board** screen, or set `CLOCK_OVERRIDE` past kickoff to see it lock by itself.
+
+[`supabase/seeds/playoff.sql`](supabase/seeds/playoff.sql) adds **Playoff Bracket** (`/join/local-playoff`; a
+Guillotine league, Commish its admin, Pat and Sam members): its 2025 playoffs all final, with Sam out after the Wild
+Card, Pat out after the Divisional round and Commish the champion, and its 2026 playoffs waiting for ESPN's Wild
+Card round. Pat and Sam get the Super Bowl recap on their next visit.
+
+[`supabase/seeds/survivor.sql`](supabase/seeds/survivor.sql) adds **Last One Standing**, a survivor pool for
+the same four accounts (invite `/join/local-survivor`): two lives from Week 8, Weeks 8–10 closed with Commish
+and Pat still in, Sam and Alex out, and an empty Week 11 that the first read imports from ESPN and opens.
+
 Use a normal browser window for the admin and a private window or different browser profile for a player.
 Sessions are stored per browser profile, so both accounts can stay signed in side by side.
 
@@ -178,8 +192,10 @@ storage; no storage means no suggestion).
 On iPhone and iPad (iOS 16.4+), first add POW Pick'em to the home screen and open it from its icon;
 ordinary iPhone browser tabs show those steps instead of asking for permission.
 
-Each device has its own switches for **New league threads** and **Missing-pick reminders**, beside the
-email switches (**By email**) in the same **Notifications** section of Settings. A new thread notifies the league's other current members who
+Each device has its own switches for **New league threads**, **Missing-pick reminders** and **Results and
+updates**, beside the email switches (**By email**) in the same **Notifications** section of Settings.
+Results and updates (a week opening or final in a league that runs itself, being added to a league) are the
+`league_event` kind; they name the league and the event, never a pick, a team or whether you're in or out. A new thread notifies the league's other current members who
 opted in (replies don't). Reminders start at 7pm league time the evening before a game day, only for games
 still to pick, and expire at that day's first kickoff; picks and membership are checked again just before
 sending. Notifications show league names and thread titles on the lock screen, never picks or message
@@ -213,9 +229,14 @@ This local setting is not applied to production.
 
 ### Walking through a week
 
+This walks through Weekly pick'em, the main game. The other games each have a seeded league to try (see
+[Test accounts](#test-accounts)) and a section under [League types](#league-types); in the app, How to play has a
+tab for each.
+
 1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has five tabs: **Picks**,
    **Results**, **Standings**, **Messages**, and **League**. The **Season** selector applies to every tab
-   except Messages, which is league-wide.
+   except Messages, which is league-wide. Sunday Crew is a Hands-on league: an Automatic one does steps 2, 3, 5
+   and 6 by itself (see "Automatic weekly pick'em" under League types).
 2. Open **League**, select an unused week, and press **Create week**. To prepare another year, choose
    **Start a new season** in the season selector; the season is created with its first week. Existing
    weeks open with **Manage week**. With **Import games and spreads from ESPN** checked, creation
@@ -257,6 +278,100 @@ Admins can revoke each other's admin access or remove each other, including the 
 **Revoke admin** keeps that person in the league as a player with their picks and results. Admins can
 also step down themselves, provided at least one active admin remains.
 
+### League types
+
+Every league has a type, fixed when it is created: **Weekly pick'em** (the game described here, and every
+league created before types existed), **Playoff pick'em**, **Squares** or **Survivor**. The registry in
+[`packages/shared/src/leagueTypes.ts`](packages/shared/src/leagueTypes.ts) says what each owns: its tabs,
+settings, weeks (1–18 the regular season; 19 Wild Card, 20 Divisional, 21 Conference, 22 Super Bowl), when picks
+show, and whether it runs itself. Every type is open to every player. A weekly league is run **Automatic**
+(the feed sets up, opens and closes each week; preselected on New league) or **Hands-on** (the admins run each
+week, as before, and every league from before types); an admin can switch in **League → League settings**.
+**Start with members from** on New league copies the current members of a league you are an admin of
+into the new one as members, each told once (a league event); anyone already in 25 leagues is skipped and named.
+
+#### Squares
+
+A **Squares** league holds boards, each a 10 by 10 grid on one NFL game (the Super Bowl by default once ESPN
+lists it, any game from the feed, or teams and a kickoff typed in). An admin sets one up under **League → New
+board**; the header's selector switches between a league's boards. Players tap an open square to claim it (the
+cell fills at once and rolls back if the API refuses) and tap theirs to give it back, up to the board's limit
+(10 by default, 1–100, raised before the lock and never lowered); **Claim a random square** picks one. An admin
+can claim squares under a guest's name (counting against nobody's limit), give back any square, and delete a
+board (**Manage board → Delete board**, with everything on it). A board on a game from the feed follows it: if
+the game is rescheduled before the draw, the board's kickoff moves with it. The board
+locks when an admin presses **Lock and draw**, or at kickoff if nobody does: two random orders of 0–9 are drawn
+once, home across the top, away down the side, and nobody can claim or give back a square after that. Each
+quarter's winner (Q1, halftime, Q3, final with overtime) holds the square matching the last digit of each team's
+score so far; an empty square that hits means no winner. Scores fill in from ESPN's quarter line as each quarter
+settles, and an admin's typed correction is never overwritten. Members with no square get the evening-before
+reminder; everyone hears when the numbers are drawn (email and push) and each quarter's result (push only). A
+member who leaves before the lock gives their squares back; after it they stay.
+
+#### Automatic weekly pick'em
+
+An admin presses **Start season** on the League tab and picks the start week; the season then runs through Week
+18 with nobody pressing Open or Finalize. Each week is drafted and opened in one step on its Tuesday at 9 AM
+Eastern: the week is created, its games and that morning's lines come in from ESPN, and it opens for picks
+(spreads freeze then). Nothing is imported earlier, so the lines players pick against are never days old, and
+there is no draft sitting from Monday night. A week whose games have all kicked off is skipped, so a league
+switched to Automatic mid-season catches up. A game with no line on Tuesday keeps the week a draft until the
+line arrives. While the week is open its kickoffs follow ESPN (a rescheduled game locks at its new time; lines
+never change), final scores fill in as games end (never over a typed score), and it finalizes once every game
+has one, usually Monday night. Everyone gets a "week open" and a "week final" notification; the offer to post a
+thread stays with Hands-on leagues. If a game still has no line 24 hours before the first kickoff, the admins are
+told once, and the week opens as soon as they type it in. The admin can still edit spreads and points until a week's first kickoff, choose the tiebreaker game, add
+or remove a game, and correct a score at any time: a final week is corrected in place (the standings follow and
+the recap shows again), without reopening it. Switching to Automatic picks the weeks up as they stand (a ready
+draft opens, an open week with every result in finalizes); switching back stops it and leaves every week as it
+is. Set up a week stays on the League tab as the admin's override.
+
+#### Playoff pick'em
+
+The weekly game over the four playoff rounds (Wild Card 19, Divisional 20, Conference 21, Super Bowl 22), worth
+1, 2, 3 and 4 points per win, with one champion after the Super Bowl. Rounds run themselves: the Wild Card round
+is created once ESPN lists all six games with real teams (polling starts on Week 18's Sunday), each round opens
+as soon as every game has a line and finalizes once every game has a result, and the next is prepared. The admin
+chooses the format with **Start season** (or on New league): **Traditional** (an optional POW, a win adds 3) or
+**Guillotine** (a POW every round, a win adds 1; a losing POW, or none by the round's last kickoff, puts the
+player out of picking from the next round, while a push keeps them in). The Super Bowl has one game and no POW in
+either format, so nobody goes out in it. The format can't change after the first Wild Card kickoff. An eliminated player keeps their points and place, sees the sheet read-only, and can still
+guess the Super Bowl's total; a player who joins after a round locked has no POW for it, so is out. The champion
+has the most points, then most wins, then the closest Super Bowl total guess (on equal distance, the one that
+didn't go over; players still level share it). There's no round winner or Low Point Loser. Standings show the overall table (a status column
+in Guillotine, "In" or "Out: Divisional") and the champion after the Super Bowl; each round has its recap. If
+ESPN's feed fails, the League tab's **Rounds** card creates a round by hand, and its manage screen keeps Import,
+Open and Finalize.
+
+#### Survivor
+
+A survivor pool runs itself. New league (or **Start season** in the League tab) sets the **lives** (1–3) and the
+**start week** (any week with no kickoff yet; the next one by default); both are fixed once the start week's
+first game kicks off. Starting the season creates the start week empty, and the next read of the league (or
+the next cron run) imports its slate from ESPN and opens it: there are no spreads to wait for.
+
+1. **Pick:** each week a player still in taps one team to win outright and presses **Save pick**. A team picked
+   earlier in the season is disabled ("Used in Week 3"); the used teams reset at the Wild Card round, and a
+   player with no unused team left on a playoff slate may pick any. A pick can change until its team kicks off,
+   and only to a team still to kick off. Above the cards: lives left and teams used.
+2. **Reveal:** nobody else, admins included, learns anything about a pick (not even that one exists) until its
+   team's game kicks off. Then it shows on **Standings**, the survivor grid.
+3. **Strikes:** a loss, a tie, or no pick when the week's last game kicks off is a strike; a player is out when
+   their strikes reach the lives, and a player who leaves is out from that week on (who was in the league at
+   each week's last kickoff is recorded when it is final, so rejoining later changes nothing). A week that would
+   put out everyone still in puts out nobody.
+4. **The week closes itself:** kickoffs follow flexed games, scores fill in (never over one an admin typed), and
+   when every game has a result the week is final, its players are recorded, a "Week 7 is final" league event
+   goes out, and the next week is imported. A recap shows each player whether they're in, who went out and how
+   many are left.
+5. **The end:** one player left after a final week wins (a "pool over" league event). With several still in
+   after Week 18 the pool plays on through the playoffs; several still in after the Super Bowl share the title.
+
+Admins, in the League tab, can enter a pick for a player (it records that an admin did), correct a score at any
+time (everyone's status is worked out again; nothing is stored), and remove a cancelled game, which deletes the
+picks on it so those players can pick again. Reminders at 7pm the evening before a game day go to players still
+in with no pick yet.
+
 ### Leaving, removal, and limits
 
 Any member can use **League → Leave league**; an admin can remove another member from the **⋯** menu
@@ -271,7 +386,8 @@ account can be in at most 25 leagues; removed and departed members don't count t
 **Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
 password. Locally, that email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
 use **Change password** or **Change your name** from the account menu in the header. **Settings**
-(`/account`) holds notifications (by email and on this device), the home-screen app help, and the email
+(`/account`) holds notifications (by email and on this device: new threads, pick reminders, and results and
+updates), the home-screen app help, and the email
 address (a change is confirmed from both the old and the new address).
 
 ### Deleting an account
@@ -279,7 +395,8 @@ address (a change is confirmed from both the old and the new address).
 Settings → **Delete account** (required by the App Store, guideline 5.1.1(v)) asks for the password and deletes at once
 (`DELETE /api/me`, `src/accounts.ts`). Every table points at `auth.users`, so a plain delete would erase the player's
 past picks and rewrite everyone's standings. Instead one transaction clears what's personal: devices, queued email,
-blocks, reactions, read markers, picks in weeks that aren't final, and the text of their messages (threads they
+blocks, reactions, read markers, picks in weeks that aren't final (survivor picks included), squares on boards
+that haven't locked, and the text of their messages (threads they
 started keep everyone's replies, titled "Thread from a deleted player"). Feedback they sent is kept without its sender. They leave every league, and a league they
 were the only member of is deleted. The profile becomes "Deleted player". Then Supabase Auth soft-deletes the user: the
 row stays as an anonymous anchor with a scrambled email and no sign-in, and the same email can sign up again as a new
@@ -654,13 +771,14 @@ from `noreply@pow-pickem.com`:
   password or email change) are sent by Supabase Auth over Cloudflare's SMTP relay. Branded templates live in
   `supabase/templates/` and are wired up in `supabase/config.toml`.
 - **Notification emails** (a new message thread; a pick reminder at 7pm league time the evening before a game
-  day, to players with games still to pick) are sent by the Worker through its `send_email` binding (`EMAIL`
+  day, to players with games still to pick; results and updates, the `league_event` kind) are sent by the Worker through its `send_email` binding (`EMAIL`
   in `wrangler.jsonc`; no API key). They are queued in the `email_outbox` table, so each is sent once
-  (per-email dedupe keys) and retried with backoff if Cloudflare can't take it. Players turn either kind off
+  (per-email dedupe keys) and retried with backoff if Cloudflare can't take it. Players turn each kind off
   under **Settings** or with the link in each email, which also carries one-click
   `List-Unsubscribe` headers.
 
-The Worker's **Cron Trigger** (`*/5 * * * *` in `wrangler.jsonc`) runs the email job: it queues the pick
+The Worker's **Cron Trigger** (`*/5 * * * *` in `wrangler.jsonc`) first advances leagues that run themselves
+(`advanceLeagues`, logged as `automation_jobs`), then runs the email job: it queues the pick
 reminders that are due and sends or retries whatever is waiting. A new thread's emails go out straight after
 the post, in the same request's `waitUntil`; anything left over is picked up by the next run. The job is
 idempotent. Runs that did something log an `email_jobs` line with counts; failures log Cloudflare's error code

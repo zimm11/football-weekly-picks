@@ -21,10 +21,13 @@ export function MatchupSheet({
   game,
   timeZone = "America/New_York",
   onClose,
+  winOnly = false,
 }: {
   game: Game | null;
   timeZone?: string;
   onClose: () => void;
+  /** Survivor picks straight up: show the market's win prices only, no spread lines. */
+  winOnly?: boolean;
 }) {
   const [state, setState] = useState<{ gameId: string; data?: GameInsights; error?: string }>();
   const [attempt, setAttempt] = useState(0);
@@ -101,7 +104,7 @@ export function MatchupSheet({
               </Text>
             </View>
           )}
-          {data?.market && <Market game={game} market={data.market} />}
+          {data?.market && <Market game={game} market={data.market} winOnly={winOnly} />}
           {data?.matchup && (
             <Matchup game={game} data={data.matchup} timeZone={timeZone} openNews={openNews} />
           )}
@@ -130,7 +133,7 @@ function TeamHeading({ team, reverse = false }: { team: string; reverse?: boolea
     </View>
   );
 }
-function Market({ game, market }: { game: Game; market: MarketInsights }) {
+function Market({ game, market, winOnly }: { game: Game; market: MarketInsights; winOnly: boolean }) {
   const home = teamName(game.homeTeam);
   const away = teamName(game.awayTeam);
   const push = market.cover ? Math.max(0, 1 - market.cover.home - market.cover.away) : 0;
@@ -148,7 +151,8 @@ function Market({ game, market }: { game: Game; market: MarketInsights }) {
     );
     if (push >= 0.005) rows.push({ label: "Push", value: percent(push) });
   }
-  if (market.spread !== null) rows.push({ label: "Market's line", value: favoriteLine(game, market.spread) });
+  if (market.spread !== null && !winOnly)
+    rows.push({ label: "Market's line", value: favoriteLine(game, market.spread) });
   return (
     <Section title="Prediction market">
       {market.homeWin !== null && (

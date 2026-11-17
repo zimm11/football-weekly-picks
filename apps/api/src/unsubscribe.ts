@@ -20,7 +20,13 @@ export function unsubscribeRoutes({ db, email }: AppDeps) {
         if (!target) fail(400, "This unsubscribe link isn't valid.");
         await db
           .update(profiles)
-          .set(target.kind === "new_thread" ? { emailNewThreads: false } : { emailPickReminders: false })
+          .set(
+            target.kind === "new_thread"
+              ? { emailNewThreads: false }
+              : target.kind === "pick_reminder"
+                ? { emailPickReminders: false }
+                : { emailLeagueEvents: false },
+          )
           .where(eq(profiles.userId, target.userId));
         const result: UnsubscribeResult = { kind: target.kind };
         return c.json(result);

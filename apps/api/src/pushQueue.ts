@@ -12,7 +12,7 @@ import type { PushPayload } from "@picks/shared";
 import { and, asc, eq, inArray, isNotNull, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { logError } from "./logging";
 import type { PushSender } from "./pushSender";
-import { dueReminderTargets, reminderStillDue } from "./reminderTargets";
+import { dueReminders, reminderStillApplies } from "./reminderTargets";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Store = Db | Tx;
@@ -73,11 +73,12 @@ const reminderKey = (weekId: string, date: string) => `${weekId}:${date}`;
 const reminderDateOf = (eventKey: string) => eventKey.split(":")[1];
 
 /**
- * Queues one reminder per device, week and game day, from 7pm league time the evening before (`dueReminderDay`),
- * for the players `dueReminderTargets` finds. One insert per week; a week that fails is logged and skipped.
+ * Queues one reminder per device, week (or board) and game day, from 7pm league time the evening before
+ * (`dueReminderDay`), for the players `dueReminders` finds in every league type. One insert per week; a week
+ * that fails is logged and skipped.
  */
 export async function queuePickPush(db: Db, at: Date) {
-  const targets = await dueReminderTargets(db, at);
+  const targets = await dueReminders(db, at);
   if (!targets.length) return 0;
   const devices = await db
     .select({ id: pushSubscriptions.id, userId: pushSubscriptions.userId })
@@ -91,19 +92,20 @@ export async function queuePickPush(db: Db, at: Date) {
       ),
     );
   let queued = 0;
-  for (const { league, week, due, players } of targets) {
-    const rows = players.flatMap(({ userId, missing }) =>
+  for (const { league, subjectId, weekId, boardId, date, expiresAt, players } of targets) {
+    const rows = players.flatMap(({ userId, gameIds }) =>
       devices
         .filter((d) => d.userId === userId)
         .map((d) => ({
           subscriptionId: d.id,
           leagueId: league.id,
-          weekId: week.id,
+          weekId,
+          boardId,
           kind: "pick_reminder" as const,
-          eventKey: reminderKey(week.id, due.date),
-          gameIds: missing.map((g) => g.id),
+          eventKey: reminderKey(subjectId, date),
+          gameIds,
           nextAttemptAt: at,
-          expiresAt: due.expiresAt,
+          expiresAt,
         })),
     );
     if (!rows.length) continue;
@@ -189,15 +191,24 @@ async function claimPush(
             ),
           )
       : [];
-    if (
-      !device ||
-      !league ||
-      at >= delivery.expiresAt ||
-      !(delivery.kind === "new_thread" ? device.newThreads : device.pickReminders)
-    )
-      return skip();
+    const wanted =
+      delivery.kind === "new_thread"
+        ? device?.newThreads
+        : delivery.kind === "pick_reminder"
+          ? device?.pickReminders
+          : device?.leagueEvents;
+    if (!device || !league || at >= delivery.expiresAt || !wanted) return skip();
     let payload: PushPayload;
-    if (delivery.kind === "new_thread") {
+    if (delivery.kind === "league_event") {
+      // Rendered when queued (`queueLeagueEvent`): the league's name and the event, never a pick or a status.
+      if (!delivery.payload) return skip();
+      payload = {
+        title: delivery.payload.title.slice(0, 80),
+        body: delivery.payload.body.slice(0, 180),
+        url: delivery.payload.url,
+        tag: delivery.id,
+      };
+    } else if (delivery.kind === "new_thread") {
       // Rechecked now: the opening message may have been hidden or removed, or its author blocked, since.
       const [thread] = delivery.threadId
         ? await tx
@@ -241,22 +252,34 @@ async function claimPush(
       };
     } else {
       const date = reminderDateOf(delivery.eventKey);
+      const subjectId = delivery.weekId ?? delivery.boardId;
       const still =
-        delivery.weekId && date
-          ? await reminderStillDue(tx, { weekId: delivery.weekId, date, userId: device.userId }, at)
+        subjectId && date
+          ? await reminderStillApplies(tx, { subjectId, date, userId: device.userId }, at)
           : null;
-      // Only the games it was queued for: a game added since gets its own reminder or none.
-      const remaining = still?.missing.filter((g) => delivery.gameIds.includes(g.id)) ?? [];
-      if (!remaining.length) return skip();
-      payload = {
-        title: "Make your picks",
-        body: `${league.name}: ${remaining.length} ${remaining.length === 1 ? "game left" : "games left"} to pick before kickoff.`.slice(
-          0,
-          180,
-        ),
-        url: `/weeks/${delivery.weekId}`,
-        tag: delivery.id,
-      };
+      if (!still) return skip();
+      if (still.message.kind === "text") {
+        payload = {
+          // The type's own words ("Claim your squares", "Make your Week 5 pick"), not weekly pick'em's.
+          title: still.message.heading.slice(0, 80),
+          body: `${league.name}: ${still.message.pushBody}`.slice(0, 180),
+          url: still.message.path,
+          tag: delivery.id,
+        };
+      } else {
+        // Only the games it was queued for: a game added since gets its own reminder or none.
+        const remaining = still.gameIds.filter((id) => delivery.gameIds.includes(id));
+        if (!remaining.length) return skip();
+        payload = {
+          title: "Make your picks",
+          body: `${league.name}: ${remaining.length} ${remaining.length === 1 ? "game left" : "games left"} to pick before kickoff.`.slice(
+            0,
+            180,
+          ),
+          url: `/weeks/${delivery.weekId}`,
+          tag: delivery.id,
+        };
+      }
     }
     const attempts = delivery.attempts + 1;
     await tx

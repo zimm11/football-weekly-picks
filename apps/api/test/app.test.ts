@@ -279,7 +279,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       id: ADMIN,
       displayName: null,
       isOperator: false,
-      notifications: { newThreads: true, pickReminders: true },
+      notifications: { newThreads: true, pickReminders: true, leagueEvents: true },
       moderation: { termsAccepted: false, mutedUntil: null, suspended: false },
     });
     // The first name step also agrees to the terms, which posting needs.
@@ -681,6 +681,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call<Me>(ADMIN, "GET", "/me")).body.notifications).toEqual({
       newThreads: false,
       pickReminders: true,
+      leagueEvents: true,
     });
 
     sentEmails = [];
@@ -693,6 +694,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(ADMIN, "PUT", "/me/notifications", { newThreads: true })).body).toEqual({
       newThreads: true,
       pickReminders: true,
+      leagueEvents: true,
     });
     // A player without a profile has no settings to change.
     await db.delete(profiles).where(eq(profiles.userId, OUTSIDER));
@@ -743,6 +745,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     const base = `/leagues/${leagueId}/messages`;
     const usage = async (day: string) =>
       (await db.select().from(emailUsage).where(eq(emailUsage.day, day)))[0]?.sent ?? 0;
+    // Each check reads this test's own outbox rows, never the run's totals: other rows in the shared outbox (a
+    // reminder for a week an earlier test left open) may be due at the same simulated time.
     const post = async (title: string) => {
       const res = await call<{ id: string }>(PLAYER, "POST", base, { title, body: "Budget test." });
       await settle();
@@ -761,12 +765,14 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
         lastError: "OVER_BUDGET",
         nextAttemptAt: new Date("2026-11-12T00:00:00Z"),
       });
-      expect((await runJobs()).body).toMatchObject({ sent: 0, deferred: 0 }); // not due again until tomorrow
+      await runJobs(); // not due again until tomorrow
+      expect(await outboxFor(held)).toMatchObject({ status: "pending", attempts: 0 });
 
       // Thursday (UTC): a fresh daily budget sends it.
       now = new Date("2026-11-12T00:30:00Z");
       limits.daily = 10_000;
-      expect((await runJobs()).body).toMatchObject({ sent: 1 });
+      await runJobs();
+      expect(await outboxFor(held)).toMatchObject({ status: "sent" });
       expect(emailsTo(ADMIN).map((m) => m.subject)).toContain("Test League: Budget two");
 
       // The month's total counts earlier days too: at the monthly limit, nothing goes out.
@@ -801,9 +807,11 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
         });
       }
       expect(await usage("2026-11-13")).toBe(before);
-      expect((await runJobs()).body).toMatchObject({ sent: 0 });
+      await runJobs();
+      for (const id of [quota, again]) expect(await outboxFor(id)).toMatchObject({ status: "pending" });
       now = new Date("2026-11-14T00:30:00Z");
-      expect((await runJobs()).body).toMatchObject({ sent: 2 });
+      await runJobs();
+      for (const id of [quota, again]) expect(await outboxFor(id)).toMatchObject({ status: "sent" });
     } finally {
       mailerError = undefined;
       limits.daily = 10_000;
@@ -839,6 +847,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       id: leagueId,
       name: "Test League",
       role: "admin",
+      type: "weekly",
+      management: "manual",
     });
 
     expect((await call(PLAYER, "PATCH", creatorPath, { role: "member" })).status).toBe(200);

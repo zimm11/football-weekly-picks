@@ -22,7 +22,11 @@ import { logError, requestLogger } from "./logging";
 import { messageRoutes } from "./messages";
 import { moderationRoutes, requireNotSuspended, screen } from "./moderation";
 import { operatorRoutes } from "./operator";
+import { playoffRoutes } from "./playoff";
 import { pushRoutes } from "./push";
+import { createServices } from "./services";
+import { squaresRoutes } from "./squares";
+import { survivorRoutes } from "./survivor";
 import { unsubscribeRoutes } from "./unsubscribe";
 import { weekRoutes } from "./weeks";
 
@@ -57,6 +61,7 @@ const requestBodyLimit = bodyLimit({
 const notificationsOf = (profile?: typeof profiles.$inferSelect): NotificationSettings => ({
   newThreads: profile?.emailNewThreads ?? true,
   pickReminders: profile?.emailPickReminders ?? true,
+  leagueEvents: profile?.emailLeagueEvents ?? true,
 });
 
 const moderationOf = (profile: typeof profiles.$inferSelect | undefined, now: Date): ModerationStatus => ({
@@ -68,6 +73,8 @@ const moderationOf = (profile: typeof profiles.$inferSelect | undefined, now: Da
 export function createApp(deps: AppDeps) {
   const { db, verifyToken, publicConfig, screener, now = () => new Date() } = deps;
   const auth = requireAuth(verifyToken);
+  // Shared by the route modules within this app: the results throttle and automation on read.
+  const services = createServices(deps);
 
   // Keep everything chained (and sub-apps mounted with `.route`), or `ApiType` loses the route types.
   const api = new Hono<{ Variables: AuthVariables }>()
@@ -117,23 +124,31 @@ export function createApp(deps: AppDeps) {
       return c.json(me);
     })
     .put("/me/notifications", auth, body(updateNotificationsSchema), async (c) => {
-      const { newThreads, pickReminders } = c.req.valid("json");
+      const { newThreads, pickReminders, leagueEvents } = c.req.valid("json");
       const [profile] = await db
         .update(profiles)
-        .set({ emailNewThreads: newThreads, emailPickReminders: pickReminders })
+        .set({
+          emailNewThreads: newThreads,
+          emailPickReminders: pickReminders,
+          emailLeagueEvents: leagueEvents,
+        })
         .where(eq(profiles.userId, c.var.user.id))
         .returning();
       if (!profile) fail(409, "Choose a display name first.");
       return c.json(notificationsOf(profile));
     })
-    .route("/", leagueRoutes(deps))
-    .route("/", weekRoutes(deps))
+    .route("/", leagueRoutes(deps, services))
+    .route("/", weekRoutes(deps, services))
     .route("/", messageRoutes(deps))
     .route("/", operatorRoutes(deps))
     .route("/", unsubscribeRoutes(deps))
     .route("/", pushRoutes(deps))
     .route("/", moderationRoutes(deps))
-    .route("/", accountRoutes(deps));
+    .route("/", accountRoutes(deps))
+    // Each league type's own routes. They check the league's type first (`requireLeagueType`).
+    .route("/", playoffRoutes(deps, services))
+    .route("/", squaresRoutes(deps, services))
+    .route("/", survivorRoutes(deps, services));
 
   const app = new Hono<{ Variables: AuthVariables }>()
     .use(requestLogger)
