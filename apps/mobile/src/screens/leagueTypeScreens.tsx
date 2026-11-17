@@ -27,12 +27,15 @@ export type LeagueTabProps = {
 /** The League tab's admin tools, shown to admins above the shared invite, members and settings cards. */
 export type AdminToolsProps = { league: LeagueDetail; year: number; userId: string; reload: () => void };
 
+/** What a type's recap sheet is given: the week to recap, in the league on screen. */
+export type RecapProps = { weekId: string; userId: string; leagueId: string; close: () => void };
+
 export type LeagueTypeScreens = {
   /** A screen for each of the type's own tabs: every tab but Messages and League, which all types share. */
   tabs: Partial<Record<LeagueTabId, ComponentType<LeagueTabProps>>>;
   AdminTools: ComponentType<AdminToolsProps>;
   /** The bottom sheet shown once after a week (or round) is finalized (`recapWeekId`). None: no recap. */
-  Recap?: ComponentType<{ weekId: string; userId: string; close: () => void }>;
+  Recap?: ComponentType<RecapProps>;
   /** Whether the header's selector is the season (week-based types). Squares picks a board in its own tab. */
   seasonSelector: boolean;
 };

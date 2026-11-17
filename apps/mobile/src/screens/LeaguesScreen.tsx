@@ -2,6 +2,7 @@
 import {
   type CreateLeagueResult,
   createLeagueSchema,
+  estimatedWeekStart,
   type InvitePreview,
   LEAGUE_NAME_MAX,
   LEAGUE_TYPE_INFO,
@@ -11,6 +12,7 @@ import {
   managementChoices,
   type PlayoffFormat,
   REGULAR_SEASON_WEEKS,
+  seasonYear,
   weekLabel,
 } from "@picks/shared";
 import { router } from "expo-router";
@@ -19,6 +21,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { NotificationsPrompt } from "../components/NotificationsPrompt";
 import { colors, fonts } from "../components/ui";
 import { request } from "../lib/api";
+import { now } from "../lib/clock";
 import {
   chooseType,
   copyableLeagues,
@@ -192,10 +195,10 @@ export function LeaguesScreen() {
               onChange={(week) => change({ startWeek: week === 0 ? null : week })}
               choices={[
                 { value: 0, label: "The next week" },
-                ...Array.from({ length: REGULAR_SEASON_WEEKS }, (_, i) => ({
-                  value: i + 1,
-                  label: weekLabel(i + 1),
-                })),
+                // Only weeks with no kickoff yet can start a pool.
+                ...Array.from({ length: REGULAR_SEASON_WEEKS }, (_, i) => i + 1)
+                  .filter((n) => estimatedWeekStart(seasonYear(now()), n) > now())
+                  .map((n) => ({ value: n, label: weekLabel(n) })),
               ]}
             />
           </>

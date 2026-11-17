@@ -187,7 +187,7 @@ export function LeagueScreen({ leagueId, path = "" }: { leagueId: string; path?:
         />
       )}
       {!!recap && Recap && tab !== "messages" && tab !== "league" && (
-        <Recap weekId={recap} userId={userId} close={() => setRecap(null)} />
+        <Recap weekId={recap} userId={userId} leagueId={leagueId} close={() => setRecap(null)} />
       )}
     </View>
   );

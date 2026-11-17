@@ -6,6 +6,7 @@ import { Icon, type IconName } from "../src/components/Icon";
 import { Body, Button, Card, colors, fonts, styles, Title } from "../src/components/ui";
 import { useAuth } from "../src/lib/auth";
 import { openScreen } from "../src/lib/navigation";
+import { HowToPlaySurvivor } from "../src/screens/survivor/HowToPlaySurvivor";
 
 const playerSteps = [
   [
@@ -311,6 +312,7 @@ export default function HowToPlay() {
         </Body>
         <Steps items={adminSteps} />
       </View>
+      <HowToPlaySurvivor />
       <View style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }}>
         <Body muted>Ready for the next slate?</Body>
         <Button
