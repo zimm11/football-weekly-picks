@@ -148,6 +148,11 @@ export function LeaguesScreen() {
             }))}
           />
         )}
+        {types.length > 0 && (
+          <Action link ghost compact icon="info" onPress={() => go(`/how-to-play?section=${draft.type}`)}>
+            {`How ${LEAGUE_TYPE_INFO[draft.type].name} works`}
+          </Action>
+        )}
         <Input
           label="League name"
           value={draft.name}
