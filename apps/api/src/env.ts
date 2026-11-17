@@ -182,7 +182,20 @@ const envSchema = z
  * The Worker gets its database from the Hyperdrive binding and sends email through the EMAIL binding, so it
  * has no DATABASE_URL, PORT or clock override.
  */
-const workerEnvSchema = z.object(sharedFields).superRefine(settingRules);
+const workerEnvSchema = z
+  .object({
+    ...sharedFields,
+    /**
+     * Local E2E only: `1` swaps the schedule feed and the clock for the dev harness (src/devHarness.ts), set by
+     * `pnpm worker:dev` when the variable is in its environment. Refused unless NODE_ENV=development.
+     */
+    DEV_HARNESS: z.literal("1").optional(),
+  })
+  .refine((env) => !(env.DEV_HARNESS && env.NODE_ENV !== "development"), {
+    path: ["DEV_HARNESS"],
+    message: "DEV_HARNESS is for local E2E only and needs NODE_ENV=development",
+  })
+  .superRefine(settingRules);
 
 export type Env = z.infer<typeof envSchema>;
 

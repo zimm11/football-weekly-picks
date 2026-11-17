@@ -5,6 +5,8 @@
 //
 //   pnpm worker:dev   → http://localhost:<PORT + 1000> (override with WORKER_PORT)
 //
+// DEV_HARNESS=1 swaps the ESPN feed and the clock for the dev harness that E2E's simulated journeys drive.
+//
 // Email goes to the local test inbox, as with `pnpm dev`, not through Cloudflare. The Cron Trigger doesn't fire
 // on its own; run the email job with `curl "http://localhost:<port>/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*"`.
 //
@@ -45,6 +47,9 @@ const vars = [
   "VAPID_PUBLIC_KEY",
   "VAPID_PRIVATE_KEY",
   "VAPID_SUBJECT",
+  // Local E2E only: the scripted feed and movable clock (apps/api/src/devHarness.ts). The Worker refuses it
+  // outside NODE_ENV=development, which this script always sets.
+  "DEV_HARNESS",
 ]
   .filter((key) => process.env[key] !== undefined)
   .map((key) => `${key}=${JSON.stringify(process.env[key])}`);
