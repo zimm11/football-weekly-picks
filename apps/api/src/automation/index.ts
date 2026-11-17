@@ -24,6 +24,9 @@ export const AUTOMATION: Record<LeagueType, LeagueTypeAutomation> = {
 /** Leagues advanced per type per scheduled run at most. What is left over follows on the next run. */
 export const AUTOMATION_BATCH = 25;
 
+/** The due query's limit for a run scoped to `onlyLeagues`: effectively none, on a local database. */
+const SCOPED_RUN_LIMIT = 100_000;
+
 /** One league, by its type's steps. A hands-on weekly league is left alone. */
 export async function advanceLeague(ctx: AutomationContext, league: AutomatedLeague): Promise<AdvanceResult> {
   if (league.type === "weekly" && league.management === "manual") return NOTHING_DONE;
@@ -48,7 +51,11 @@ export async function advanceLeagues(ctx: AutomationContext): Promise<Automation
   for (const type of LEAGUE_TYPES) {
     let due: AutomatedLeague[];
     try {
-      due = await AUTOMATION[type].due(ctx, AUTOMATION_BATCH);
+      const only = ctx.onlyLeagues;
+      // A scoped run (the E2E harness) asks for everything due and keeps its own leagues.
+      due = only
+        ? (await AUTOMATION[type].due(ctx, SCOPED_RUN_LIMIT)).filter((league) => only.has(league.id))
+        : await AUTOMATION[type].due(ctx, AUTOMATION_BATCH);
     } catch (error) {
       logError("automation_due", error, ctx.requestId);
       run.failed++;

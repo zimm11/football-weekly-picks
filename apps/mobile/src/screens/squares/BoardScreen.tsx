@@ -8,6 +8,7 @@ import {
   SQUARE_PERIODS,
   type SquarePeriod,
 } from "@picks/shared";
+import { router } from "expo-router";
 import { type ReactNode, useState } from "react";
 import { RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { colors, fonts } from "../../components/ui";
@@ -32,6 +33,7 @@ import {
   useEditsGuard,
 } from "../leagueUi";
 import { BoardHeading, BoardPanel, SquareSheet, useBoard, useSquareChanges } from "./BoardPanel";
+import { forgetBoard } from "./boardChoice";
 import { GameChooser } from "./GameChooser";
 import { newGameDraft, parseLimit } from "./NewBoard";
 import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
@@ -144,6 +146,23 @@ function ManageBoard({
     } catch (err) {
       notifyError(messageOf(err));
     } finally {
+      setBusy(undefined);
+    }
+  }
+  async function remove() {
+    if (busy) return;
+    setBusy("delete");
+    try {
+      await request(`/boards/${view.id}`, { method: "DELETE" });
+      notifyDone("Board deleted.");
+      // Unsaved edits on a board that is gone have nothing to go back to.
+      setLimit(String(view.maxPerPlayer));
+      setEditingGame(false);
+      forgetBoard(view.leagueId, view.id);
+      // After the reset above has rendered, so the unsaved-work guard doesn't ask about a deleted board.
+      setTimeout(() => router.replace(`/leagues/${view.leagueId}` as never), 0);
+    } catch (err) {
+      notifyError(messageOf(err));
       setBusy(undefined);
     }
   }
@@ -319,6 +338,31 @@ function ManageBoard({
         </Card>
       )}
       {view.drawnAt && <ScoreCorrections view={view} busy={busy} run={run} />}
+      <Card label="Delete board">
+        <Heading>Delete board</Heading>
+        <Label>
+          {squares.length
+            ? `The board goes for everyone, with its ${squares.length} claimed ${squares.length === 1 ? "square" : "squares"}${view.drawnAt ? ", its numbers and its results" : ""}.`
+            : "The board goes for everyone."}
+        </Label>
+        <Action
+          secondary
+          danger
+          icon="trash"
+          disabled={!!busy}
+          onPress={() =>
+            confirm(
+              "Delete this board?",
+              `${boardTitle(view, view.timeZone)} and everything on it will be gone for good.`,
+              "Delete board",
+              () => void remove(),
+              true,
+            )
+          }
+        >
+          {busy === "delete" ? "Deleting…" : "Delete board"}
+        </Action>
+      </Card>
     </>
   );
 }

@@ -107,7 +107,8 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
     });
     return { status: res.status, body: (await res.json()) as T };
   };
-  /** The cron's automation run, at the current clock. */
+  const created: string[] = [];
+  /** The cron's automation run, at the current clock, for this file's own leagues only. */
   const cron = (overrides: Partial<AutomationContext> = {}) =>
     advanceLeagues({
       db,
@@ -116,10 +117,10 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
       results: providerWeeks(nfl, () => now),
       notify: { email, push },
       random: ZERO,
+      onlyLeagues: new Set(created),
       ...overrides,
     });
 
-  const created: string[] = [];
   async function squaresLeague(name = "Super Bowl Squares") {
     const res = await call<CreateLeagueResult>(ADMIN, "POST", "/leagues", { name, type: "squares" });
     expect(res.status).toBe(201);
@@ -500,6 +501,63 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
     expect(await squaresAutomation.due({ db, now } as AutomationContext, 100)).not.toContainEqual(
       expect.objectContaining({ id: leagueId }),
     );
+  });
+
+  it("follows a feed game's new kickoff until the draw, so the board locks when the game starts", async () => {
+    feed.set("2026:22", [feedGame()]);
+    const leagueId = await squaresLeague("Flexed");
+    const postponed = (await call<{ id: string }>(ADMIN, "POST", `/leagues/${leagueId}/boards`, {})).body.id;
+    const typed = await manualBoard(leagueId);
+
+    // The game is put back a day. At the old kickoff the board moves instead of drawing.
+    const later = new Date(KICKOFF.getTime() + 24 * 60 * 60_000);
+    feed.set("2026:22", [feedGame({ kickoff: later })]);
+    now = new Date(KICKOFF.getTime() + 60_000);
+    await cron();
+    expect(await board(postponed)).toMatchObject({ kickoff: later, drawnAt: null });
+    expect((await claim(PAT, postponed, 0, 0)).status).toBe(200);
+    // A game typed by hand has no feed to follow: it locked at the kickoff the admin gave it.
+    expect((await board(typed))?.drawnAt).toEqual(now);
+
+    // Moved earlier: the next read brings the kickoff forward, and the board is locked from then.
+    const earlier = new Date(now.getTime() + 3 * 60_000);
+    feed.set("2026:22", [feedGame({ kickoff: earlier })]);
+    now = new Date(now.getTime() + 2 * 60_000);
+    expect((await call<BoardView>(SAM, "GET", `/boards/${postponed}`)).body.kickoff).toBe(
+      earlier.toISOString(),
+    );
+    now = new Date(earlier.getTime() + 1_000);
+    expect((await claim(SAM, postponed, 1, 1)).status).toBe(409);
+
+    // Once drawn, the kickoff stands whatever the feed says.
+    now = new Date(earlier.getTime() + 2 * 60_000);
+    await cron();
+    expect((await board(postponed))?.drawnAt).toEqual(now);
+    feed.set("2026:22", [feedGame({ kickoff: later })]);
+    now = new Date(now.getTime() + 2 * 60_000);
+    await cron();
+    expect((await board(postponed))?.kickoff).toEqual(earlier);
+  });
+
+  it("lets an admin delete a board, with everything on it", async () => {
+    const leagueId = await squaresLeague("Deleting");
+    const boardId = await manualBoard(leagueId);
+    const kept = await manualBoard(leagueId);
+    await claim(PAT, boardId, 0, 0);
+    await claim(ADMIN, boardId, 1, 1, "Uncle Ray");
+    expect((await call(PAT, "DELETE", `/boards/${boardId}`)).status).toBe(403);
+    expect((await call(STRANGER, "DELETE", `/boards/${boardId}`)).status).toBe(404);
+    // Drawn or not: the admin's call.
+    await call(ADMIN, "POST", `/boards/${boardId}/lock`);
+    const deleted = await call<{ leagueId: string }>(ADMIN, "DELETE", `/boards/${boardId}`);
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.leagueId).toBe(leagueId);
+    expect(await board(boardId)).toBeUndefined();
+    expect(await db.select().from(squareClaims).where(eq(squareClaims.boardId, boardId))).toEqual([]);
+    expect((await call(PAT, "GET", `/boards/${boardId}`)).status).toBe(404);
+    expect((await call(ADMIN, "DELETE", `/boards/${boardId}`)).status).toBe(404);
+    const left = await call<{ id: string }[]>(PAT, "GET", `/leagues/${leagueId}/boards`);
+    expect(left.body.map((b) => b.id)).toEqual([kept]);
   });
 
   it("advances a board on read, behind the one-minute throttle", async () => {

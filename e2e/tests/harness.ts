@@ -11,9 +11,10 @@ import { type APIRequestContext, expect } from "@playwright/test";
  *   time, so a clock in the past would put them after the moments the app compares them with. Play a future
  *   season (for example 2027) and script its weeks.
  * - The app reads the clock once per page load: reload (or navigate) after `setClock`.
- * - `runJobs` runs the Cron Trigger's work once at the harness's time; reads also advance a league by
- *   themselves (advanceLeagueOnRead, at most once a minute per league, so move the clock a minute or more
- *   between steps that rely on a read).
+ * - `runJobs` runs the Cron Trigger's work once at the harness's time, advancing only the leagues it is given:
+ *   the clock is in the future, so anything else in the local database (the seeded leagues) must stay as it is.
+ *   Reads also advance a league by themselves (advanceLeagueOnRead, at most once a minute per league, so move
+ *   the clock a minute or more between steps that rely on a read).
  */
 
 /** One scripted game: kickoff as an ISO string; the rest as the provider's `ProviderGame`. */
@@ -59,7 +60,18 @@ export const setClock = (request: APIRequestContext, at: Date | string) =>
 export const setFeedWeek = (request: APIRequestContext, year: number, week: number, games: HarnessGame[]) =>
   send(request, "put", `feed/${year}/${week}`, { games });
 
-/** Runs the scheduled jobs (automation, then email and push) once, at the harness's time. */
-export const runJobs = (request: APIRequestContext) => send(request, "post", "jobs");
+/**
+ * Runs the scheduled jobs (automation, then email and push) once, at the harness's time. Automation advances
+ * only `leagueIds` (the journey's own leagues).
+ */
+export const runJobs = (request: APIRequestContext, leagueIds: string[] = []) =>
+  send(request, "post", "jobs", { leagueIds });
+
+/** The league id in a league page's URL (`/leagues/<id>/…`). */
+export function leagueIdOf(url: string): string {
+  const id = /\/leagues\/([^/?#]+)/.exec(url)?.[1];
+  if (!id) throw new Error(`No league id in ${url}`);
+  return id;
+}
 
 export const harnessState = (request: APIRequestContext) => send(request, "get", "state");

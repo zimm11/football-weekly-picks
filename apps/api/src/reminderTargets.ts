@@ -35,6 +35,9 @@ export type ReminderWeek = {
   week: Week;
   due: ReminderDay<SlateGame>;
   players: ReminderPlayer[];
+  /** The week's whole slate, and the league's current members, for a type with more to remind of. */
+  slate: SlateGame[];
+  members: string[];
 };
 
 /** A week's games in kickoff order, the order `dueReminderDay` walks the days in. */
@@ -61,12 +64,14 @@ export function playersToRemind(
 /**
  * Every open week of a `types` league whose reminder is due at `now`, with the current members still missing
  * picks for that day. A handful of queries however many leagues there are. Channel preferences (email switches,
- * push devices) are the caller's to apply.
+ * push devices) are the caller's to apply. With `everyWeek`, a due week nobody is missing a game in is returned
+ * too (with no players), for a type that reminds of something else as well.
  */
 export async function dueReminderTargets(
   db: Db,
   now: Date,
   types: LeagueType[] = ["weekly"],
+  { everyWeek = false }: { everyWeek?: boolean } = {},
 ): Promise<ReminderWeek[]> {
   const soon = new Date(now.getTime() + REMINDER_LOOKAHEAD_MS);
   const candidates = await db
@@ -100,12 +105,9 @@ export async function dueReminderTargets(
     .orderBy(asc(games.kickoff), asc(games.id));
   const due = candidates.flatMap(({ week, league }) => {
     try {
-      const day = dueReminderDay(
-        reminderSlate(slates.filter((g) => g.weekId === week.id)),
-        league.timeZone,
-        now,
-      );
-      return day ? [{ week, league, due: day }] : [];
+      const slate = reminderSlate(slates.filter((g) => g.weekId === week.id));
+      const day = dueReminderDay(slate, league.timeZone, now);
+      return day ? [{ week, league, due: day, slate }] : [];
     } catch (error) {
       // One bad week (say, a time zone the runtime doesn't know) mustn't stop everyone else's reminders.
       logError("reminder_targets", error);
@@ -133,25 +135,23 @@ export async function dueReminderTargets(
       ),
     );
   return due.flatMap((d) => {
-    const players = playersToRemind(
-      d.due.games,
-      members.filter((m) => m.leagueId === d.league.id).map((m) => m.userId),
-      made,
-    );
-    return players.length ? [{ ...d, players }] : [];
+    const memberIds = members.filter((m) => m.leagueId === d.league.id).map((m) => m.userId);
+    const players = playersToRemind(d.due.games, memberIds, made);
+    return players.length || everyWeek ? [{ ...d, players, members: memberIds }] : [];
   });
 }
 
+type WeekReminderRef = { weekId: string; date: string; userId: string };
+
 /**
- * Rechecks one queued reminder just before it is sent: the player is still a current member, the week is still
- * open, `date` is still the game day whose reminder is due, and they still have games to pick that day. Returns
- * what to remind them of now, or null when the reminder no longer applies.
+ * The first half of a week reminder's recheck: the player is still a current member, the week is still open, and
+ * `date` is still the game day whose reminder is due. Returns that day and the week's slate, or null.
  */
-export async function reminderStillDue(
+export async function reminderDayStillDue(
   db: Store,
-  ref: { weekId: string; date: string; userId: string },
+  ref: WeekReminderRef,
   now: Date,
-): Promise<{ league: League; week: Week; due: ReminderDay<SlateGame>; missing: SlateGame[] } | null> {
+): Promise<{ league: League; week: Week; due: ReminderDay<SlateGame>; slate: SlateGame[] } | null> {
   const [row] = await db
     .select({ week: weeks, league: leagues })
     .from(weeks)
@@ -167,19 +167,36 @@ export async function reminderStillDue(
     )
     .where(eq(weeks.id, ref.weekId));
   if (row?.week.status !== "open") return null;
-  const slate = await db
-    .select()
-    .from(games)
-    .where(eq(games.weekId, row.week.id))
-    .orderBy(asc(games.kickoff), asc(games.id));
-  const due = dueReminderDay(reminderSlate(slate), row.league.timeZone, now);
+  const slate = reminderSlate(
+    await db
+      .select()
+      .from(games)
+      .where(eq(games.weekId, row.week.id))
+      .orderBy(asc(games.kickoff), asc(games.id)),
+  );
+  const due = dueReminderDay(slate, row.league.timeZone, now);
   if (!due || due.date !== ref.date) return null;
+  return { ...row, due, slate };
+}
+
+/**
+ * Rechecks one queued reminder just before it is sent: the player is still a current member, the week is still
+ * open, `date` is still the game day whose reminder is due, and they still have games to pick that day. Returns
+ * what to remind them of now, or null when the reminder no longer applies.
+ */
+export async function reminderStillDue(
+  db: Store,
+  ref: WeekReminderRef,
+  now: Date,
+): Promise<{ league: League; week: Week; due: ReminderDay<SlateGame>; missing: SlateGame[] } | null> {
+  const day = await reminderDayStillDue(db, ref, now);
+  if (!day) return null;
   const made = await db
     .select({ userId: picks.userId, gameId: picks.gameId })
     .from(picks)
-    .where(and(eq(picks.weekId, row.week.id), eq(picks.userId, ref.userId)));
-  const [player] = playersToRemind(due.games, [ref.userId], made);
-  return player ? { ...row, due, missing: player.missing } : null;
+    .where(and(eq(picks.weekId, day.week.id), eq(picks.userId, ref.userId)));
+  const [player] = playersToRemind(day.due.games, [ref.userId], made);
+  return player ? { league: day.league, week: day.week, due: day.due, missing: player.missing } : null;
 }
 
 // ---------- Every league type ----------

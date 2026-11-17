@@ -10,7 +10,7 @@ import {
 import { and, asc, desc, eq, exists, gte, isNull, lte, notExists, or, sql } from "drizzle-orm";
 import { queueLeagueEvent } from "../leagueEvents";
 import { loadSurvivorSeason, recordSurvivorParticipants } from "../survivor";
-import { gamesOf, importSlate, SHORTEST_GAME_MS, writeFinals } from "../weekOps";
+import { followKickoffs, gamesOf, importSlate, SHORTEST_GAME_MS, writeFinals } from "../weekOps";
 import type { AutomatedLeague, AutomationContext, LeagueTypeAutomation } from "./types";
 
 /*
@@ -71,23 +71,26 @@ export const survivorAutomation: LeagueTypeAutomation = {
         ),
       ),
     );
-    return db
-      .select()
-      .from(leagues)
-      .where(
-        and(
-          eq(leagues.type, "survivor"),
-          exists(
-            db
-              .select({ one: sql`1` })
-              .from(weeks)
-              .innerJoin(seasons, eq(seasons.id, weeks.seasonId))
-              .where(and(thisSeason, weekDue)),
+    return (
+      db
+        .select()
+        .from(leagues)
+        .where(
+          and(
+            eq(leagues.type, "survivor"),
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(weeks)
+                .innerJoin(seasons, eq(seasons.id, weeks.seasonId))
+                .where(and(thisSeason, weekDue)),
+            ),
           ),
-        ),
-      )
-      .orderBy(asc(leagues.id))
-      .limit(limit);
+        )
+        // A different order each run, so leagues waiting on the feed can't hold the batch from the rest.
+        .orderBy(sql`random()`)
+        .limit(limit)
+    );
   },
 
   async advance(ctx, league) {
@@ -162,13 +165,7 @@ async function syncWeek(
     let steps = 0;
     const current = await gamesOf(tx, week.id);
     if (provided) {
-      const feed = new Map(provided.map((g) => [g.externalId, g]));
-      for (const game of current) {
-        const listed = game.externalId ? feed.get(game.externalId) : undefined;
-        if (!listed || hasResult(game) || listed.kickoff.getTime() === game.kickoff.getTime()) continue;
-        await tx.update(games).set({ kickoff: listed.kickoff }).where(eq(games.id, game.id));
-        steps++;
-      }
+      steps += await followKickoffs(tx, current, provided);
       const missing = current.filter((g) => !hasResult(g)).length;
       await writeFinals(tx, current, provided, { overwrite: false });
       const after = await gamesOf(tx, week.id);

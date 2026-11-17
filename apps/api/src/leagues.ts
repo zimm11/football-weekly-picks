@@ -56,6 +56,7 @@ import {
   recordedParticipants,
   requireAdmin,
   requireDisplayName,
+  requireLeagueType,
   requireMember,
   type Tx,
   toMember,
@@ -79,9 +80,6 @@ function omitUserId(stats: PlayerSeasonStats | undefined): Omit<PlayerSeasonStat
 const newInviteCode = () => randomBytes(9).toString("base64url");
 
 const defaultLimits = { membersPerLeague: MAX_LEAGUE_MEMBERS, leaguesPerUser: MAX_LEAGUES_PER_USER };
-
-/** Leagues whose type keeps its settings on the season get their first season, with them, when created. */
-const SEASON_SETTINGS_TYPES = new Set(["playoff", "survivor"]);
 
 export function leagueRoutes(deps: AppDeps, services: AppServices) {
   const { db, verifyToken, screener, now = () => new Date(), limits = defaultLimits } = deps;
@@ -218,7 +216,7 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
             .returning({ id: leagues.id });
           if (!league) throw new Error("League insert returned no row");
           await tx.insert(leagueMembers).values({ leagueId: league.id, userId, role: "admin", joinedAt: at });
-          if (SEASON_SETTINGS_TYPES.has(input.type)) {
+          if (leagueTypeInfo(input.type).seasonOnCreate) {
             await tx.insert(seasons).values({ leagueId: league.id, year: seasonYear(at), settings });
           }
           // A survivor pool also gets its start week, which automation imports on the first read.
@@ -521,7 +519,9 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
         ),
         async (c) => {
           const { leagueId } = c.req.valid("param");
-          await requireMember(db, leagueId, c.var.user.id);
+          const { league } = await requireMember(db, leagueId, c.var.user.id);
+          // Weekly pick'em's table and scoring; each other type has its own standings route.
+          requireLeagueType(league, "weekly");
           const seasonRows = await db
             .select()
             .from(seasons)

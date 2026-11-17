@@ -1,5 +1,5 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Action, Heading and Label render native Text.
-import { type LeagueDetail, MAX_WEEK, nextRegularWeek, weekLabel } from "@picks/shared";
+import { type LeagueDetail, MAX_WEEK, nextRegularWeek, seasonYear, weekLabel } from "@picks/shared";
 import { useState } from "react";
 import { View } from "react-native";
 import { request } from "../../lib/api";
@@ -35,6 +35,16 @@ export function AutomaticSeasonCard({
         </Label>
       </Card>
     );
+  // A season that is over can't be started: automation only runs the current one.
+  if (year < seasonYear(now()))
+    return (
+      <Card label="Automatic season">
+        <Heading>{year} season</Heading>
+        <Label>
+          That season is over, so there is nothing to start. Choose the current season in the selector above.
+        </Label>
+      </Card>
+    );
   async function start() {
     if (busy || !(await confirmDiscard())) return;
     setBusy(true);
@@ -52,8 +62,9 @@ export function AutomaticSeasonCard({
     <Card label="Start season">
       <Heading>Start the {year} season</Heading>
       <Label>
-        Pick the week to start with. Each week imports from ESPN, opens Tuesday at 9 AM Eastern once every
-        game has a line, and finalizes after its last game, through Week 18.
+        Pick the week to start with. Each Tuesday at 9 AM Eastern the week's games and that morning's lines
+        come in from ESPN and it opens for picks; it finalizes after its last game. That repeats through Week
+        18.
       </Label>
       <View style={{ gap: 12 }}>
         <Select

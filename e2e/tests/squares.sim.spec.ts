@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { type HarnessGame, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
+import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 /*
  * Squares, create to winner, on the dev harness: the 2026 season's Super Bowl (scripted for 2027-02-14) and a
@@ -27,16 +27,21 @@ test.afterEach(async ({ request }) => {
   await resetHarness(request);
 });
 
-/** From Your leagues: a squares league with a board on the Super Bowl (the default game), then its Board tab. */
+/**
+ * From Your leagues: a squares league with a board on the Super Bowl (the default game), then its Board tab.
+ * Returns the league's id.
+ */
 async function startBoard(page: Page) {
   await page.getByRole("radio", { name: "Squares" }).click();
   await page.getByLabel("League name").fill("Super Bowl Squares");
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "New board" })).toBeVisible();
+  const leagueId = leagueIdOf(page.url());
   await page.getByRole("button", { name: "Create board" }).click();
   await expect(page.getByText("Board created.")).toBeVisible();
   await page.getByRole("link", { name: "Board", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Bills at Seahawks" })).toBeVisible();
+  return leagueId;
 }
 
 test("a board locks itself at kickoff and pays four quarters, an empty square's included", async ({
@@ -47,7 +52,7 @@ test("a board locks itself at kickoff and pays four quarters, an empty square's 
   await setClock(request, "2027-02-10T17:00:00Z");
   await setFeedWeek(request, 2026, 22, [superBowl()]);
   await page.reload();
-  await startBoard(page);
+  const leagueId = await startBoard(page);
 
   // Numbers read "?" until the draw. Claim one square.
   await expect(page.getByLabel("Seahawks ?", { exact: true })).toHaveCount(10);
@@ -92,7 +97,7 @@ test("a board locks itself at kickoff and pays four quarters, an empty square's 
   for (const [minutes, game] of steps) {
     await setFeedWeek(request, 2026, 22, [superBowl(game)]);
     await setClock(request, minutesAfterKickoff(minutes));
-    await runJobs(request);
+    await runJobs(request, [leagueId]);
     if (minutes === 20) {
       await page.reload();
       await expect(results).toContainText(`Q1BUF ${a} · SEA ${h}You won`);
@@ -133,4 +138,12 @@ test("an admin's Lock and draw locks the board before kickoff", async ({ page, r
   await expect(page.getByText("The numbers are drawn.")).toBeVisible();
   await expect(page.getByLabel(/^Seahawks \d$/)).toHaveCount(10);
   await expect(page.getByText("Locked", { exact: true })).toBeVisible();
+
+  // The admin deletes the board: it is gone from the league, squares and numbers with it.
+  await page.getByRole("button", { name: "Delete board" }).click();
+  const remove = page.getByRole("alertdialog");
+  await expect(remove).toContainText("BUF at SEA");
+  await remove.getByRole("button", { name: "Delete board" }).click();
+  await expect(page.getByText("Board deleted.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No boards yet" })).toBeVisible();
 });

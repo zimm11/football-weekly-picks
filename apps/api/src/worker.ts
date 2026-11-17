@@ -81,7 +81,9 @@ function build() {
   const nativePush = config.EXPO_PUSH_ENABLED ? expoPushSender(config.EXPO_ACCESS_TOKEN) : undefined;
   // Local E2E only (DEV_HARNESS, refused in production): a scripted feed and a movable clock.
   const harness = config.DEV_HARNESS
-    ? devHarness((at, nfl) => runScheduledJobs(db, { email, push, nativePush, nfl }, at))
+    ? devHarness((at, nfl, onlyLeagues) =>
+        runScheduledJobs(db, { email, push, nativePush, nfl, onlyLeagues }, at),
+      )
     : undefined;
   const nfl = harness?.nfl ?? espnProvider();
   // Every post and name is screened on Workers AI unless MODERATION_MODE=off (the emergency switch).

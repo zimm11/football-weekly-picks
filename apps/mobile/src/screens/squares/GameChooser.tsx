@@ -1,7 +1,8 @@
-import { type BoardFeedGame, LAST_WEEK, NFL_TEAMS, TEAM_ABBRS, weekLabel } from "@picks/shared";
+import { type BoardFeedGame, LAST_WEEK, NFL_TEAMS, seasonYear, TEAM_ABBRS, weekLabel } from "@picks/shared";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { messageOf, request } from "../../lib/api";
+import { now } from "../../lib/clock";
 import type { GameDraft } from "../../lib/squaresBoard";
 import { kickoffDay, kickoffTime } from "../../lib/weekPresentation";
 import { ChoiceList } from "../ChoiceList";
@@ -42,6 +43,9 @@ export function GameChooser({
       active = false;
     };
   }, [leagueId, source, year, week]);
+  // This season and the next, whatever is selected: a past season has no game left to play.
+  const current = seasonYear(now());
+  const seasons = [...new Set([current, current + 1, draft.year])].sort((a, b) => a - b);
   const teams = [
     { value: "", label: "Choose a team" },
     ...TEAM_ABBRS.map((team) => ({ value: team, label: `${team} · ${NFL_TEAMS[team]}` })),
@@ -73,10 +77,7 @@ export function GameChooser({
                 value={draft.year}
                 onChange={(value) => set({ year: value, externalId: "" })}
                 disabled={disabled}
-                choices={[draft.year - 1, draft.year, draft.year + 1].map((value) => ({
-                  value,
-                  label: String(value),
-                }))}
+                choices={seasons.map((value) => ({ value, label: String(value) }))}
               />
             </View>
             <View style={{ flex: 1 }}>

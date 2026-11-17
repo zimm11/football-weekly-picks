@@ -23,6 +23,11 @@ export type AutomationContext = {
   requestId?: string;
   /** 32-bit random values for a squares board's draw at kickoff. Defaults to `crypto.getRandomValues`. */
   random?: RandomSource;
+  /**
+   * The local E2E harness only: the scheduled run advances just these leagues. Its clock is in the future, so
+   * every other league in the local database (the seeded ones) would otherwise be played forward too.
+   */
+  onlyLeagues?: ReadonlySet<string>;
 };
 
 /** What advancing one league did: steps that changed something, and the notifications they queued. */

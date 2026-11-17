@@ -10,6 +10,9 @@ import type { NflProvider, ProviderGame } from "./nfl";
  *
  * While it is on, the feed is the harness alone: a week the test hasn't scripted has no games, and ESPN is never
  * asked. The state is plain values in this isolate (`pnpm worker:dev` runs one), never a promise.
+ *
+ * A jobs run advances only the leagues the test names: the clock is in the future, so running every league in
+ * the local database would play the seeded ones forward (finalizing their weeks, drawing their boards).
  */
 
 const periodScore = z.object({ home: z.number().int().min(0), away: z.number().int().min(0) });
@@ -44,7 +47,7 @@ export type DevHarness = {
 };
 
 export function devHarness(
-  runJobs: (now: Date, nfl: NflProvider) => Promise<unknown>,
+  runJobs: (now: Date, nfl: NflProvider, onlyLeagues: ReadonlySet<string>) => Promise<unknown>,
   realNow: () => Date = () => new Date(),
 ): DevHarness {
   let offsetMs = 0;
@@ -88,9 +91,16 @@ export function devHarness(
       );
       return c.json(state());
     })
-    /** Runs the scheduled jobs (automation, then email and push) once, at the harness's time. */
+    /**
+     * Runs the scheduled jobs (automation, then email and push) once, at the harness's time. Automation advances
+     * only `leagueIds`; with none it advances nothing.
+     */
     .post("/api/dev/jobs", async (c) => {
-      await runJobs(now(), nfl);
+      const body = z
+        .object({ leagueIds: z.array(z.uuid()).default([]) })
+        .safeParse(await c.req.json().catch(() => ({})));
+      if (!body.success) return c.json({ error: "Send { leagueIds: [uuid, ...] }" }, 400);
+      await runJobs(now(), nfl, new Set(body.data.leagueIds));
       return c.json(state());
     })
     /** Back to real time and an empty feed. */

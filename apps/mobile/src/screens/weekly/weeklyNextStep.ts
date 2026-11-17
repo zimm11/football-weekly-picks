@@ -8,11 +8,11 @@ export function automaticNextStep(weeks: LeagueDetail["weeks"]): string {
   const open = weeks.find((w) => w.status === "open");
   if (draft)
     return draft.gameCount
-      ? `${weekLabel(draft.number)} opens by itself on Tuesday at 9 AM Eastern, once every game has a line.`
-      : `${weekLabel(draft.number)} imports its games from ESPN as soon as they're listed.`;
+      ? `${weekLabel(draft.number)} opens by itself on Tuesday at 9 AM Eastern, or as soon as every game has a line after that.`
+      : `${weekLabel(draft.number)} opens by itself on Tuesday at 9 AM Eastern: its games and that morning's lines come in from ESPN then.`;
   if (open)
     return `${weekLabel(open.number)} is open. Results fill in as games end, and it finalizes after the last one.`;
   return latest.number >= REGULAR_SEASON_WEEKS
     ? "The season is complete: all its weeks are final."
-    : `${weekLabel(latest.number + 1)} is imported from ESPN once it's listed, then opens on its Tuesday.`;
+    : `${weekLabel(latest.number + 1)} is set up and opens on Tuesday at 9 AM Eastern, with that morning's lines.`;
 }

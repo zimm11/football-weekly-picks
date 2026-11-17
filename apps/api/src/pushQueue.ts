@@ -260,7 +260,8 @@ async function claimPush(
       if (!still) return skip();
       if (still.message.kind === "text") {
         payload = {
-          title: "Make your picks",
+          // The type's own words ("Claim your squares", "Make your Week 5 pick"), not weekly pick'em's.
+          title: still.message.heading.slice(0, 80),
           body: `${league.name}: ${still.message.pushBody}`.slice(0, 180),
           url: still.message.path,
           tag: delivery.id,

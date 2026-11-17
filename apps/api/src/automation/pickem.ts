@@ -8,15 +8,14 @@
 // no lock is held while waiting on the network. Notifications are queued in the step's transaction.
 
 import { leagueMembers, seasons, weeks } from "@picks/db";
-import { firstKickoff, hasResult, missingLineDue } from "@picks/shared";
+import { firstKickoff, hasResult, missingLineDue, slateEditable } from "@picks/shared";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { queueLeagueEvent } from "../leagueEvents";
 import type { NflProvider, ProviderGame } from "../nfl";
 import {
-  awaitingResult,
   finalizeProblem,
   finalizeWeek,
-  type GameRow,
+  followKickoffs,
   gamesOf,
   importSlate,
   openProblem,
@@ -33,8 +32,12 @@ export type SeasonRow = typeof seasons.$inferSelect;
 export type PickemPlan = {
   /** A new game's points in week `number`. */
   pointsFor(number: number): PointsFor;
-  /** When a draft whose every game has a line may open. Null: as soon as every line is in. */
-  opensAt(number: number, games: GameRow[]): Date | null;
+  /**
+   * When week `number` opens, given its games (the draft's, or the feed's before anything is imported). Null: as
+   * soon as every line is in. Nothing is imported into an empty draft before this time, so the slate is drawn
+   * and opened in one step, with that moment's lines.
+   */
+  opensAt(number: number, games: { kickoff: Date }[]): Date | null;
   /** League event headlines. Never a pick, a team, or whether the reader is in or out. */
   openHeadline(number: number): string;
   finalHeadline(number: number): string;
@@ -68,10 +71,12 @@ async function lockWeek(
 }
 
 /**
- * A draft: bring its slate up to date from the feed (the whole slate while it has no games, then only kickoffs and
- * lines of the games already there, so a game the admin removed stays removed), then open it once every game has
- * a line and its time has come. A line still missing 24 hours before the first kickoff is reported to the admins,
- * once. Lines the admin typed, points set by hand and an explicit tiebreaker are never overwritten.
+ * A draft: once its opening time has come, bring its slate up to date from the feed (the whole slate while it has
+ * no games, then only kickoffs and lines of the games already there, so a game the admin removed stays removed)
+ * and open it in the same step if every game has a line. Before that time an empty draft is left empty, so lines
+ * are never drawn days ahead of the picks. A draft that already has games (the admin's, or one waiting on a line)
+ * keeps following the feed until it opens. A line still missing 24 hours before the first kickoff is reported to
+ * the admins, once. Lines the admin typed, points set by hand and an explicit tiebreaker are never overwritten.
  */
 export async function advanceDraft(
   ctx: AutomationContext,
@@ -87,7 +92,13 @@ export async function advanceDraft(
     const before = await gamesOf(tx, week.id);
     if (provided?.length) {
       const known = new Set(before.map((g) => g.externalId));
-      const feed = before.length === 0 ? provided : provided.filter((g) => known.has(g.externalId));
+      const drawFrom = before.length === 0 ? plan.opensAt(week.number, provided) : null;
+      const feed =
+        before.length > 0
+          ? provided.filter((g) => known.has(g.externalId))
+          : !drawFrom || ctx.now >= drawFrom
+            ? provided
+            : [];
       if (feed.length) {
         await importSlate(
           tx,
@@ -159,9 +170,11 @@ export async function advanceDraft(
 }
 
 /**
- * An open week: fill in final scores from the feed for games that have been going long enough to be over (never
- * over a score already entered), then finalize once every game has one: picks are revealed, the players are
- * recorded and the recap starts. A week with no games is never "every result in".
+ * An open week: follow the feed's kickoffs for games still to finish (a flexed or postponed game locks at its new
+ * time), fill in final scores (never over a score already entered), then finalize once every game has one: picks
+ * are revealed, the players are recorded and the recap starts. A week with no games is never "every result in".
+ * Spreads are never touched here. A moved game takes its new slot's points only until the week's first kickoff
+ * (`slateEditable`); after that the slate's values stand.
  */
 export async function advanceOpen(
   ctx: AutomationContext,
@@ -171,7 +184,7 @@ export async function advanceOpen(
   plan: PickemPlan,
 ): Promise<AdvanceResult> {
   const before = await gamesOf(ctx.db, week.id);
-  const provided = before.some((g) => awaitingResult(g, ctx.now))
+  const provided = before.some((g) => g.externalId !== null && !hasResult(g))
     ? await ctx.results(season.year, week.number, ctx.requestId)
     : null;
   return ctx.db.transaction(async (tx) => {
@@ -180,6 +193,10 @@ export async function advanceOpen(
     let slate = await gamesOf(tx, week.id);
     let result = NOTHING_DONE;
     if (provided) {
+      const moved = await followKickoffs(tx, slate, provided, {
+        pointsFor: slateEditable(slate, ctx.now) ? plan.pointsFor(week.number) : undefined,
+      });
+      if (moved) result = addResults(result, { steps: moved });
       const had = slate.filter(hasResult).length;
       await writeFinals(tx, slate, provided, { overwrite: false });
       slate = await gamesOf(tx, week.id);

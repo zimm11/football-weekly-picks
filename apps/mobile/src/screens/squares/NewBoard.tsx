@@ -12,7 +12,7 @@ import { colors } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
 import { now } from "../../lib/clock";
 import { notifyDone } from "../../lib/notify";
-import { boardTitle, type GameDraft, gameFromDraft } from "../../lib/squaresBoard";
+import { boardTitle, type GameDraft, gameFromDraft, scheduleWeekAt } from "../../lib/squaresBoard";
 import type { AdminToolsProps } from "../leagueTypeScreens";
 import {
   Action,
@@ -30,10 +30,11 @@ import {
 import { chooseBoard, setBoards } from "./boardChoice";
 import { GameChooser } from "./GameChooser";
 
+/** A new board's game: the Super Bowl, with "A game from the schedule" starting on this week's games. */
 export const newGameDraft = (): GameDraft => ({
   source: "superbowl",
   year: seasonYear(now()),
-  week: 22,
+  week: scheduleWeekAt(seasonYear(now()), now()),
   externalId: "",
   homeTeam: "",
   awayTeam: "",

@@ -23,28 +23,6 @@ export const survivorSettingsSchema = z.object({
 });
 export type SurvivorSettings = z.infer<typeof survivorSettingsSchema>;
 
-// ---------- The calendar ----------
-
-/**
- * When an NFL regular-season week is expected to start, from the calendar alone: Week 1's Thursday is the one
- * after Labor Day (the first Monday in September), and each week follows a week later. 7pm Eastern that
- * Thursday (6pm in winter) stands for the week's first kickoff. Used only to choose a default start week before the feed has
- * been asked; the imported slate's real kickoffs decide everything after that.
- */
-export function estimatedWeekStart(year: number, number: number): Date {
-  const firstOfSeptember = new Date(Date.UTC(year, 8, 1)).getUTCDay();
-  const laborDay = 1 + ((8 - firstOfSeptember) % 7);
-  return new Date(Date.UTC(year, 8, laborDay + 3 + 7 * (number - 1), 23));
-}
-
-/** The first regular-season week of `year` with no kickoff yet at `now`, or null once Week 18 has begun. */
-export function nextStartWeek(year: number, now: Date): number | null {
-  for (let number = 1; number <= REGULAR_SEASON_WEEKS; number++) {
-    if (estimatedWeekStart(year, number) > now) return number;
-  }
-  return null;
-}
-
 /**
  * How many games each postseason round has. A postseason week is imported only once the feed lists all of them,
  * since the feed leaves out games whose teams aren't known yet and a survivor week opens as soon as it is
@@ -226,8 +204,8 @@ const kickoffs = (games: SurvivorGame[]) => games.map((g) => g.kickoff.getTime()
  * - a week that would put out every player still in puts out nobody, and its strikes are cancelled.
  * One player left after a final week wins; several still in after the Super Bowl share the title.
  *
- * `recorded` is `week_participants` by week id: the entrants, recorded when the start week is final, and who was
- * in the league for each later week. Without a record, both are worked out from the membership dates.
+ * `recorded` is `week_participants` by week id: who was in the league at each final week's last kickoff, the
+ * start week included. Without a record, that is worked out from the membership dates.
  */
 export function survivorStatus(input: {
   startWeek: number;
@@ -259,8 +237,8 @@ export function survivorStatus(input: {
     const inWeek = recorded?.get(week.id);
     const leftBy = (userId: string) => {
       if (lastKickoff === null) return false;
-      // The entrants are the start week's record, so who left during it is read from the membership dates.
-      if (number !== startWeek && inWeek?.size) return !inWeek.has(userId);
+      // The record stands whatever the membership says now, so leaving or rejoining later changes nothing.
+      if (inWeek?.size) return !inWeek.has(userId);
       const m = memberOf.get(userId);
       if (!m) return true;
       if (m.removedAt !== null && m.removedAt.getTime() <= lastKickoff) return true;
@@ -344,9 +322,10 @@ export function survivorStatus(input: {
 }
 
 /**
- * Who plays a survivor season. Once the start week is final, the players recorded then. Before that: every
- * member when its first game kicks off (one who left before that isn't in), plus anyone who joined before its
- * last kickoff (in time to pick a game) or has picked. With no slate yet, every current member.
+ * Who plays a survivor season: everyone in the league at the start week's last kickoff who joined before it, plus
+ * anyone who picked in the start week (so a player who picked and then left is still listed, as out). Once the
+ * start week is final, "in the league at its last kickoff" is the week's record (`recorded`), which leaving or
+ * rejoining later can't change. With no slate yet, every current member.
  */
 export function survivorEntrants(
   start: SurvivorWeekInput,
@@ -354,16 +333,18 @@ export function survivorEntrants(
   picks: SurvivorPickInput[],
   recorded?: ReadonlySet<string>,
 ): string[] {
-  if (recorded?.size) return members.filter((m) => recorded.has(m.userId)).map((m) => m.userId);
+  const picked = new Set(picks.filter((p) => p.weekId === start.id).map((p) => p.userId));
+  if (recorded?.size) {
+    return members.filter((m) => recorded.has(m.userId) || picked.has(m.userId)).map((m) => m.userId);
+  }
   const times = kickoffs(start.games);
   if (!times.length) return members.filter((m) => m.removedAt === null).map((m) => m.userId);
-  const [first, last] = [Math.min(...times), Math.max(...times)];
-  const picked = new Set(picks.filter((p) => p.weekId === start.id).map((p) => p.userId));
+  const last = Math.max(...times);
   return members
     .filter(
       (m) =>
         picked.has(m.userId) ||
-        (m.joinedAt.getTime() < last && (m.removedAt === null || m.removedAt.getTime() > first)),
+        (m.joinedAt.getTime() < last && (m.removedAt === null || m.removedAt.getTime() > last)),
     )
     .map((m) => m.userId);
 }

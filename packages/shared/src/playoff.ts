@@ -8,6 +8,7 @@ import {
   tiebreakerTotal,
   type WeekEntry,
 } from "./rules";
+import { openingThursday } from "./seasons";
 import { NFL_TIME_ZONE, zonedTimeToUtc } from "./time";
 
 /*
@@ -88,10 +89,8 @@ export const createPlayoffRoundSchema = z.object({
  * six games with real teams, which is after the last Week 18 game.
  */
 export function wildCardPollingStarts(year: number): Date {
-  const firstOfSeptember = new Date(Date.UTC(year, 8, 1)).getUTCDay();
-  const laborDay = 1 + ((1 - firstOfSeptember + 7) % 7);
-  // Labor Day + 3 days is Week 1's Thursday; + 17 weeks and 3 more days is Week 18's Sunday.
-  return zonedTimeToUtc(year, 9, laborDay + 3 + 17 * 7 + 3, 0, NFL_TIME_ZONE);
+  // Week 1's Thursday, + 17 weeks and 3 more days: Week 18's Sunday.
+  return zonedTimeToUtc(year, 9, openingThursday(year) + 17 * 7 + 3, 0, NFL_TIME_ZONE);
 }
 
 // ---------- Guillotine ----------

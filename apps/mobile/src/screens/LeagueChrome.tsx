@@ -35,51 +35,47 @@ export function LeagueHeader({
   /** The season selector's width, when its labels are longer than a year. */
   seasonWidth?: number;
 }) {
+  // The selector rides on the "All leagues" row, so the league's name keeps the whole width under it whatever
+  // the selector says ("2026 playoffs", a board's game).
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
-      <View style={{ flex: 1, minWidth: 0 }}>
+    <View>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <Pressable
           accessibilityRole="link"
           onPress={() => go("/")}
-          style={{
-            minHeight: 44,
-            alignSelf: "flex-start",
-            flexDirection: "row",
-            gap: 4,
-            alignItems: "center",
-          }}
+          style={{ minHeight: 44, flexShrink: 0, flexDirection: "row", gap: 4, alignItems: "center" }}
         >
           <Icon name="arrow-left" size={14} color={colors.mutedForeground} />
           <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}>
             All leagues
           </Text>
         </Pressable>
-        <Text
-          accessibilityRole="header"
-          numberOfLines={1}
-          style={{
-            fontFamily: fonts.displayExtraBold,
-            fontSize: 30,
-            letterSpacing: 0.75,
-            lineHeight: 32,
-            textTransform: "uppercase",
-            color: colors.foreground,
-          }}
-        >
-          {leagueName}
-        </Text>
+        {season !== undefined && onSeason && (
+          <Select
+            compact
+            compactWidth={seasonWidth}
+            label="Season"
+            value={season}
+            choices={seasonChoices ?? [{ value: season, label: String(season) }]}
+            onChange={onSeason}
+          />
+        )}
+        {season === undefined && selector}
       </View>
-      {season !== undefined && onSeason && (
-        <Select
-          compact
-          compactWidth={seasonWidth}
-          label="Season"
-          value={season}
-          choices={seasonChoices ?? [{ value: season, label: String(season) }]}
-          onChange={onSeason}
-        />
-      )}
-      {season === undefined && selector}
+      <Text
+        accessibilityRole="header"
+        numberOfLines={1}
+        style={{
+          fontFamily: fonts.displayExtraBold,
+          fontSize: 30,
+          letterSpacing: 0.75,
+          lineHeight: 32,
+          textTransform: "uppercase",
+          color: colors.foreground,
+        }}
+      >
+        {leagueName}
+      </Text>
     </View>
   );
 }

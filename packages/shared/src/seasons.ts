@@ -49,6 +49,40 @@ export function seasonYear(now: Date): number {
   return month <= 2 ? year - 1 : year;
 }
 
+/**
+ * The September day of Week 1's Thursday: the NFL opens on the Thursday after Labor Day (the first Monday of
+ * September). Week n's Thursday is 7 × (n − 1) days later; a day past the month's edge rolls over, as `Date.UTC`
+ * does. Every calendar estimate below starts here.
+ */
+export function openingThursday(year: number): number {
+  const firstOfSeptember = new Date(Date.UTC(year, 8, 1)).getUTCDay();
+  const laborDay = 1 + ((8 - firstOfSeptember) % 7);
+  return laborDay + 3;
+}
+
+/**
+ * When an NFL regular-season week is expected to start, from the calendar alone: its Thursday at 23:00 UTC (7 PM
+ * Eastern, 6 PM in winter, a little before the night game), or noon Eastern on Thanksgiving, whose games start in
+ * the afternoon. Used to offer start weeks and to pace automation before the feed has been asked; the imported
+ * slate's real kickoffs decide everything after that.
+ */
+export function estimatedWeekStart(year: number, number: number): Date {
+  const day = openingThursday(year) + 7 * (number - 1);
+  const thursday = new Date(Date.UTC(year, 8, day));
+  // Thanksgiving is the fourth Thursday of November.
+  const thanksgiving =
+    thursday.getUTCMonth() === 10 && thursday.getUTCDate() >= 22 && thursday.getUTCDate() <= 28;
+  return new Date(Date.UTC(year, 8, day, thanksgiving ? 17 : 23));
+}
+
+/** The first regular-season week of `year` with no kickoff yet at `now`, or null once Week 18 has begun. */
+export function nextStartWeek(year: number, now: Date): number | null {
+  for (let number = 1; number <= REGULAR_SEASON_WEEKS; number++) {
+    if (estimatedWeekStart(year, number) > now) return number;
+  }
+  return null;
+}
+
 /** Preparing a future or draft-only season does not displace the latest published season. */
 export function preferredSeasonYear(weeks: { year: number; status: WeekStatus }[], now: Date): number {
   const current = seasonYear(now);

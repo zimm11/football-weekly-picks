@@ -31,6 +31,7 @@ export function PlayoffStatusLine({ view }: { view: WeekView }) {
       ? `${how[0]?.toUpperCase()}${how.slice(1)}. Finish this round's picks: they still count.`
       : `${how[0]?.toUpperCase()}${how.slice(1)}. You keep your points and your place, and you can still guess the Super Bowl's total.`;
   const tone = out ? colors.destructive : colors.win;
+  const tint = out ? colors.destructiveTint : colors.winTint;
   return (
     <View
       accessibilityLabel="Guillotine status"
@@ -40,7 +41,7 @@ export function PlayoffStatusLine({ view }: { view: WeekView }) {
         gap: 12,
         borderRadius: 16,
         padding: 12,
-        backgroundColor: `${tone}1a`,
+        backgroundColor: tint,
       }}
     >
       <Icon name={out ? "close" : "check-circle"} size={28} color={tone} />

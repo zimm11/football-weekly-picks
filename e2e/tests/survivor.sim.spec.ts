@@ -63,9 +63,9 @@ async function pickTeam(page: Page, team: RegExp) {
 }
 
 /** Moves the clock, runs the cron's work once, and reloads the page so it reads the new time. */
-async function advanceTo(request: APIRequestContext, at: Date, pages: Page[]) {
+async function advanceTo(request: APIRequestContext, leagueId: string, at: Date, pages: Page[]) {
   await setClock(request, at);
-  await runJobs(request);
+  await runJobs(request, [leagueId]);
   for (const page of pages) await page.reload();
 }
 
@@ -109,7 +109,7 @@ test("a survivor pool runs itself from its start week through the Wild Card roun
       game("e18-gb", "GB", "CHI", 18, 21),
     ];
     await setFeedWeek(request, 2027, 18, week18);
-    await advanceTo(request, sunday(17, 40), [page]);
+    await advanceTo(request, leagueId, sunday(17, 40), [page]);
     // The recap, once: still in, nobody went out, two left.
     const recap = page.getByRole("dialog", { name: "Week 17 is final" });
     await expect(recap).toContainText("You're still in.");
@@ -144,7 +144,7 @@ test("a survivor pool runs itself from its start week through the Wild Card roun
       game("ewc-lar", "LAR", "TB", 19, 23),
     ];
     await setFeedWeek(request, 2027, 19, wildCard);
-    await advanceTo(request, sunday(18, 40), [page]);
+    await advanceTo(request, leagueId, sunday(18, 40), [page]);
     await page
       .getByRole("dialog", { name: "Week 18 is final" })
       .getByRole("button", { name: "Close" })
@@ -166,7 +166,7 @@ test("a survivor pool runs itself from its start week through the Wild Card roun
       19,
       wildCard.map((g) => final(g, 24, 17)),
     );
-    await advanceTo(request, sunday(19, 40), [page, pat]);
+    await advanceTo(request, leagueId, sunday(19, 40), [page, pat]);
     const adminRecap = page.getByRole("dialog", { name: "Wild Card is final" });
     await expect(adminRecap).toContainText("You're the last one standing. You won the pool.");
     await adminRecap.getByRole("button", { name: "Close" }).click();
@@ -187,7 +187,7 @@ test("a survivor pool runs itself from its start week through the Wild Card roun
 
     // Nothing more is imported once the pool is over.
     await setFeedWeek(request, 2027, 20, [game("ediv", "KC", "BAL", 20)]);
-    await advanceTo(request, sunday(19, 48), [page]);
+    await advanceTo(request, leagueId, sunday(19, 48), [page]);
     await expect(page.getByRole("region", { name: "Your status" })).toContainText("You won the pool");
     await expect(page.getByRole("heading", { name: "No week is being played" })).toBeVisible();
   } finally {

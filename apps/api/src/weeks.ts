@@ -83,12 +83,7 @@ const toGame = (g: GameRow): Game => ({
   awayScore: g.awayScore,
 });
 
-export async function buildWeekView(
-  db: Db,
-  ctx: WeekContext,
-  userId: string,
-  at: Date = new Date(),
-): Promise<WeekView> {
+export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at: Date): Promise<WeekView> {
   // Re-read the week: the caller may have just changed it.
   const [week] = await db.select().from(weeks).where(eq(weeks.id, ctx.week.id));
   if (!week) fail(404, "Week not found");

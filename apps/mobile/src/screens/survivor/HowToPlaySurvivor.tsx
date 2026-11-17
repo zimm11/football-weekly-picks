@@ -18,7 +18,7 @@ const rules: [string, string][] = [
   ],
   [
     "Who's in",
-    "Every member when the start week begins, plus anyone who joins in time to pick in it. Players who join later watch this season and play the next.",
+    "Everyone in the league for the start week's games, including anyone who joins in time to pick in it. A player who leaves during the start week is out (and isn't listed at all if they never picked); rejoining later doesn't bring them back. Players who join later watch this season and play the next.",
   ],
   [
     "When picks show",

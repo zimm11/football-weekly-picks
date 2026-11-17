@@ -430,7 +430,7 @@ export function Select<T extends string | number>({
 }) {
   const menu = useAnchor();
   return (
-    <View style={{ gap: 6, ...(compact ? { flexShrink: 0, width: compactWidth } : {}) }}>
+    <View style={{ gap: 6, ...(compact ? { flexShrink: 1, minWidth: 0, width: compactWidth } : {}) }}>
       {!compact && (
         <Text
           style={[
@@ -486,7 +486,7 @@ export function Select<T extends string | number>({
                 },
               ]}
             >
-              {compact ? value : (choices.find((c) => c.value === value)?.label ?? value)}
+              {choices.find((c) => c.value === value)?.label ?? value}
             </Text>
             <Icon name="chevron-down" size={14} color={colors.mutedForeground} />
           </Pressable>

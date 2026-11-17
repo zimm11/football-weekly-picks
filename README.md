@@ -297,7 +297,9 @@ lists it, any game from the feed, or teams and a kickoff typed in). An admin set
 board**; the header's selector switches between a league's boards. Players tap an open square to claim it (the
 cell fills at once and rolls back if the API refuses) and tap theirs to give it back, up to the board's limit
 (10 by default, 1–100, raised before the lock and never lowered); **Claim a random square** picks one. An admin
-can claim squares under a guest's name (counting against nobody's limit) and give back any square. The board
+can claim squares under a guest's name (counting against nobody's limit), give back any square, and delete a
+board (**Manage board → Delete board**, with everything on it). A board on a game from the feed follows it: if
+the game is rescheduled before the draw, the board's kickoff moves with it. The board
 locks when an admin presses **Lock and draw**, or at kickoff if nobody does: two random orders of 0–9 are drawn
 once, home across the top, away down the side, and nobody can claim or give back a square after that. Each
 quarter's winner (Q1, halftime, Q3, final with overtime) holds the square matching the last digit of each team's
@@ -309,13 +311,16 @@ member who leaves before the lock gives their squares back; after it they stay.
 #### Automatic weekly pick'em
 
 An admin presses **Start season** on the League tab and picks the start week; the season then runs through Week
-18 with nobody pressing Open or Finalize. Each week is imported from ESPN once the one before is final (a week
-whose games have all kicked off is skipped, so a league switched to Automatic mid-season catches up), opens on
-Tuesday at 9 AM Eastern once every game has a line (spreads freeze then), fills in final scores as games end
-(never over a typed score), and finalizes once every game has one, usually Monday night. Everyone gets a "week
-open" and a "week final" notification; the offer to post a thread stays with Hands-on leagues. If a game still
-has no line 24 hours before the first kickoff, the admins are told once, and the week opens as soon as they type
-it in. The admin can still edit spreads and points until a week's first kickoff, choose the tiebreaker game, add
+18 with nobody pressing Open or Finalize. Each week is drafted and opened in one step on its Tuesday at 9 AM
+Eastern: the week is created, its games and that morning's lines come in from ESPN, and it opens for picks
+(spreads freeze then). Nothing is imported earlier, so the lines players pick against are never days old, and
+there is no draft sitting from Monday night. A week whose games have all kicked off is skipped, so a league
+switched to Automatic mid-season catches up. A game with no line on Tuesday keeps the week a draft until the
+line arrives. While the week is open its kickoffs follow ESPN (a rescheduled game locks at its new time; lines
+never change), final scores fill in as games end (never over a typed score), and it finalizes once every game
+has one, usually Monday night. Everyone gets a "week open" and a "week final" notification; the offer to post a
+thread stays with Hands-on leagues. If a game still has no line 24 hours before the first kickoff, the admins are
+told once, and the week opens as soon as they type it in. The admin can still edit spreads and points until a week's first kickoff, choose the tiebreaker game, add
 or remove a game, and correct a score at any time: a final week is corrected in place (the standings follow and
 the recap shows again), without reopening it. Switching to Automatic picks the weeks up as they stand (a ready
 draft opens, an open week with every result in finalizes); switching back stops it and leaves every week as it
@@ -352,8 +357,9 @@ the next cron run) imports its slate from ESPN and opens it: there are no spread
 2. **Reveal:** nobody else, admins included, learns anything about a pick (not even that one exists) until its
    team's game kicks off. Then it shows on **Standings**, the survivor grid.
 3. **Strikes:** a loss, a tie, or no pick when the week's last game kicks off is a strike; a player is out when
-   their strikes reach the lives, and a player who leaves is out from that week on. A week that would put out
-   everyone still in puts out nobody.
+   their strikes reach the lives, and a player who leaves is out from that week on (who was in the league at
+   each week's last kickoff is recorded when it is final, so rejoining later changes nothing). A week that would
+   put out everyone still in puts out nobody.
 4. **The week closes itself:** kickoffs follow flexed games, scores fill in (never over one an admin typed), and
    when every game has a result the week is final, its players are recorded, a "Week 7 is final" league event
    goes out, and the next week is imported. A recap shows each player whether they're in, who went out and how

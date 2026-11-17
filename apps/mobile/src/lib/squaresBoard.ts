@@ -5,6 +5,8 @@ import {
   type BoardSquare,
   type BoardSummary,
   type BoardView,
+  estimatedWeekStart,
+  LAST_WEEK,
   SQUARE_PERIOD_LABEL,
   type SquarePeriod,
   teamName,
@@ -108,6 +110,19 @@ export function cellLabel(input: {
 
 /** What a square has won, for its sheet: "Won Q1 and Final", or "Nothing yet". */
 export const winsText = (wins: SquarePeriod[]) => (wins.length ? `Won ${joinPeriods(wins)}` : "Nothing yet");
+
+/**
+ * The NFL week being played at `now`, by the calendar: the first whose games aren't over yet (until the morning
+ * after its Monday night, four and a half days on from its Thursday evening), the postseason rounds following on;
+ * the Super Bowl after that. Where "A game from the schedule" starts, so it opens on games that can still be chosen.
+ */
+export function scheduleWeekAt(year: number, now: Date): number {
+  const weekLasts = 4.5 * 24 * 60 * 60_000;
+  for (let number = 1; number < LAST_WEEK; number++) {
+    if (estimatedWeekStart(year, number).getTime() + weekLasts > now.getTime()) return number;
+  }
+  return LAST_WEEK;
+}
 
 /** A board's name in the selector and lists: "BUF at SEA · Feb 14". */
 export function boardTitle(board: Pick<BoardSummary, "homeTeam" | "awayTeam" | "kickoff">, timeZone: string) {

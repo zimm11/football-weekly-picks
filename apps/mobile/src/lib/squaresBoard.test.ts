@@ -8,6 +8,7 @@ import {
   gameFromDraft,
   quarterRows,
   randomOpenSquare,
+  scheduleWeekAt,
   squarePlace,
   winsOf,
   winsText,
@@ -128,5 +129,20 @@ describe("choosing a board's game", () => {
       awayTeam: "BUF",
       kickoff: "2027-02-14T23:30:00.000Z",
     });
+  });
+});
+
+describe("the schedule week a new board starts on", () => {
+  it("is the week being played, so its games can still be chosen", () => {
+    // Before the season: Week 1.
+    expect(scheduleWeekAt(2026, new Date("2026-07-04T12:00:00Z"))).toBe(1);
+    // Tuesday of Week 11 (Thursday Nov 19), and the Sunday of it.
+    expect(scheduleWeekAt(2026, new Date("2026-11-17T15:00:00Z"))).toBe(11);
+    expect(scheduleWeekAt(2026, new Date("2026-11-22T18:00:00Z"))).toBe(11);
+    // The morning after Monday night: Week 12.
+    expect(scheduleWeekAt(2026, new Date("2026-11-25T00:00:00Z"))).toBe(12);
+    // The Wild Card weekend follows Week 18; after the Conference round only the Super Bowl is left.
+    expect(scheduleWeekAt(2026, new Date("2027-01-14T12:00:00Z"))).toBe(19);
+    expect(scheduleWeekAt(2026, new Date("2027-02-10T12:00:00Z"))).toBe(22);
   });
 });

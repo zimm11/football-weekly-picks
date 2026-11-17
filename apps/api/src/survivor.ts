@@ -17,7 +17,6 @@ import {
   type SurvivorSettings,
   type SurvivorStatus,
   type SurvivorView,
-  survivorEntrants,
   survivorOutcome,
   survivorPickSchema,
   survivorScoreSchema,
@@ -214,9 +213,9 @@ export const survivorHooks: LeagueTypeHooks = {
 };
 
 /**
- * Records who a survivor week is played by as it is finalized. The start week records the entrants (every member
- * when it began, plus anyone who joined in time to pick it); a later week records who was in the league at its
- * last kickoff, which is how a player who left is known to be out from that week on. Nobody is ever dropped.
+ * Records who was in the league at a survivor week's last kickoff as it is finalized (plus anyone who picked and
+ * is a member now), the same rule as every other league type's weeks. A player missing from it is out from that
+ * week on; the start week's record is also who plays the season (`survivorEntrants`). Nobody is ever dropped.
  */
 export async function recordSurvivorParticipants(
   tx: Store,
@@ -224,14 +223,7 @@ export async function recordSurvivorParticipants(
   week: SurvivorSeason["weeks"][number],
 ) {
   const weekPicks = data.picks.filter((p) => p.weekId === week.id);
-  const userIds =
-    week.number === data.settings.startWeek
-      ? survivorEntrants(
-          { id: week.id, number: week.number, status: week.status, games: week.games.map(toSurvivorGame) },
-          data.members,
-          weekPicks,
-        )
-      : weekParticipants(data.members, week.games, weekPicks).map((m) => m.userId);
+  const userIds = weekParticipants(data.members, week.games, weekPicks).map((m) => m.userId);
   if (!userIds.length) return;
   await tx
     .insert(weekParticipantRows)

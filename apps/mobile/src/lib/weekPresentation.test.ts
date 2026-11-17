@@ -1,6 +1,6 @@
 import type { Game, WeekView } from "@picks/shared";
 import { describe, expect, it } from "vitest";
-import { favoriteLine, gameDays, pickStatus, weekHasPow } from "./weekPresentation";
+import { favoriteLine, gameDays, pickStatus, weekHasPow, weekUnit } from "./weekPresentation";
 
 const game = (id: string, kickoff = "2026-11-16T00:00:00Z"): Game => ({
   id,
@@ -52,6 +52,12 @@ describe("native week presentation behavior", () => {
       needsPow: true,
       needsTotal: true,
     });
+  });
+  it("calls a playoff league's week a round", () => {
+    expect(weekUnit({ leagueType: "playoff" })).toBe("round");
+    expect(weekUnit({ leagueType: "weekly" })).toBe("week");
+    // An older API response without the type is weekly pick'em's.
+    expect(weekUnit({})).toBe("week");
   });
   it("asks for no POW in a playoff league's Super Bowl", () => {
     const superBowl: WeekView = {

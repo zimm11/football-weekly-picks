@@ -6,9 +6,9 @@ import { advanceLeague, NOTHING_DONE } from "../src/automation";
 import { providerWeeks } from "../src/weekOps";
 import { feedGame, pickemSetup } from "./pickemSetup";
 
-// Weekly pick'em run by the feed (Automatic): prepare, open, sync and finalize with no admin action, on a scripted
-// feed and a clock the test moves. Week 13 of 2026: Thursday Dec 3, Sunday Dec 6 and Monday Dec 7 (Eastern), so it
-// opens Tuesday Dec 1 at 9 AM Eastern (14:00 UTC).
+// Weekly pick'em run by the feed (Automatic): draft and open, sync and finalize with no admin action, on a scripted
+// feed and a clock the test moves. Week 13 of 2026: Thursday Dec 3, Sunday Dec 6 and Monday Dec 7 (Eastern), so its
+// slate is drawn and it opens on Tuesday Dec 1 at 9 AM Eastern (14:00 UTC). Week 14 follows on Tuesday Dec 8.
 const WEEK_13 = [
   feedGame("w13-thu", "DAL", "NYG", "2026-12-04T01:15:00Z", -3),
   feedGame("w13-sun", "PHI", "WAS", "2026-12-06T18:00:00Z", -6.5),
@@ -24,6 +24,7 @@ const WEEK_14 = [
   feedGame("w14-sun", "SF", "SEA", "2026-12-13T21:25:00Z", -2.5),
 ];
 const OPENS = new Date("2026-12-01T14:00:00Z");
+const WEEK_14_OPENS = new Date("2026-12-08T14:00:00Z");
 
 describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `pnpm db:start`)", () => {
   const t = pickemSetup(["Commish", "Pat", "Sam"]);
@@ -58,26 +59,34 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     t.feed.set("2026:13", WEEK_13);
   });
 
-  it("runs a whole week with no admin action: import, open on Tuesday, results, finalize, the next week", async () => {
+  it("runs a whole week with no admin action: draft and open on Tuesday, results, finalize, the next Tuesday", async () => {
     const leagueId = await startedLeague("Runs itself");
-    // Start season imported the start week as a draft, worth the usual slot points.
+    // Start season made the start week an empty draft: nothing is drawn from the feed before its Tuesday.
     let w13 = await week(leagueId, 13);
     expect(w13.status).toBe("draft");
+    expect(w13.games).toEqual([]);
+
+    // The lines move before Tuesday: nobody ever sees Saturday's.
+    t.feed.set(
+      "2026:13",
+      WEEK_13.map((g) => ({ ...g, spread: (g.spread ?? 0) + 10 })),
+    );
+    at(new Date(OPENS.getTime() - 60_000).toISOString());
+    await t.runAutomation("weekly", [leagueId]);
+    w13 = await week(leagueId, 13);
+    expect([w13.status, w13.games.length]).toEqual(["draft", 0]);
+    // Tuesday 9 AM Eastern: the slate is drawn with that morning's lines and opens in the same run.
+    t.feed.set("2026:13", WEEK_13);
+    at(OPENS.toISOString());
+    expect(await t.runAutomation("weekly", [leagueId])).toEqual([leagueId]);
+    w13 = await week(leagueId, 13);
+    expect(w13.status).toBe("open");
+    // Worth the usual slot points.
     expect(w13.games.map((g) => [g.externalId, g.spread, g.points])).toEqual([
       ["w13-thu", -3, 3],
       ["w13-sun", -6.5, 1],
       ["w13-mon", 1, 3],
     ]);
-
-    // Not before Tuesday 9 AM Eastern…
-    at(new Date(OPENS.getTime() - 60_000).toISOString());
-    await t.runAutomation("weekly", [leagueId]);
-    expect((await week(leagueId, 13)).status).toBe("draft");
-    // … and open at that time, every game having a line.
-    at(OPENS.toISOString());
-    expect(await t.runAutomation("weekly", [leagueId])).toEqual([leagueId]);
-    w13 = await week(leagueId, 13);
-    expect(w13.status).toBe("open");
     expect(await t.events(leagueId)).toEqual(
       [`${ADMIN} week-open:${w13.id}`, `${PAT} week-open:${w13.id}`].sort(),
     );
@@ -120,7 +129,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
       [null, null],
     ]);
 
-    // Monday's game ends: the week finalizes, the next is prepared, and "final" is announced once.
+    // Monday's game ends: the week finalizes and "final" is announced once. Week 14 waits for its Tuesday.
     t.feed.set("2026:13", WEEK_13_FINALS);
     t.feed.set("2026:14", WEEK_14);
     at("2026-12-08T05:00:00Z");
@@ -128,9 +137,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     w13 = await week(leagueId, 13);
     expect(w13.status).toBe("final");
     expect(w13.finalizedAt).toEqual(t.state.now);
-    const w14 = await week(leagueId, 14);
-    expect(w14.status).toBe("draft");
-    expect(w14.games.map((g) => g.externalId)).toEqual(["w14-thu", "w14-sun"]);
+    expect((await t.weeksOf(leagueId)).map((w) => w.number)).toEqual([13]);
     const finalEvent = `week-final:${w13.id}:${t.state.now.getTime()}`;
     expect(await t.events(leagueId)).toEqual(
       [
@@ -141,11 +148,24 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
       ].sort(),
     );
 
-    // Running it again leaves the same state.
+    // Running it again leaves the same state: until Tuesday morning there is nothing due.
     const before = { weeks: await t.weeksOf(leagueId), events: await t.events(leagueId) };
-    await t.runAutomation("weekly", [leagueId]);
-    await t.runAutomation("weekly", [leagueId]);
+    expect(await t.runAutomation("weekly", [leagueId])).toEqual([]);
+    at(new Date(WEEK_14_OPENS.getTime() - 60_000).toISOString());
+    expect(await t.runAutomation("weekly", [leagueId])).toEqual([]);
     expect({ weeks: await t.weeksOf(leagueId), events: await t.events(leagueId) }).toEqual(before);
+
+    // Tuesday 9 AM Eastern: Week 14 is created, drawn and opened in one run.
+    at(WEEK_14_OPENS.toISOString());
+    expect(await t.runAutomation("weekly", [leagueId])).toEqual([leagueId]);
+    const w14 = await week(leagueId, 14);
+    expect(w14.status).toBe("open");
+    expect(w14.games.map((g) => [g.externalId, g.spread])).toEqual([
+      ["w14-thu", -4],
+      ["w14-sun", -2.5],
+    ]);
+    expect((await t.events(leagueId)).filter((e) => e.endsWith(`week-open:${w14.id}`))).toHaveLength(2);
+    expect(await t.runAutomation("weekly", [leagueId])).toEqual([]);
 
     // The results and the recap: Pat won all three, Monday (BUF +1) as the POW.
     const view = await t.call<WeekView>(PAT, "GET", `/weeks/${w13.id}`);
@@ -200,7 +220,10 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
 
   it("never overwrites an admin's spread, points, tiebreaker or removed game on a re-import", async () => {
     const leagueId = await startedLeague("Admin's choices");
+    // The admin sets the week up by hand ahead of its Tuesday: the draft has games, and keeps following the feed.
     let w13 = await week(leagueId, 13);
+    expect((await t.call(ADMIN, "POST", `/weeks/${w13.id}/import`)).status).toBe(200);
+    w13 = await week(leagueId, 13);
     const [thu, sun, mon] = w13.games;
     expect((await t.call(ADMIN, "PATCH", `/games/${thu?.id}`, { spread: -7 })).status).toBe(200);
     expect((await t.call(ADMIN, "PATCH", `/games/${sun?.id}`, { points: 5 })).status).toBe(200);
@@ -308,11 +331,17 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     expect(t.asked).toEqual(["2026:13"]);
   });
 
-  it("refuses Start season twice, without a start week, and in a squares league", async () => {
+  it("refuses Start season twice, for a season that is over, without a start week, and in a squares league", async () => {
     const leagueId = await startedLeague("Started");
     expect(
       (await t.call(ADMIN, "POST", `/leagues/${leagueId}/seasons`, { year: 2026, startWeek: 14 })).status,
     ).toBe(409);
+    // Automation never runs a past season, so it can't be started.
+    const past = await t.createLeague(ADMIN, { name: "Last year", management: "auto" });
+    expect(
+      (await t.call(ADMIN, "POST", `/leagues/${past}/seasons`, { year: 2025, startWeek: 14 })).status,
+    ).toBe(409);
+    expect(await t.weeksOf(past)).toEqual([]);
     const other = await t.createLeague(ADMIN, { name: "No week", management: "auto" });
     expect((await t.call(ADMIN, "POST", `/leagues/${other}/seasons`, { year: 2026 })).status).toBe(400);
     expect(
@@ -329,10 +358,55 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     expect(await t.weeksOf(other)).toEqual([]);
   });
 
+  it("moves an open week's game to the feed's new kickoff, and never its line", async () => {
+    const leagueId = await startedLeague("Flexed");
+    at(OPENS.toISOString());
+    await t.runAutomation("weekly", [leagueId]);
+    const w13 = await week(leagueId, 13);
+    const game = async (externalId: string) =>
+      (await week(leagueId, 13)).games.find((g) => g.externalId === externalId);
+
+    // Sunday afternoon's game is flexed to Sunday night, with a new line.
+    const sundayNight = new Date("2026-12-07T01:20:00Z");
+    t.feed.set(
+      "2026:13",
+      WEEK_13.map((g) => (g.externalId === "w13-sun" ? { ...g, kickoff: sundayNight, spread: -9 } : g)),
+    );
+    at("2026-12-02T12:00:00Z");
+    // Nothing for the cron to score yet; a player's read follows the feed.
+    expect(await t.runAutomation("weekly", [leagueId])).toEqual([]);
+    expect((await t.call(PAT, "GET", `/weeks/${w13.id}`)).status).toBe(200);
+    // It locks at the new time and takes Sunday night's points; the line players picked against stands.
+    expect(await game("w13-sun")).toMatchObject({ kickoff: sundayNight, spread: -6.5, points: 2 });
+
+    // Once the week is under way, a postponed game still moves, but the slate's points stand.
+    const tuesday = new Date("2026-12-09T01:15:00Z");
+    t.feed.set(
+      "2026:13",
+      WEEK_13.map((g) =>
+        g.externalId === "w13-sun"
+          ? { ...g, kickoff: sundayNight }
+          : g.externalId === "w13-mon"
+            ? { ...g, kickoff: tuesday }
+            : g,
+      ),
+    );
+    at("2026-12-04T02:00:00Z");
+    expect((await t.call(PAT, "GET", `/weeks/${w13.id}`)).status).toBe(200);
+    expect(await game("w13-mon")).toMatchObject({ kickoff: tuesday, spread: 1, points: 3 });
+  });
+
   it("is due only with something to do", async () => {
+    // A start week far ahead has nothing to do until its own week comes round.
+    at("2026-11-28T14:00:00Z");
+    const later = await t.createLeague(ADMIN, { name: "Starts later", management: "auto" });
+    expect(
+      (await t.call(ADMIN, "POST", `/leagues/${later}/seasons`, { year: 2026, startWeek: 16 })).status,
+    ).toBe(201);
     const leagueId = await startedLeague("Due set");
     at("2026-11-30T12:00:00Z");
-    expect(await t.runAutomation("weekly", [leagueId])).toEqual([leagueId]);
+    // An empty draft in its own week is looked at each run, so it opens on time.
+    expect(await t.runAutomation("weekly", [leagueId, later])).toEqual([leagueId]);
     // Open, nothing kicked off long enough ago to be over: not due.
     at(OPENS.toISOString());
     await t.runAutomation("weekly", [leagueId]);

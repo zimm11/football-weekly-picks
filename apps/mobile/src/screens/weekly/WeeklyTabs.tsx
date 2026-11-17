@@ -74,7 +74,9 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
               {automatic &&
                 (league.type === "playoff"
                   ? " It opens by itself once every game has a line."
-                  : " It opens by itself on Tuesday at 9 AM Eastern once every game has a line.")}
+                  : draft.gameCount
+                    ? " It opens by itself on Tuesday at 9 AM Eastern, or as soon as every game has a line after that."
+                    : " Its games and lines come in on Tuesday at 9 AM Eastern, and it opens then.")}
             </Text>
             <Action link compact secondary onPress={() => go(`/weeks/${draft.id}/manage`)}>
               Set up
@@ -110,7 +112,7 @@ export function PicksPanel({ league, header }: { league: LeagueDetail; header: R
             ? "Each round opens by itself once ESPN lists its games and lines, starting with the Wild Card round after the regular season ends."
             : automatic
               ? league.weeks.length
-                ? "The next week opens by itself on Tuesday at 9 AM Eastern once every game has a line."
+                ? "The next week opens by itself on Tuesday at 9 AM Eastern, with that morning's lines."
                 : league.role === "admin"
                   ? "Start the season on the League tab, and each week opens by itself."
                   : "The pick sheet shows up here once the admin starts the season."

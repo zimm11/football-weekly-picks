@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   checkSurvivorPick,
-  estimatedWeekStart,
-  nextStartWeek,
   type SurvivorGame,
   type SurvivorMember,
   type SurvivorPickInput,
@@ -265,6 +263,47 @@ describe("survivor status", () => {
     expect(again.players.find((p) => p.userId === "cat")?.outWeek).toBe(2);
   });
 
+  it("keeps a start-week leaver out after they rejoin, so the winner can't flip", () => {
+    // Two games in the start week: Sunday (day 3) and Monday (day 4).
+    const start = week(1, [
+      game("a", "CHI", "GB", 1, [20, 10]),
+      { ...game("b", "KC", "DEN", 1, [10, 20]), kickoff: day(4) },
+    ]);
+    // Ann picks a winner, then leaves before Monday's kickoff. Bob's pick loses.
+    const picks = [pick(1, "ann", "a", "home"), pick(1, "bob", "b", "home")];
+    const left = [member("ann", undefined, new Date(day(3).getTime() + 3_600_000)), member("bob")];
+    // Finalizing records who was in the league at the last kickoff: Bob alone.
+    const recorded = new Map([["w1", new Set(["bob"])]]);
+    const asRecorded = survivorStatus({
+      startWeek: 1,
+      lives: 1,
+      weeks: [start],
+      picks,
+      members: left,
+      recorded,
+    });
+    // Ann is out for leaving, so the week would put out everyone: it is cancelled, and Bob is the one left.
+    expect(asRecorded.entrants).toEqual(["ann", "bob"]);
+    expect(asRecorded.winners).toEqual(["bob"]);
+    expect(asRecorded.players.find((p) => p.userId === "ann")).toMatchObject({
+      outWeek: 1,
+      outReason: { kind: "left" },
+    });
+    // Ann rejoins a week later: a fresh membership, and nothing changes.
+    const rejoined = [member("ann", day(10)), member("bob")];
+    const after = survivorStatus({
+      startWeek: 1,
+      lives: 1,
+      weeks: [start],
+      picks,
+      members: rejoined,
+      recorded,
+    });
+    expect(after).toEqual(asRecorded);
+    // Before the record exists (the week not yet final), the membership dates say the same.
+    expect(survivorEntrants({ ...start, status: "open" }, left, picks)).toEqual(["ann", "bob"]);
+  });
+
   it("lets in a late joiner only while the start week can still be picked", () => {
     const start = week(1, [
       { ...game("a", "CHI", "GB", 1), kickoff: day(0) },
@@ -277,8 +316,20 @@ describe("survivor status", () => {
       member("gone", undefined, day(-1)),
     ];
     expect(survivorEntrants(start, list, [])).toEqual(["ann", "early"]);
-    // Recorded once the start week is final, the list stands.
+    // A player who leaves during the start week without picking never entered; one who picked stays listed.
+    const quitter = member("quit", undefined, day(2));
+    expect(survivorEntrants(start, [...list, quitter], [])).toEqual(["ann", "early"]);
+    expect(survivorEntrants(start, [...list, quitter], [pick(1, "quit", "a", "home")])).toEqual([
+      "ann",
+      "early",
+      "quit",
+    ]);
+    // Recorded once the start week is final, the list stands, with anyone who picked in it.
     expect(survivorEntrants(start, list, [], new Set(["ann"]))).toEqual(["ann"]);
+    expect(survivorEntrants(start, list, [pick(1, "early", "a", "home")], new Set(["ann"]))).toEqual([
+      "ann",
+      "early",
+    ]);
     // Before the slate arrives, every current member is in.
     expect(survivorEntrants(week(1, [], "open"), list, [])).toEqual(["ann", "early", "late"]);
   });
@@ -308,20 +359,5 @@ describe("survivor status", () => {
     const s = status([week(1, [game("a", "CHI", "GB", 1)], "open")], []);
     expect(s).toMatchObject({ over: false, lastFinalWeek: null, nextWeek: 1, weeks: [] });
     expect(s.players.every((p) => p.alive)).toBe(true);
-  });
-});
-
-describe("the survivor calendar", () => {
-  it("starts Week 1 on the Thursday after Labor Day", () => {
-    expect(estimatedWeekStart(2026, 1).toISOString()).toBe("2026-09-10T23:00:00.000Z");
-    expect(estimatedWeekStart(2025, 1).toISOString()).toBe("2025-09-04T23:00:00.000Z");
-    expect(estimatedWeekStart(2026, 12).toISOString()).toBe("2026-11-26T23:00:00.000Z");
-  });
-
-  it("defaults to the next week with no kickoff yet", () => {
-    expect(nextStartWeek(2026, new Date("2026-07-01T00:00:00Z"))).toBe(1);
-    // Monday night of Week 10: Week 11 is next.
-    expect(nextStartWeek(2026, new Date("2026-11-17T01:00:00Z"))).toBe(11);
-    expect(nextStartWeek(2026, new Date("2027-01-10T00:00:00Z"))).toBeNull();
   });
 });

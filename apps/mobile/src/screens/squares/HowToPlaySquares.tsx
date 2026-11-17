@@ -48,8 +48,10 @@ export function HowToPlaySquares() {
         <Body muted>
           Set up a board under New board in the League tab, then open Manage board from the board: change the
           game or raise the limit before the lock (it is never lowered), claim squares for a guest without an
-          account (guest squares count against nobody's limit), give back any square, Lock and draw, and
-          correct scores. A player who leaves before the lock gives their squares back; after it, they stay.
+          account (guest squares count against nobody's limit), give back any square, Lock and draw, correct
+          scores, and delete a board. A board on a scheduled game follows the schedule: if the game is moved,
+          the board locks at the new kickoff. A player who leaves before the lock gives their squares back;
+          after it, they stay.
         </Body>
         <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
           Players without a square get a reminder at 7pm the evening before kickoff. Everyone hears when the

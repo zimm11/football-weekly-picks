@@ -218,6 +218,8 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
     borderTopColor: colors.border,
   };
   const headerText = [s.muted, { fontSize: 12, fontFamily: fonts.medium }];
+  // Takes up the rest of a row wider than its columns, so the row's divider runs to the card's edge.
+  const filler = <View aria-hidden style={[cell, { flexGrow: 1, paddingHorizontal: 0 }]} />;
   const label = `Survivor grid: ${view.players.length} players, ${weeks.length} weeks`;
   if (Platform.OS === "web")
     return (
@@ -275,6 +277,7 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
                       {col.cell(player)}
                     </View>
                   ))}
+                  {filler}
                 </View>
               );
             })}
@@ -310,7 +313,7 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
         accessibilityLabel="Weeks, scroll horizontally"
         contentContainerStyle={{ flexGrow: 1 }}
       >
-        <View>
+        <View style={{ flexGrow: 1 }}>
           <View style={{ flexDirection: "row" }}>
             {columns.map((col) => (
               <View key={col.key} accessibilityLabel={col.label} style={[header, { width: CELL }]}>
@@ -331,6 +334,7 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
                   {col.cell(player)}
                 </View>
               ))}
+              {filler}
             </View>
           ))}
         </View>

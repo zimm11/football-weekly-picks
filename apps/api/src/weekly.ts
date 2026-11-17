@@ -1,5 +1,5 @@
 import { seasons, weeks } from "@picks/db";
-import type { WeeklySettings } from "@picks/shared";
+import { seasonYear, type WeeklySettings } from "@picks/shared";
 import { and, eq } from "drizzle-orm";
 import { fail } from "./context";
 import type { LeagueTypeHooks } from "./typeHooks";
@@ -11,14 +11,16 @@ import type { LeagueTypeHooks } from "./typeHooks";
 
 export const weeklyHooks: LeagueTypeHooks = {
   /**
-   * Start season, for an Automatic league: the season with its start week as an empty draft. Automation imports
-   * the week from the feed, opens it on its Tuesday and runs the season through Week 18. A hands-on league keeps
-   * its own flow (a season is created with its first week, by Create week).
+   * Start season, for an Automatic league: the season with its start week as an empty draft. On the week's
+   * Tuesday automation draws its games and lines from the feed and opens it, then runs the season through Week
+   * 18. A hands-on league keeps its own flow (a season is created with its first week, by Create week).
    */
-  async startSeason(tx, { league, year, settings }) {
+  async startSeason(tx, { league, year, settings, at }) {
     if (league.management !== "auto") {
       fail(409, "A hands-on league starts its season by setting up its first week.");
     }
+    // Automation only runs this NFL season (or a later one): a past season would sit as an empty draft forever.
+    if (year < seasonYear(at)) fail(409, `The ${year} season is over. Start the current season instead.`);
     const parsed = settings as WeeklySettings;
     const { startWeek } = parsed;
     if (!startWeek) fail(400, "Choose the week the season starts with.");

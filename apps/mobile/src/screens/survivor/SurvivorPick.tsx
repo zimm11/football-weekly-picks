@@ -160,7 +160,7 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
               <StatTile
                 label="Teams used"
                 value={view.current?.used.length ?? 0}
-                detail={view.current?.used.map((u) => teamName(u.team)).join(", ") || "None yet"}
+                detail={view.current?.used.length ? "can't be picked again" : "None yet"}
               />
               <StatTile
                 label="Still in"
@@ -168,6 +168,10 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
                 detail={`of ${view.players.length}`}
               />
             </StatGrid>
+          )}
+          {/* Abbreviations on one line of their own: a season's worth of full names would swamp the tile. */}
+          {me?.alive && !view.over && !!view.current?.used.length && (
+            <Label>{`Used: ${view.current.used.map((u) => u.team).join(", ")}`}</Label>
           )}
           {view.current?.usedWaived && canPick && (
             <Label>Every team still to play this week is one you've used, so you may pick any of them.</Label>

@@ -1,5 +1,6 @@
 import type { LeagueDetail, PlayoffStandingsView, WeekView } from "@picks/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { REMINDERS, reminderStillApplies } from "../src/reminderTargets";
 import { feedGame, pickemSetup } from "./pickemSetup";
 
 // A whole postseason with no admin action, on a scripted feed and a clock the test moves: Wild Card to champion in
@@ -237,6 +238,83 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect(sb.body.myPicks).toEqual([expect.objectContaining({ isPow: false })]);
   });
 
+  it("reminds a Guillotine player who picked every game but no POW, on the round's last game day", async () => {
+    at("2026-11-22T12:00:00Z");
+    const leagueId = await t.createLeague(ADMIN, {
+      name: "POW reminder",
+      type: "playoff",
+      timeZone: "America/New_York",
+      settings: { format: "guillotine" },
+    });
+    for (const user of [PAT, SAM, LEE]) await t.join(user, leagueId);
+    t.feed.set("2026:19", wildCard());
+    at("2027-01-11T12:30:00Z");
+    await t.runAutomation("playoff", [leagueId]);
+    const wc = await round(leagueId, 19);
+    // Pat has a POW. Sam picks every game but no POW. Lee and the admin pick nothing.
+    expect((await pick(PAT, leagueId, 19, "wc1")).status).toBe(200);
+    expect((await pick(SAM, leagueId, 19, null)).status).toBe(200);
+    const due = async () => {
+      const [target] = (await REMINDERS.playoff.due(t.db, t.state.now)).filter(
+        (r) => r.league.id === leagueId,
+      );
+      return new Map((target?.players ?? []).map((p) => [p.userId, p.message]));
+    };
+
+    // Saturday's reminder: only the players with games to pick. Sam can still put a POW on a later day.
+    at("2027-01-16T12:00:00Z");
+    let reminded = await due();
+    expect([...reminded.keys()].sort()).toEqual([ADMIN, LEE].sort());
+    expect(reminded.get(LEE)?.kind).toBe("games");
+
+    // Monday's, the round's last game day (Sunday night's game has kicked off): Sam hears about the POW.
+    at("2027-01-18T03:00:00Z");
+    reminded = await due();
+    expect([...reminded.keys()].sort()).toEqual([ADMIN, LEE, SAM].sort());
+    expect(reminded.get(LEE)?.kind).toBe("games");
+    expect(reminded.get(SAM)).toMatchObject({
+      kind: "text",
+      heading: "Choose your POW",
+      path: `/weeks/${wc.id}`,
+    });
+    // It names the round and the rule, never a pick or a team.
+    const text = JSON.stringify(reminded.get(SAM));
+    expect(text).toContain("Wild Card round");
+    for (const team of ["KC", "DEN", "Chiefs", "Broncos"]) expect(text).not.toContain(team);
+
+    // The send-time recheck: still due for Sam, not for Pat, and gone once Sam chooses one.
+    const ref = (userId: string) => ({ subjectId: wc.id, date: "2027-01-18", userId });
+    expect((await reminderStillApplies(t.db, ref(SAM), t.state.now))?.message.kind).toBe("text");
+    expect(await reminderStillApplies(t.db, ref(PAT), t.state.now)).toBeNull();
+    expect((await pick(SAM, leagueId, 19, "wc6")).status).toBe(200);
+    expect(await reminderStillApplies(t.db, ref(SAM), t.state.now)).toBeNull();
+    expect([...(await due()).keys()].sort()).toEqual([ADMIN, LEE].sort());
+
+    // Traditional has no such rule: all games picked means no reminder.
+    const plain = await t.createLeague(ADMIN, {
+      name: "No POW rule",
+      type: "playoff",
+      timeZone: "America/New_York",
+    });
+    await t.join(SAM, plain);
+    at("2027-01-18T03:05:00Z");
+    await t.runAutomation("playoff", [plain]);
+    const open = await round(plain, 19);
+    expect(
+      (
+        await t.call(SAM, "PUT", `/weeks/${open.id}/picks`, {
+          picks: open.games
+            .filter((g) => g.externalId === "wc6")
+            .map((g) => ({ gameId: g.id, side: "home" })),
+          powGameId: null,
+          tiebreakerTotal: null,
+        })
+      ).status,
+    ).toBe(200);
+    const others = (await REMINDERS.playoff.due(t.db, t.state.now)).filter((r) => r.league.id === plain);
+    expect(others.flatMap((r) => r.players.map((p) => p.userId))).toEqual([ADMIN]);
+  });
+
   it("keeps the format until the first Wild Card kickoff, and guards its routes by type", async () => {
     at("2026-11-21T12:00:00Z");
     const leagueId = await t.createLeague(ADMIN, { name: "Format", type: "playoff" });
@@ -272,5 +350,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     ).toBe(404);
     expect((await t.call(ADMIN, "GET", `/leagues/${weekly}/playoff/standings`)).status).toBe(404);
     expect((await t.call(OUTSIDER, "GET", `/leagues/${leagueId}/playoff/standings`)).status).toBe(404);
+    // And weekly pick'em's season table, scored with its own POW bonus, isn't a playoff league's.
+    expect((await t.call(ADMIN, "GET", `/leagues/${leagueId}/standings`)).status).toBe(404);
+    expect((await t.call(ADMIN, "GET", `/leagues/${weekly}/standings`)).status).toBe(200);
   });
 });

@@ -58,6 +58,15 @@ export function chooseBoard(leagueId: string, boardId: string) {
   }
 }
 
+/** A board was deleted: drop it from the list at once, so the Board tab doesn't try to load it. */
+export function forgetBoard(leagueId: string, boardId: string) {
+  const current = entry(leagueId);
+  update(leagueId, {
+    boards: current.boards?.filter((b) => b.id !== boardId),
+    chosen: current.chosen === boardId ? undefined : current.chosen,
+  });
+}
+
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
   return () => {

@@ -62,6 +62,11 @@ export type LeagueTypeInfo<T extends LeagueType = LeagueType> = {
   settings: z.ZodType<LeagueSettings[T]>;
   /** The NFL weeks the type plays, on the 1–22 line (see `weekLabel`). Null for squares: any one game. */
   weeks: { first: number; last: number } | null;
+  /**
+   * Whether a new league gets its first season, with the settings New league asks for, when it is created.
+   * Weekly pick'em's season starts with its first week (or Start season), and squares has boards, not seasons.
+   */
+  seasonOnCreate: boolean;
   /** How the league can be run, the default for a new league first. Only weekly pick'em offers hands-on. */
   management: readonly LeagueManagement[];
   /** When another player's pick becomes visible. */
@@ -79,6 +84,7 @@ export const LEAGUE_TYPE_INFO: { [T in LeagueType]: LeagueTypeInfo<T> } = {
     unit: "week",
     settings: weeklySettingsSchema,
     weeks: { first: 1, last: 18 },
+    seasonOnCreate: false,
     management: ["auto", "manual"],
     reveal: "final",
     tabs: ["picks", "results", "standings", "messages", "league"],
@@ -91,6 +97,7 @@ export const LEAGUE_TYPE_INFO: { [T in LeagueType]: LeagueTypeInfo<T> } = {
     unit: "round",
     settings: playoffSettingsSchema,
     weeks: { first: 19, last: 22 },
+    seasonOnCreate: true,
     management: ["auto"],
     reveal: "final",
     tabs: ["picks", "results", "standings", "messages", "league"],
@@ -103,6 +110,7 @@ export const LEAGUE_TYPE_INFO: { [T in LeagueType]: LeagueTypeInfo<T> } = {
     unit: "board",
     settings: squaresSettingsSchema,
     weeks: null,
+    seasonOnCreate: false,
     management: ["auto"],
     reveal: "always",
     tabs: ["board", "messages", "league"],
@@ -115,6 +123,7 @@ export const LEAGUE_TYPE_INFO: { [T in LeagueType]: LeagueTypeInfo<T> } = {
     unit: "week",
     settings: survivorSettingsSchema,
     weeks: { first: 1, last: 22 },
+    seasonOnCreate: true,
     management: ["auto"],
     reveal: "kickoff",
     tabs: ["pick", "standings", "messages", "league"],

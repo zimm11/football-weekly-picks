@@ -30,20 +30,27 @@ export async function runScheduledJobs(
     screener?: Screener;
     accounts?: AccountAdmin;
     operatorUserIds?: readonly string[];
+    /**
+     * The local E2E harness only: automation advances just these leagues (`AutomationContext.onlyLeagues`), and
+     * the account and moderation jobs are left out, since its clock is in the future.
+     */
+    onlyLeagues?: ReadonlySet<string>;
   },
   now: Date,
 ) {
-  const { email, push, nativePush, nfl } = deps;
-  // Accounts whose data is deleted but whose Auth soft delete didn't go through.
-  if (deps.accounts)
-    await retryAuthDeletions(db, deps.accounts).then(
-      (authDeleted) => logJobRun("account_jobs", { authDeleted }),
-      (error) => logError("account_delete", error),
+  const { email, push, nativePush, nfl, onlyLeagues } = deps;
+  if (!onlyLeagues) {
+    // Accounts whose data is deleted but whose Auth soft delete didn't go through.
+    if (deps.accounts)
+      await retryAuthDeletions(db, deps.accounts).then(
+        (authDeleted) => logJobRun("account_jobs", { authDeleted }),
+        (error) => logError("account_delete", error),
+      );
+    await runModerationJobs(db, deps, now).then(
+      (result) => logJobRun("moderation_jobs", result),
+      (error) => logError("moderation_jobs", error),
     );
-  await runModerationJobs(db, deps, now).then(
-    (result) => logJobRun("moderation_jobs", result),
-    (error) => logError("moderation_jobs", error),
-  );
+  }
   if (nfl) {
     await advanceLeagues({
       db,
@@ -51,6 +58,7 @@ export async function runScheduledJobs(
       now,
       results: providerWeeks(nfl, () => now),
       notify: { email, push, nativePush },
+      onlyLeagues,
     }).then(
       (result) => logJobRun("automation_jobs", result),
       (error) => logError("automation_jobs", error),

@@ -20,10 +20,10 @@ describe("dev harness", () => {
 
   it("moves the clock, scripts the feed and runs the jobs at its own time", async () => {
     const real = new Date("2026-11-17T12:00:00Z");
-    const runs: { at: Date; nfl: NflProvider }[] = [];
+    const runs: { at: Date; nfl: NflProvider; only: string[] }[] = [];
     const harness = devHarness(
-      async (at, nfl) => {
-        runs.push({ at, nfl });
+      async (at, nfl, onlyLeagues) => {
+        runs.push({ at, nfl, only: [...onlyLeagues] });
       },
       () => real,
     );
@@ -58,9 +58,16 @@ describe("dev harness", () => {
     if (game) game.homeTeam = "XXX";
     expect((await harness.nfl.getWeek(2027, 19))[0]?.homeTeam).toBe("KC");
 
+    // A jobs run advances only the leagues it names, so the future clock never plays the seeded ones forward.
     await call("POST", "/api/dev/jobs");
     expect(runs[0]?.at).toEqual(harness.now());
+    expect(runs[0]?.only).toEqual([]);
     expect(await runs[0]?.nfl.getWeek(2027, 19)).toHaveLength(1);
+    const league = "2f0c1a52-7c5e-4d5c-9f8e-1b1a4f0e9c11";
+    expect((await call("POST", "/api/dev/jobs", { leagueIds: [league] })).status).toBe(200);
+    expect(runs[1]?.only).toEqual([league]);
+    expect((await call("POST", "/api/dev/jobs", { leagueIds: ["not-a-uuid"] })).status).toBe(400);
+    expect(runs).toHaveLength(2);
 
     expect((await call("PUT", "/api/dev/feed/2027/23", { games: [] })).status).toBe(400);
     expect((await call("PUT", "/api/dev/clock", { now: "tomorrow" })).status).toBe(400);

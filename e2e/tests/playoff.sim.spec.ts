@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { signUp } from "./fixtures";
-import { type HarnessGame, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
+import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 // Playoff pick'em, create to champion, with nobody pressing Open or Finalize: the dev harness scripts the 2027
 // postseason (January and February 2028) and moves the Worker's clock; the cron's work runs at each step.
@@ -54,10 +54,11 @@ test("a Guillotine playoff league runs from Wild Card to champion by itself", as
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("combobox", { name: "Season", exact: true })).toHaveValue("2027");
   const leagueUrl = page.url().replace(/\/league$/, "");
+  const leagues = [leagueIdOf(leagueUrl)];
 
   // The feed lists the Wild Card round with real teams and lines: it is created and opens by itself.
   await setFeedWeek(request, 2027, 19, round(WILD_CARD));
-  await runJobs(request);
+  await runJobs(request, leagues);
   await page.goto(leagueUrl);
   await expect(page.getByRole("heading", { name: /^Wild Card/ })).toBeVisible();
   await expect(page.getByText("You're in")).toBeVisible();
@@ -72,15 +73,15 @@ test("a Guillotine playoff league runs from Wild Card to champion by itself", as
   await setFeedWeek(request, 2027, 19, round(WILD_CARD, true));
   await setFeedWeek(request, 2027, 20, round(DIVISIONAL));
   await setClock(request, "2028-01-18T06:00:00Z");
-  await runJobs(request);
+  await runJobs(request, leagues);
   await setFeedWeek(request, 2027, 20, round(DIVISIONAL, true));
   await setFeedWeek(request, 2027, 21, round(CONFERENCE));
   await setClock(request, "2028-01-24T06:00:00Z");
-  await runJobs(request);
+  await runJobs(request, leagues);
   await setFeedWeek(request, 2027, 21, round(CONFERENCE, true));
   await setFeedWeek(request, 2027, 22, round(SUPER_BOWL));
   await setClock(request, "2028-01-31T06:00:00Z");
-  await runJobs(request);
+  await runJobs(request, leagues);
 
   // Out of picking since the Divisional round, but the Super Bowl guess is still open.
   await page.goto(leagueUrl);
@@ -88,16 +89,20 @@ test("a Guillotine playoff league runs from Wild Card to champion by itself", as
   await expect(page.getByRole("heading", { name: /^Super Bowl/ })).toBeVisible();
   await expect(page.getByText("You're out of picking")).toBeVisible();
   await expect(page.getByRole("button", { name: "Eagles -3, home" })).toBeDisabled();
+  // The game hasn't kicked off, so it isn't "Locked": the status line says why they can't pick.
+  await expect(page.getByText("Locked", { exact: true })).toHaveCount(0);
   // The Super Bowl has no POW.
   await expect(page.getByRole("button", { name: /^POW:/ })).toHaveCount(0);
   await page.getByLabel(/^Tiebreaker: total points scored in/).fill("41");
-  await page.getByRole("button", { name: "Save picks" }).click();
-  await expect(page.getByText("Picks saved.")).toBeVisible();
+  // Nothing to save but the guess.
+  await expect(page.getByRole("button", { name: "Save picks" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Save guess" }).click();
+  await expect(page.getByText("Guess saved.")).toBeVisible();
 
   // The Super Bowl is final: the champion heads the standings, with the status column beside the points.
   await setFeedWeek(request, 2027, 22, round(SUPER_BOWL, true));
   await setClock(request, "2028-02-14T06:00:00Z");
-  await runJobs(request);
+  await runJobs(request, leagues);
   await page.goto(`${leagueUrl}/standings`);
   const recap = page.getByRole("dialog", { name: "Super Bowl is final" });
   await expect(recap.getByText("You're the champion. Take a bow.")).toBeVisible();

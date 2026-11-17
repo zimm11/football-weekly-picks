@@ -268,7 +268,7 @@ export function BoardDetails({
             <Text style={[s.text, { flex: 1 }]}>
               {player.userId === userId ? `${player.name} (you)` : player.name}
             </Text>
-            {player.guest && <Pill>Guest</Pill>}
+            {player.guest && <Pill inline>Guest</Pill>}
             <Text style={[s.text, { fontFamily: fonts.semibold }]}>
               {player.count} {player.count === 1 ? "square" : "squares"}
             </Text>
@@ -302,7 +302,7 @@ export function SquareSheet({
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Avatar name={square.name} />
           <Text style={[s.text, { flex: 1 }]}>{square.name}</Text>
-          {square.guest && <Pill>Guest</Pill>}
+          {square.guest && <Pill inline>Guest</Pill>}
         </View>
       ) : (
         <Label>Nobody holds this square.</Label>

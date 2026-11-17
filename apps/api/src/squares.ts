@@ -549,6 +549,20 @@ export function squaresRoutes(deps: AppDeps, services: AppServices) {
         });
         return c.json(view);
       })
+      /**
+       * Deletes a board (admin), at any time: its squares, numbers and scores go with it, and reminders or
+       * notifications still queued for it are dropped at send time.
+       */
+      .delete("/boards/:boardId", auth, boardParam, async (c) => {
+        const { boardId } = c.req.valid("param");
+        const leagueId = await db.transaction(async (tx) => {
+          const ctx = await lockedBoard(tx, boardId, c.var.user.id);
+          requireAdmin(ctx.role);
+          await tx.delete(squareBoards).where(eq(squareBoards.id, boardId));
+          return ctx.league.id;
+        });
+        return c.json({ leagueId });
+      })
       /** Lock and draw: the admin's, before kickoff. It happens once. */
       .post("/boards/:boardId/lock", auth, boardParam, async (c) => {
         const { boardId } = c.req.valid("param");

@@ -27,6 +27,7 @@ import { announceMessagesChanged } from "../lib/messageUnread";
 import { notifyDone, notifyError } from "../lib/notify";
 import { rememberSeason } from "../lib/seasonSelection";
 import { confirmDiscard } from "../lib/unsaved";
+import { weekUnit } from "../lib/weekPresentation";
 import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
 import { timeZones } from "./LeagueTools";
 import {
@@ -154,16 +155,17 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
   if (view.role !== "admin")
     return (
       <View style={s.content}>
-        <Heading>Week management</Heading>
-        <Text style={s.text}>Only league admins can manage a week.</Text>
+        <Heading>{weekUnit(view) === "round" ? "Round management" : "Week management"}</Heading>
+        <Text style={s.text}>Only league admins can manage a {weekUnit(view)}.</Text>
         <Action link onPress={() => go(`/weeks/${weekId}`)}>
-          Go to the week
+          Go to the {weekUnit(view)}
         </Action>
       </View>
     );
   const missing = view.games.filter((game) => game.homeScore === null || game.awayScore === null).length;
   const automatic = view.management === "auto";
   const playoff = view.leagueType === "playoff";
+  const unit = weekUnit(view);
   return (
     <View style={s.page}>
       <ScrollView
@@ -214,18 +216,22 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           </View>
           {view.status !== "draft" && (
             <Action link compact secondary onPress={() => go(`/weeks/${weekId}`)}>
-              {view.status === "open" ? "Make your own picks" : "See the week as players do"}
+              {view.status === "open" ? "Make your own picks" : `See the ${unit} as players do`}
             </Action>
           )}
         </View>
-        <Card label="Week admin">
-          <Eyebrow>Manage week</Eyebrow>
+        <Card label={playoff ? "Round admin" : "Week admin"}>
+          <Eyebrow>Manage {unit}</Eyebrow>
           {view.status === "draft" && (
             <>
               <Label>
-                {automatic
-                  ? `Players can't see this ${playoff ? "round" : "week"} yet. It opens by itself ${playoff ? "as soon as every game has a line" : "on Tuesday at 9 AM Eastern once every game has a line"}, and spreads freeze then. Open it now if you'd rather not wait.`
-                  : "Players can't see this week yet. Check the games and spreads, then open it. Spreads stay fixed once the week is open unless you change them here."}
+                {!automatic
+                  ? "Players can't see this week yet. Check the games and spreads, then open it. Spreads stay fixed once the week is open unless you change them here."
+                  : playoff
+                    ? "Players can't see this round yet. It opens by itself as soon as every game has a line, and spreads freeze then. Open it now if you'd rather not wait."
+                    : view.games.length
+                      ? "Players can't see this week yet. It opens by itself on Tuesday at 9 AM Eastern, or as soon as every game has a line after that, and spreads freeze then. Open it now if you'd rather not wait."
+                      : "Players can't see this week yet. On Tuesday at 9 AM Eastern its games and that morning's lines come in from ESPN and it opens for picks, all at once. Import it now only if you'd rather set it up by hand."}
               </Label>
               <Action
                 disabled={!!busy || !view.games.length}
@@ -233,7 +239,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   void act("open", `/weeks/${weekId}/open`);
                 }}
               >
-                {busy === "open" ? "Opening…" : "Open week for picks"}
+                {busy === "open" ? "Opening…" : `Open ${unit} for picks`}
               </Action>
               <Action
                 secondary
@@ -281,16 +287,18 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                 disabled={!!busy || missing > 0 || view.games.length === 0}
                 onPress={() =>
                   confirm(
-                    "Finalize the week?",
-                    "Everyone's picks and the winner will be revealed.",
-                    "Finalize week",
+                    `Finalize the ${unit}?`,
+                    playoff
+                      ? "Everyone's picks will be revealed, and the standings updated."
+                      : "Everyone's picks and the winner will be revealed.",
+                    `Finalize ${unit}`,
                     () => {
                       void act("finalize", `/weeks/${weekId}/finalize`);
                     },
                   )
                 }
               >
-                {busy === "finalize" ? "Finalizing…" : "Finalize week"}
+                {busy === "finalize" ? "Finalizing…" : `Finalize ${unit}`}
               </Action>
               <Action
                 secondary

@@ -30,12 +30,15 @@ describe("the playoff format", () => {
 describe("an automatic weekly season's next step", () => {
   it("says what happens next, from the weeks as they stand", () => {
     expect(automaticNextStep([])).toBe("");
-    expect(automaticNextStep([week(13, "draft", "draft", 0)])).toMatch(/Week 13 imports its games/);
+    // An empty draft: its games and lines are drawn, and it opens, on its Tuesday.
+    expect(automaticNextStep([week(13, "draft", "draft", 0)])).toMatch(
+      /Week 13 opens by itself on Tuesday at 9 AM Eastern: its games and that morning's lines/,
+    );
     expect(automaticNextStep([week(12, "final", "final"), week(13, "draft", "draft")])).toMatch(
       /Week 13 opens by itself on Tuesday/,
     );
     expect(automaticNextStep([week(13, "open", "accepting")])).toMatch(/Week 13 is open/);
-    expect(automaticNextStep([week(13, "final", "final")])).toMatch(/Week 14 is imported/);
+    expect(automaticNextStep([week(13, "final", "final")])).toMatch(/Week 14 is set up and opens on Tuesday/);
     expect(automaticNextStep([week(18, "final", "final")])).toMatch(/season is complete/);
   });
 });

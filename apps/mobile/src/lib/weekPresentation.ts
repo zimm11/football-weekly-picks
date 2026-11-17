@@ -1,4 +1,4 @@
-import { formatLine, type Game, roundHasPow, teamName, type WeekView } from "@picks/shared";
+import { formatLine, type Game, LEAGUE_TYPE_INFO, roundHasPow, teamName, type WeekView } from "@picks/shared";
 import { gameLocked, savedDraft } from "./pickDraft";
 
 export const kickoffDay = (iso: string, timeZone: string) =>
@@ -22,6 +22,10 @@ export function gameDays(games: Game[], timeZone: string) {
   }
   return groups;
 }
+/** What the league calls one of its weeks in running text: "week", or "round" in a playoff league. */
+export const weekUnit = (view: Pick<WeekView, "leagueType">): "week" | "round" =>
+  LEAGUE_TYPE_INFO[view.leagueType ?? "weekly"].unit === "round" ? "round" : "week";
+
 /** Whether this week has a POW: every week but a playoff league's Super Bowl (`roundHasPow`). */
 export const weekHasPow = (view: Pick<WeekView, "number" | "playoff">) =>
   !view.playoff || (view.playoff.pow ?? roundHasPow(view.number));

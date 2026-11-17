@@ -131,7 +131,7 @@ export function SquaresGrid({
                       {wins.length > 0 && (
                         <Text
                           numberOfLines={1}
-                          style={{ fontFamily: fonts.semibold, fontSize: 9, lineHeight: 11, color: ink }}
+                          style={{ fontFamily: fonts.semibold, fontSize: 11, lineHeight: 13, color: ink }}
                         >
                           {wins.length > 1 ? `${wins.length}×` : SHORT_PERIOD[wins[0] ?? "q1"]}
                         </Text>
@@ -140,8 +140,8 @@ export function SquaresGrid({
                         <Text
                           style={{
                             fontFamily: fonts.semibold,
-                            fontSize: 9,
-                            lineHeight: 11,
+                            fontSize: 11,
+                            lineHeight: 13,
                             color: square ? ink : colors.win,
                           }}
                         >

@@ -1,6 +1,5 @@
 import type { BoardSummary, LeagueDetail } from "@picks/shared";
 import { useEffect } from "react";
-import { View } from "react-native";
 import { request } from "../../lib/api";
 import { boardTitle } from "../../lib/squaresBoard";
 import { confirmDiscard } from "../../lib/unsaved";
@@ -25,16 +24,17 @@ export function BoardSelector({ league }: { league: LeagueDetail }) {
   }, [loaded.data, loaded.error, loaded.reload, league.id]);
   const { boards, boardId } = useBoardChoice(league.id);
   if (!boards || boards.length < 2 || !boardId) return null;
+  // The same pill as the other types' season selector, wide enough for "BUF at SEA · Feb 14".
   return (
-    <View style={{ width: 180, flexShrink: 1 }}>
-      <Select
-        label="Board"
-        value={boardId}
-        choices={boards.map((b) => ({ value: b.id, label: boardTitle(b, league.timeZone) }))}
-        onChange={async (value) => {
-          if (await confirmDiscard()) chooseBoard(league.id, value);
-        }}
-      />
-    </View>
+    <Select
+      compact
+      compactWidth={208}
+      label="Board"
+      value={boardId}
+      choices={boards.map((b) => ({ value: b.id, label: boardTitle(b, league.timeZone) }))}
+      onChange={async (value) => {
+        if (await confirmDiscard()) chooseBoard(league.id, value);
+      }}
+    />
   );
 }

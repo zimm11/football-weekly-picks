@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { signUp } from "./fixtures";
-import { type HarnessGame, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
+import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 // Automatic weekly pick'em, start to recap, with nobody pressing Open or Finalize: the dev harness scripts Week 3
 // of 2027 (Thursday Sep 23 and Monday Sep 27, Eastern) and moves the Worker's clock; the cron's work runs at each
-// step (runJobs).
+// step (runJobs). The week is drafted and opened together on its Tuesday, with that morning's lines.
 test.beforeEach(async ({ request }) => {
   await resetHarness(request);
 });
@@ -12,13 +12,13 @@ test.afterEach(async ({ request }) => {
   await resetHarness(request);
 });
 
-const week3 = (final = false): HarnessGame[] => [
+const week3 = (final = false, thursdayLine = -3): HarnessGame[] => [
   {
     externalId: "e2e-auto-thu",
     homeTeam: "DAL",
     awayTeam: "NYG",
     kickoff: "2027-09-24T00:15:00Z",
-    spread: -3,
+    spread: thursdayLine,
     ...(final && { homeScore: 27, awayScore: 20, status: "final" as const }),
   },
   {
@@ -36,9 +36,9 @@ test("an Automatic weekly league opens, scores and finalizes its week by itself"
   request,
 }) => {
   test.slow();
-  // Saturday, Sep 18 2027: the Tuesday after, Week 3 opens.
+  // Saturday, Sep 18 2027: the Tuesday after, Week 3 opens. Saturday's line on the Thursday game is -7.
   await setClock(request, "2027-09-18T12:00:00Z");
-  await setFeedWeek(request, 2027, 3, week3());
+  await setFeedWeek(request, 2027, 3, week3(false, -7));
   await page.goto("/");
   await signUp(page, "Commish");
 
@@ -51,10 +51,18 @@ test("an Automatic weekly league opens, scores and finalizes its week by itself"
   await page.getByRole("button", { name: "Start season" }).click();
   await expect(page.getByText("Week 3 opens by itself on Tuesday at 9 AM Eastern")).toBeVisible();
   const leagueUrl = page.url().replace(/\/league$/, "");
+  const leagues = [leagueIdOf(leagueUrl)];
 
-  // Tuesday 9 AM Eastern: the week opens by itself.
+  // Nothing is drawn before Tuesday: on Monday there is still no pick sheet.
+  await setClock(request, "2027-09-20T15:00:00Z");
+  await runJobs(request, leagues);
+  await page.goto(leagueUrl);
+  await expect(page.getByRole("heading", { name: "No week is open" })).toBeVisible();
+
+  // Tuesday 9 AM Eastern: the week is drawn with that morning's line (-3, not Saturday's -7) and opens.
+  await setFeedWeek(request, 2027, 3, week3());
   await setClock(request, "2027-09-21T13:01:00Z");
-  await runJobs(request);
+  await runJobs(request, leagues);
   await page.goto(leagueUrl);
   await expect(page.getByRole("heading", { name: /^Week 3/ })).toBeVisible();
   await page.getByRole("button", { name: "Cowboys -3, home" }).click();
@@ -67,7 +75,7 @@ test("an Automatic weekly league opens, scores and finalizes its week by itself"
   // The results arrive from the feed after Monday night's game, and the week finalizes by itself.
   await setFeedWeek(request, 2027, 3, week3(true));
   await setClock(request, "2027-09-28T06:00:00Z");
-  await runJobs(request);
+  await runJobs(request, leagues);
   await page.goto(leagueUrl);
   const recap = page.getByRole("dialog", { name: "Week 3 is final" });
   await expect(recap).toBeVisible();

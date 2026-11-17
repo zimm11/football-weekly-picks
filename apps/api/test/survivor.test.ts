@@ -110,7 +110,10 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
     });
     return { status: res.status, body: (await res.json()) as T };
   };
-  /** The cron's automation run at the current clock (its own results cache, as each run has). */
+  /**
+   * The cron's automation run at the current clock (its own results cache, as each run has), for this file's own
+   * leagues only: other leagues in the local database could fill the run's batch.
+   */
   const cron = (results?: AutomationContext["results"]) =>
     advanceLeagues({
       db,
@@ -118,6 +121,7 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
       now: clock,
       results: results ?? providerWeeks(nfl, () => clock),
       notify: { email },
+      onlyLeagues: new Set(created),
     });
   /** Moves the clock on, at least past the one-minute throttle on reads. */
   const at = (iso: string | Date) => {
@@ -537,6 +541,39 @@ describe.skipIf(!process.env.DATABASE_URL)("survivor (requires `pnpm db:start`)"
       .innerJoin(seasons, eq(seasons.id, weeks.seasonId))
       .where(eq(seasons.leagueId, leagueId));
     expect(all).toHaveLength(5);
+  });
+
+  it("keeps a player who left during the start week out after they rejoin", async () => {
+    at("2029-08-01T12:00:00Z");
+    const leagueId = (await create(DAN, { name: "Rejoiner", settings: { startWeek: 3 } })).body.id;
+    await join(ANN, leagueId);
+    // Two games on Sunday, an hour apart.
+    feed.set("2029:3", slate(2029, 3, "y29-3", ["KC", "PIT", "BUF", "HOU"]));
+    at(sunday(2029, 3, 0));
+    await cron();
+    const week = await weekRow(leagueId, 3);
+    const [early, late] = await slateOf(week?.id ?? "");
+    // Ann takes the early game's winner; Dan the late game's loser.
+    expect((await pick(ANN, week?.id ?? "", early?.id ?? "", "home")).body).toEqual({ ok: true });
+    expect((await pick(DAN, week?.id ?? "", late?.id ?? "", "home")).body).toEqual({ ok: true });
+    // Ann leaves between the two kickoffs.
+    at(new Date(sunday(2029, 3, 18).getTime() + 30 * 60_000));
+    expect((await call(ANN, "DELETE", `/leagues/${leagueId}/members/${ANN}`)).status).toBe(200);
+    finish(2029, 3, { "y29-3-0": [30, 10], "y29-3-1": [10, 30] });
+    at(sunday(2029, 3, 40));
+    await cron();
+    // Ann is out for leaving, so the week would have put out everyone: it is cancelled, and Dan is the one left.
+    const settled = await view(DAN, leagueId);
+    expect([settled.over, settled.winners]).toEqual([true, [DAN]]);
+    const ann = (v: SurvivorView) => v.players.find((p) => p.userId === ANN);
+    expect(ann(settled)).toMatchObject({ alive: false, outWeek: 3 });
+
+    // Ann rejoins a day later, a fresh membership: the result stands.
+    at(new Date(clock.getTime() + 24 * 60 * 60_000));
+    await join(ANN, leagueId);
+    const after = await view(DAN, leagueId);
+    expect([after.over, after.winners]).toEqual([true, [DAN]]);
+    expect(ann(after)).toMatchObject({ alive: false, outWeek: 3 });
   });
 
   it("catches one league's failure on its own, and the others still advance", async () => {

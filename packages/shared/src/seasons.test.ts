@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { WeekSummary } from "./index";
 import {
   currentWeek,
+  estimatedWeekStart,
+  nextStartWeek,
   nextWeekNumber,
+  openingThursday,
   preferredSeasonYear,
   seasonYear,
   weekLabel,
@@ -110,5 +113,31 @@ describe("weekLabel", () => {
     expect(weekLabel(1)).toBe("Week 1");
     expect(weekLabel(18)).toBe("Week 18");
     expect([19, 20, 21, 22].map(weekLabel)).toEqual(["Wild Card", "Divisional", "Conference", "Super Bowl"]);
+  });
+});
+
+describe("the season calendar", () => {
+  it("starts Week 1 on the Thursday after Labor Day", () => {
+    expect(openingThursday(2026)).toBe(10);
+    expect(openingThursday(2025)).toBe(4);
+    expect(estimatedWeekStart(2026, 1).toISOString()).toBe("2026-09-10T23:00:00.000Z");
+    expect(estimatedWeekStart(2025, 1).toISOString()).toBe("2025-09-04T23:00:00.000Z");
+    expect(estimatedWeekStart(2026, 11).toISOString()).toBe("2026-11-19T23:00:00.000Z");
+  });
+
+  it("starts Thanksgiving's week at noon Eastern, when its games do", () => {
+    // Thursday, Nov 26 2026 is Thanksgiving: the first game is in the early afternoon.
+    expect(estimatedWeekStart(2026, 12).toISOString()).toBe("2026-11-26T17:00:00.000Z");
+    expect(nextStartWeek(2026, new Date("2026-11-26T16:00:00Z"))).toBe(12);
+    expect(nextStartWeek(2026, new Date("2026-11-26T18:00:00Z"))).toBe(13);
+    // 2025's is Nov 27, Week 13.
+    expect(estimatedWeekStart(2025, 13).toISOString()).toBe("2025-11-27T17:00:00.000Z");
+  });
+
+  it("finds the next week with no kickoff yet", () => {
+    expect(nextStartWeek(2026, new Date("2026-07-01T00:00:00Z"))).toBe(1);
+    // Monday night of Week 10: Week 11 is next.
+    expect(nextStartWeek(2026, new Date("2026-11-17T01:00:00Z"))).toBe(11);
+    expect(nextStartWeek(2026, new Date("2027-01-10T00:00:00Z"))).toBeNull();
   });
 });

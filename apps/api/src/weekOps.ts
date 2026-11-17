@@ -96,6 +96,36 @@ export async function importSlate(
   return null;
 }
 
+/**
+ * Moves games still to finish to the feed's kickoff when it differs (a flexed or postponed game), so each locks
+ * when it really starts. For weeks players are already picking: spreads are never touched, and a game with a
+ * result is left alone. With `pointsFor`, a moved game still worth its old slot's default takes the new slot's.
+ * Returns how many games moved.
+ */
+export async function followKickoffs(
+  db: Store,
+  gameRows: GameRow[],
+  provided: ProviderGame[],
+  { pointsFor }: { pointsFor?: PointsFor } = {},
+): Promise<number> {
+  const feed = new Map(provided.map((g) => [g.externalId, g]));
+  let moved = 0;
+  for (const game of gameRows) {
+    const listed = game.externalId ? feed.get(game.externalId) : undefined;
+    if (!listed || hasResult(game) || listed.kickoff.getTime() === game.kickoff.getTime()) continue;
+    await db
+      .update(games)
+      .set({
+        kickoff: listed.kickoff,
+        ...(pointsFor && { points: pointsAfterKickoffChange(game, listed.kickoff, pointsFor) }),
+      })
+      // Checked again in the write, in case a score was entered since the games were read.
+      .where(and(eq(games.id, game.id), isNull(games.homeScore)));
+    moved++;
+  }
+  return moved;
+}
+
 /** Why a draft can't open yet, or null when it can: it needs games, and every game needs a spread. */
 export function openProblem(gameRows: Pick<GameRow, "spread">[]): string | null {
   if (gameRows.length === 0) return "Add at least one game before opening the week.";

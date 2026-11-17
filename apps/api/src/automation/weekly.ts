@@ -1,6 +1,7 @@
 import { leagues, seasons } from "@picks/db";
 import {
   defaultPoints,
+  estimatedWeekStart,
   firstKickoff,
   REGULAR_SEASON_WEEKS,
   seasonYear,
@@ -23,20 +24,32 @@ import { type AutomationContext, type LeagueTypeAutomation, NOTHING_DONE } from 
 
 /*
  * Weekly pick'em, Automatic management:
- * - prepare: import the next week from the feed once the one before is final (a week whose games have all kicked
- *   off already is skipped, so a league switched to Automatic mid-season catches up instead of replaying it);
- * - open: Tuesday 9 AM Eastern, once every game has a line; spreads freeze then;
- * - sync: fill in final scores, never over a typed one;
+ * - draft and open, in one step: on Tuesday 9 AM Eastern of the week (`weeklyOpensAt`) the next week is created,
+ *   its slate and lines are drawn from the feed, and it opens for picks. Nothing is imported earlier, so the
+ *   lines players pick against are that Tuesday's, not ones from days before. A week whose games have all kicked
+ *   off already is skipped, so a league switched to Automatic mid-season catches up instead of replaying it;
+ * - a game without a line keeps the week a draft: it opens as soon as the line arrives or is typed in, and the
+ *   admins are told once if it is still missing 24 hours before the first kickoff;
+ * - sync: kickoffs follow the feed and final scores fill in, never over a typed one;
  * - finalize: once every game has a result, usually Monday night.
- * A line still missing 24 hours before the first kickoff is reported to the admins once, and the week opens as
- * soon as it is typed in. Hands-on leagues (`management` manual) are never due, and advance does nothing.
+ * Hands-on leagues (`management` manual) are never due, and advance does nothing.
  *
  * The season automation runs is the league's latest season with weeks (Start season creates it with its start
- * week), through Week 18. Switching a hands-on league to Automatic picks its weeks up as they stand.
+ * week, an empty draft until that week's Tuesday), through Week 18. Switching a hands-on league to Automatic
+ * picks its weeks up as they stand: a draft that already has games keeps them and opens on its Tuesday.
  */
 
 /** How far ahead of its first kickoff a draft starts being looked at (it opens on the Tuesday before). */
 const DRAFT_HORIZON_MS = 7 * 24 * 60 * 60_000;
+
+/** The latest week of `year` whose estimated start is within the draft horizon at `now`; 0 before Week 1's. */
+function weeksInHorizon(year: number, now: Date): number {
+  let through = 0;
+  for (let number = 1; number <= REGULAR_SEASON_WEEKS; number++) {
+    if (estimatedWeekStart(year, number).getTime() - DRAFT_HORIZON_MS <= now.getTime()) through = number;
+  }
+  return through;
+}
 
 export const WEEKLY_PLAN: PickemPlan = {
   pointsFor: () => defaultPoints,
@@ -63,8 +76,12 @@ export const weeklyAutomation: LeagueTypeAutomation = {
     const now = ctx.now;
     const awaiting = new Date(now.getTime() - SHORTEST_GAME_MS);
     const horizon = new Date(now.getTime() + DRAFT_HORIZON_MS);
-    // Only leagues with something to do: a draft near its week (or still without games), an open week with a
-    // game whose result may be in or with every result in, or a final latest week with another to prepare.
+    const year = seasonYear(now);
+    // The most recent Tuesday 9 AM Eastern: a week that had begun before it has had its opening time since.
+    const lastOpening = weeklyOpensAt(now);
+    // Only leagues with something to do: a draft near its week (an empty one by the calendar, since it has no
+    // kickoffs to go by), an open week with a game whose result may be in or with every result in, or a final
+    // latest week whose next week's Tuesday has come.
     return (
       ctx.db
         .select()
@@ -76,14 +93,15 @@ export const weeklyAutomation: LeagueTypeAutomation = {
             sql`exists (
             select 1 from ${seasons} s join weeks w on w.season_id = s.id
             where s.league_id = ${leagues.id}
-              and s.year >= ${seasonYear(now)}
+              and s.year >= ${year}
               and s.year = (
                 select max(s2.year) from ${seasons} s2
                 where s2.league_id = ${leagues.id} and exists (select 1 from weeks w2 where w2.season_id = s2.id)
               )
               and (
                 (w.status = 'draft' and (
-                  not exists (select 1 from games g where g.week_id = w.id)
+                  (s.year = ${year} and w.number <= ${weeksInHorizon(year, now)}
+                    and not exists (select 1 from games g where g.week_id = w.id))
                   or exists (select 1 from games g where g.week_id = w.id and g.kickoff < ${horizon.toISOString()}::timestamptz)
                 ))
                 or (w.status = 'open' and (
@@ -99,7 +117,10 @@ export const weeklyAutomation: LeagueTypeAutomation = {
                   )
                 ))
                 or (w.status = 'final' and w.number < ${REGULAR_SEASON_WEEKS}
-                  and w.number = (select max(w3.number) from weeks w3 where w3.season_id = s.id))
+                  and w.number = (select max(w3.number) from weeks w3 where w3.season_id = s.id)
+                  and exists (
+                    select 1 from games g where g.week_id = w.id and g.kickoff < ${lastOpening.toISOString()}::timestamptz
+                  ))
               )
           )`,
           ),
@@ -127,6 +148,9 @@ export const weeklyAutomation: LeagueTypeAutomation = {
       // Not reachable or not scheduled yet: try again next run.
       if (!provided?.length) break;
       if (allKickedOff(provided, ctx.now)) continue;
+      // Drafted and opened together on its Tuesday: until then the week doesn't exist.
+      const opens = WEEKLY_PLAN.opensAt(number, provided);
+      if (opens && ctx.now < opens) break;
       const week = await prepareWeek(ctx, season, number, provided, WEEKLY_PLAN);
       if (week) {
         result = addResults(result, { steps: 1 });
