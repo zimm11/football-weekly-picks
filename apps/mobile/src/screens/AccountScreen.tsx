@@ -136,6 +136,7 @@ export function AccountScreen() {
           onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
         />
         <SettingsLink icon="document" label="Terms of use" onPress={() => void openScreen("/terms")} />
+        <SettingsLink icon="lock" label="Privacy policy" onPress={() => void openScreen("/privacy")} />
       </Card>
       <Card>
         <SettingsHeading>Password</SettingsHeading>
@@ -165,7 +166,7 @@ function SettingsLink({
   detail,
   onPress,
 }: {
-  icon: "email" | "document";
+  icon: "email" | "document" | "lock";
   label: string;
   detail?: string;
   onPress: () => void;

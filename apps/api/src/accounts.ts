@@ -2,6 +2,7 @@ import {
   contentReports,
   type Db,
   emailOutbox,
+  feedback,
   leagueMembers,
   leagues,
   messagePosts,
@@ -187,6 +188,9 @@ async function deleteAccountData(tx: Tx, userId: string, deletedLeagues: string[
   // Devices (their deliveries cascade) and anything waiting to be emailed to them.
   await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
   await tx.delete(emailOutbox).where(eq(emailOutbox.userId, userId));
+
+  // Feedback they sent is kept, but no longer says who sent it (the Auth row stays, so no foreign key clears it).
+  await tx.update(feedback).set({ userId: null }).where(eq(feedback.userId, userId));
 
   // Nothing left to act on in reports about them; reports they filed stay, under "Deleted player".
   await tx
