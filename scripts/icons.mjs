@@ -1,11 +1,12 @@
-// Draws the app icons into the website's public folder (apps/mobile/public, copied into the Expo web build) from
-// the theme's colors and display font: `pnpm icons`. The PNGs are committed, so this only needs running when the
+// Draws the app icons from the theme's colors and display font: `pnpm icons`. The website's go into its public
+// folder (apps/mobile/public, copied into the Expo web build); the iPhone app's is apps/mobile/assets/icon.png. The PNGs are committed, so this only needs running when the
 // icon design changes. It renders with Playwright's Chromium (`pnpm playwright:install`).
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const root = new URL("..", import.meta.url);
 const folders = ["apps/mobile/public"];
+const appAssets = "apps/mobile/assets";
 const fromE2e = createRequire(new URL("e2e/package.json", root));
 
 // The display font, Barlow Condensed ExtraBold: the copy the Expo app bundles (app/_layout.tsx).
@@ -35,18 +36,20 @@ const icons = [
   // iOS rounds the corners itself and wants no transparency.
   { name: "apple-touch-icon.png", size: 180, scale: 1 },
   { name: "favicon.png", size: 48, scale: 1.1 },
+  // The iPhone app's icon and splash image (app.json). The App Store wants 1024px, square, with no transparency.
+  { name: "icon.png", size: 1024, scale: 1, dirs: [appAssets] },
 ];
 
 const { chromium } = fromE2e("@playwright/test");
 const browser = await chromium.launch();
 try {
-  for (const { name, size, scale } of icons) {
+  for (const { name, size, scale, dirs = folders } of icons) {
     const tab = await browser.newPage({ viewport: { width: size, height: size } });
     await tab.setContent(page(scale));
     await tab.evaluate(() => document.fonts.ready);
     const png = await tab.screenshot();
     await tab.close();
-    for (const dir of folders) {
+    for (const dir of dirs) {
       writeFileSync(new URL(`${dir}/${name}`, root), png);
       console.log(`wrote ${dir}/${name}`);
     }

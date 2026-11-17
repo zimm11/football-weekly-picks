@@ -9,7 +9,7 @@ import { TEAM_ABBRS } from "./teams";
  * `winningSquare`. A board's phase and its quarter winners are worked out on read, never stored.
  */
 
-/** The four results a board pays, in order. Scores are cumulative; the final includes overtime. */
+/** The four results a board is scored on, in order. Scores are cumulative; the final includes overtime. */
 export const SQUARE_PERIODS = ["q1", "half", "q3", "final"] as const;
 export type SquarePeriod = (typeof SQUARE_PERIODS)[number];
 

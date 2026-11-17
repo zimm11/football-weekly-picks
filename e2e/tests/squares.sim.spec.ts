@@ -44,7 +44,7 @@ async function startBoard(page: Page) {
   return leagueId;
 }
 
-test("a board locks itself at kickoff and pays four quarters, an empty square's included", async ({
+test("a board locks itself at kickoff and settles four quarters, an empty square's included", async ({
   page,
   request,
   signedIn: _,

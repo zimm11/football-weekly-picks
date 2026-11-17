@@ -75,7 +75,7 @@ const PUSH_STATUSES = ["pending", "sent", "skipped", "failed"] as const;
  */
 export const LEAGUE_TYPE_VALUES = ["weekly", "playoff", "squares", "survivor"] as const;
 export const LEAGUE_MANAGEMENT_VALUES = ["auto", "manual"] as const;
-/** The four results a squares board pays: end of Q1, halftime, end of Q3, and the final score with overtime. */
+/** The four results a squares board is scored on: end of Q1, halftime, end of Q3, and the final score with overtime. */
 export const SQUARE_PERIODS = ["q1", "half", "q3", "final"] as const;
 
 /** A CHECK constraint holding `column` to `values`. The values are fixed identifiers, written into the SQL. */

@@ -96,6 +96,7 @@ App Store Connect asks what the app collects (**App Privacy**) and for a privacy
 - **Privacy Policy URL:** `https://www.pow-pickem.com/privacy`. The Terms are at `https://www.pow-pickem.com/terms`; both pages show the support address.
 - **License Agreement:** leave Apple's standard EULA selected. The Terms of use add to it and don't replace it.
 - **Age rating:** Apple works it out from the content questionnaire, separately from the Terms, which require 18 (`MINIMUM_AGE` in `packages/shared`). If it comes out lower, raising it to 18+ keeps the listing in step with the Terms; that is a choice, not a requirement.
+- **Devices:** iPhone only (`supportsTablet` is off in `app.json`), so the listing needs no iPad screenshots. An iPad still runs it as an iPhone app, and App Review may open it on one.
 - **Account deletion:** in the app, Settings → Delete account. Say so in the App Review notes, with a demo account.
 - **Tracking:** none. The app has no ads, no analytics or crash-reporting SDK, and shares nothing with data brokers, so there is no tracking prompt and "Data Used to Track You" is empty.
 
