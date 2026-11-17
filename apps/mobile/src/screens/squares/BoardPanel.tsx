@@ -1,0 +1,326 @@
+// biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Heading, Eyebrow and Action render native Text.
+import { BOARD_PHASE_LABEL, type BoardSquare, type BoardView, teamName } from "@picks/shared";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Text, View } from "react-native";
+import { Avatar } from "../../components/Avatar";
+import { Icon } from "../../components/Icon";
+import { colors, fonts } from "../../components/ui";
+import { messageOf, request } from "../../lib/api";
+import { offerHomeScreen } from "../../lib/homeScreen";
+import { notifyError } from "../../lib/notify";
+import {
+  claimRoom,
+  type PendingChange,
+  quarterRows,
+  randomOpenSquare,
+  squarePlace,
+  winsOf,
+  winsText,
+  withPending,
+} from "../../lib/squaresBoard";
+import { kickoffDay, kickoffTime } from "../../lib/weekPresentation";
+import {
+  Action,
+  Card,
+  Eyebrow,
+  Failure,
+  go,
+  Heading,
+  Label,
+  Pill,
+  Sheet,
+  s,
+  useLeagueLoad,
+} from "../leagueUi";
+import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
+
+/** Loads one board, refetching until it is final: every 30 s while open, every minute once locked. */
+export function useBoard(boardId: string) {
+  const [every, setEvery] = useState(30_000);
+  const board = useLeagueLoad(() => request<BoardView>(`/boards/${boardId}`), boardId, every);
+  const phase = board.data?.phase;
+  useEffect(() => {
+    if (phase) setEvery(phase === "final" ? 0 : phase === "open" ? 30_000 : 60_000);
+  }, [phase]);
+  return board;
+}
+
+/**
+ * Claims and releases a square at once, filling the cell before the API answers. Requests go one at a time, so
+ * each answer is the board after every earlier one; a refusal undoes that change and says why (notifyError).
+ */
+export function useSquareChanges(boardId: string, setData: (view: BoardView) => void, reload: () => void) {
+  const [pending, setPending] = useState<PendingChange[]>([]);
+  const queue = useRef(Promise.resolve());
+  function send(change: PendingChange, guestName?: string) {
+    setPending((list) => [...list, change]);
+    queue.current = queue.current.then(async () => {
+      try {
+        const path = `/boards/${boardId}/squares/${change.row}/${change.col}`;
+        const next = await request<BoardView>(
+          path,
+          change.claim ? { method: "PUT", body: guestName ? { guestName } : {} } : { method: "DELETE" },
+        );
+        setData(next);
+        // The first claimed square is a good moment to suggest the home screen (shown once, in a browser).
+        if (change.claim && !guestName) offerHomeScreen();
+      } catch (err) {
+        notifyError(messageOf(err));
+        reload();
+      } finally {
+        setPending((list) => list.filter((item) => item !== change));
+      }
+    });
+  }
+  return { pending, send };
+}
+
+/** One board as every member sees it: the grid, your squares, the quarter results and who holds squares. */
+export function BoardPanel({
+  boardId,
+  board,
+  userId,
+  displayName,
+  header,
+}: {
+  boardId: string;
+  /** The board as `useBoard` loads it. */
+  board: ReturnType<typeof useBoard>;
+  userId: string;
+  displayName: string;
+  /** Shown above the board once it has loaded (a standalone screen's league header). */
+  header?: (view: BoardView) => ReactNode;
+}) {
+  const changes = useSquareChanges(boardId, board.setData, board.reload);
+  const [sheet, setSheet] = useState<{ row: number; col: number } | null>(null);
+  if (!board.data) {
+    return board.error ? <Failure message={board.error} retry={board.reload} /> : <BoardSkeleton />;
+  }
+  const view = board.data;
+  const squares = withPending(view.squares, changes.pending);
+  const mine = squares.filter((sq) => sq.userId === userId).length;
+  const room = claimRoom({ ...view, mine, claimed: squares.length });
+  function claim(row: number, col: number) {
+    if (room.left === 0) {
+      notifyError(
+        `You can hold ${view.maxPerPlayer} ${view.maxPerPlayer === 1 ? "square" : "squares"} on this board.`,
+      );
+      return;
+    }
+    changes.send({ row, col, claim: true, name: displayName, userId });
+  }
+  function tap(row: number, col: number, square: BoardSquare | undefined) {
+    if (room.open && !square) return claim(row, col);
+    if (room.open && square?.userId === userId) {
+      return changes.send({ row, col, claim: false, name: displayName, userId });
+    }
+    setSheet({ row, col });
+  }
+  const shown = sheet ? squares.find((sq) => sq.row === sheet.row && sq.col === sheet.col) : undefined;
+  return (
+    <View style={{ gap: 20 }}>
+      {header?.(view)}
+      <BoardHeading view={view} admin={view.role === "admin"} />
+      <Failure message={board.error} retry={board.reload} />
+      <SquaresGrid view={view} squares={squares} userId={userId} onPress={tap} />
+      {room.open && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <Action
+            secondary
+            icon="grid"
+            disabled={room.left === 0}
+            onPress={() => {
+              const open = randomOpenSquare(squares);
+              if (open) claim(open.row, open.col);
+            }}
+          >
+            Claim a random square
+          </Action>
+          <Label>Tap an open square to claim it, and yours to give it back, until the board locks.</Label>
+        </View>
+      )}
+      <BoardDetails view={view} squares={squares} mine={mine} userId={userId} />
+      {sheet && (
+        <SquareSheet
+          view={view}
+          row={sheet.row}
+          col={sheet.col}
+          square={shown}
+          close={() => setSheet(null)}
+        />
+      )}
+    </View>
+  );
+}
+
+export function BoardHeading({ view, admin, manage }: { view: BoardView; admin: boolean; manage?: boolean }) {
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
+      <View style={{ gap: 6, flex: 1, minWidth: 220 }}>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <Pill tone={view.phase === "open" ? "primary" : view.phase === "final" ? "win" : "muted"}>
+            {BOARD_PHASE_LABEL[view.phase]}
+          </Pill>
+          {view.live && (
+            <Pill tone="win">
+              {`Now ${view.awayTeam} ${view.live.awayScore} · ${view.homeTeam} ${view.live.homeScore}`}
+            </Pill>
+          )}
+        </View>
+        <Text accessibilityRole="header" style={s.title}>
+          {manage ? "Manage board" : `${teamName(view.awayTeam)} at ${teamName(view.homeTeam)}`}
+        </Text>
+        <Label>
+          {manage ? `${view.awayTeam} at ${view.homeTeam} · ` : ""}
+          {kickoffDay(view.kickoff, view.timeZone)}, {kickoffTime(view.kickoff, view.timeZone)}
+        </Label>
+      </View>
+      {admin &&
+        (manage ? (
+          <Action link secondary compact onPress={() => void go(`/boards/${view.id}`)}>
+            View board
+          </Action>
+        ) : (
+          <Action link secondary compact onPress={() => void go(`/boards/${view.id}/manage`)}>
+            Manage board
+          </Action>
+        ))}
+    </View>
+  );
+}
+
+/** Under the grid: your squares against your limit, the four quarter results, and who holds squares. */
+export function BoardDetails({
+  view,
+  squares,
+  mine,
+  userId,
+}: {
+  view: BoardView;
+  squares: BoardSquare[];
+  mine: number;
+  userId: string;
+}) {
+  return (
+    <>
+      <Card label="Your squares">
+        <Eyebrow>Your squares</Eyebrow>
+        <Text
+          style={{ fontFamily: fonts.displayBold, fontSize: 30, lineHeight: 32, color: colors.foreground }}
+        >
+          {mine} of {view.maxPerPlayer}
+        </Text>
+        <Label>
+          {squares.length} of 100 squares claimed
+          {view.phase === "open" ? " · the numbers are drawn when the board locks" : ""}
+        </Label>
+      </Card>
+      <Card label="Quarter results">
+        <Heading>Quarter results</Heading>
+        {quarterRows(view).map(({ period, label, result }) => (
+          <View
+            key={period}
+            style={{
+              minHeight: 48,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+              paddingTop: 8,
+            }}
+          >
+            <Text style={[s.text, { fontFamily: fonts.semibold, width: 80 }]}>{label}</Text>
+            {result ? (
+              <>
+                <Text style={[s.muted, { width: 110 }]}>
+                  {view.awayTeam} {result.awayScore} · {view.homeTeam} {result.homeScore}
+                </Text>
+                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  {result.winner ? (
+                    <>
+                      <Icon name="check-circle" size={18} color={colors.win} />
+                      <Text style={[s.text, { flexShrink: 1 }]}>
+                        {result.winner.userId === userId ? "You" : result.winner.name}
+                        {result.winner.guest ? " (guest)" : ""} won
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={s.muted}>{result.square ? "No winner: an empty square" : "Not drawn"}</Text>
+                  )}
+                </View>
+              </>
+            ) : (
+              <Text style={s.muted}>To come</Text>
+            )}
+          </View>
+        ))}
+      </Card>
+      <Card label="Players">
+        <Heading>Players</Heading>
+        {view.players.length === 0 && <Label>Nobody has a square yet.</Label>}
+        {view.players.map((player) => (
+          <View
+            key={player.userId ?? `guest:${player.name}`}
+            style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10 }}
+          >
+            <Avatar name={player.name} size="sm" />
+            <Text style={[s.text, { flex: 1 }]}>
+              {player.userId === userId ? `${player.name} (you)` : player.name}
+            </Text>
+            {player.guest && <Pill inline>Guest</Pill>}
+            <Text style={[s.text, { fontFamily: fonts.semibold }]}>
+              {player.count} {player.count === 1 ? "square" : "squares"}
+            </Text>
+          </View>
+        ))}
+      </Card>
+    </>
+  );
+}
+
+/** A tapped square: who holds it, its numbers, and what it has won. */
+export function SquareSheet({
+  view,
+  row,
+  col,
+  square,
+  close,
+  children,
+}: {
+  view: BoardView;
+  row: number;
+  col: number;
+  square: BoardSquare | undefined;
+  close: () => void;
+  children?: ReactNode;
+}) {
+  const wins = winsOf(view.quarters, row, col);
+  return (
+    <Sheet title={square ? `${square.name}'s square` : "Open square"} close={close}>
+      {square ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Avatar name={square.name} />
+          <Text style={[s.text, { flex: 1 }]}>{square.name}</Text>
+          {square.guest && <Pill inline>Guest</Pill>}
+        </View>
+      ) : (
+        <Label>Nobody holds this square.</Label>
+      )}
+      <View style={{ gap: 4 }}>
+        <Eyebrow>Numbers</Eyebrow>
+        <Text style={s.text}>
+          {view.homeDigits ? squarePlace(view, row, col) : "Drawn when the board locks"}
+        </Text>
+      </View>
+      <View style={{ gap: 4 }}>
+        <Eyebrow>Won</Eyebrow>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {wins.length > 0 && <Icon name="check-circle" size={18} color={colors.win} />}
+          <Text style={s.text}>{winsText(wins)}</Text>
+        </View>
+      </View>
+      {children}
+    </Sheet>
+  );
+}

@@ -1,6 +1,6 @@
 import type { Game, WeekView } from "@picks/shared";
 import { describe, expect, it } from "vitest";
-import { favoriteLine, gameDays, pickStatus } from "./weekPresentation";
+import { favoriteLine, gameDays, pickStatus, weekHasPow, weekUnit } from "./weekPresentation";
 
 const game = (id: string, kickoff = "2026-11-16T00:00:00Z"): Game => ({
   id,
@@ -52,6 +52,29 @@ describe("native week presentation behavior", () => {
       needsPow: true,
       needsTotal: true,
     });
+  });
+  it("calls a playoff league's week a round", () => {
+    expect(weekUnit({ leagueType: "playoff" })).toBe("round");
+    expect(weekUnit({ leagueType: "weekly" })).toBe("week");
+    // An older API response without the type is weekly pick'em's.
+    expect(weekUnit({})).toBe("week");
+  });
+  it("asks for no POW in a playoff league's Super Bowl", () => {
+    const superBowl: WeekView = {
+      ...view(),
+      number: 22,
+      playoff: { format: "guillotine", me: null, mayPick: true, pow: false },
+    };
+    expect(weekHasPow(superBowl)).toBe(false);
+    expect(pickStatus(superBowl, new Date("2026-11-15T00:00:00Z")).needsPow).toBe(false);
+    // An older API response without `pow` still has none in the Super Bowl, and a weekly week 22 can't exist.
+    expect(weekHasPow({ number: 22, playoff: { format: "traditional", me: null, mayPick: true } })).toBe(
+      false,
+    );
+    expect(weekHasPow({ number: 21, playoff: { format: "traditional", me: null, mayPick: true } })).toBe(
+      true,
+    );
+    expect(weekHasPow(view())).toBe(true);
   });
   it("keeps POW and tiebreaker as remaining tasks after all sides have been saved", () => {
     const current = view();

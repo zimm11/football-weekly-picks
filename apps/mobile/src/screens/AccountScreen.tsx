@@ -67,6 +67,15 @@ export function AccountScreen() {
                 void settings.run(() => notifications("pickReminders", value), "Email settings saved.")
               }
             />
+            <PreferenceToggle
+              label="Results and updates"
+              description="When a week opens or is final in a league that runs itself, and when you're added to a league."
+              checked={auth.me?.notifications.leagueEvents ?? true}
+              disabled={settings.busy}
+              onChange={(value) =>
+                void settings.run(() => notifications("leagueEvents", value), "Email settings saved.")
+              }
+            />
           </View>
           <ErrorMessage message={settings.error} />
           <Notice message={settings.status} />

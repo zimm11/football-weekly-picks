@@ -12,8 +12,8 @@ import {
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { type EmailKind, EmailSendError, type Mailer, unsubscribeToken } from "./email";
 import { knownErrorCode, logError, logWarning } from "./logging";
-import { dueReminderTargets, reminderStillDue } from "./reminderTargets";
-import { newThreadEmail, pickReminderEmail } from "./templates";
+import { dueReminders, type ReminderMessage, reminderStillApplies } from "./reminderTargets";
+import { newThreadEmail, pickReminderEmail, reminderTextEmail } from "./templates";
 
 export type EmailDeps = {
   mailer: Mailer;
@@ -35,7 +35,13 @@ const CLAIM_MS = 10 * 60_000;
 const RETAIN_MS = 30 * 24 * 60 * 60_000;
 const THREAD_EMAIL_TTL_MS = 24 * 60 * 60_000;
 
-function links(email: EmailDeps, userId: string, kind: EmailKind, action: { label: string; path: string }) {
+/** An email's button, its unsubscribe links (for this player and kind) and the settings link. */
+export function notificationLinks(
+  email: EmailDeps,
+  userId: string,
+  kind: EmailKind,
+  action: { label: string; path: string },
+) {
   const token = encodeURIComponent(unsubscribeToken(email.unsubscribeSecret, userId, kind));
   return {
     action: { label: action.label, url: `${email.appUrl}${action.path}` },
@@ -47,25 +53,41 @@ function links(email: EmailDeps, userId: string, kind: EmailKind, action: { labe
 
 /** Joins a member's notification switches; a player without a profile row gets the defaults (on). */
 const wants = (kind: EmailKind) =>
-  sql<boolean>`coalesce(${kind === "new_thread" ? profiles.emailNewThreads : profiles.emailPickReminders}, true)`;
+  sql<boolean>`coalesce(${
+    kind === "new_thread"
+      ? profiles.emailNewThreads
+      : kind === "pick_reminder"
+        ? profiles.emailPickReminders
+        : profiles.emailLeagueEvents
+  }, true)`;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Dedupe keys name what an email is about, so the send-time recheck reads the thread or week from them:
- * `thread:<threadId>:<userId>` and `reminder:<weekId>:<YYYY-MM-DD>:<userId>`.
+ * Dedupe keys name what an email is about, so the send-time recheck reads the thread, week or league from them:
+ * `thread:<threadId>:<userId>`, `reminder:<weekId>:<YYYY-MM-DD>:<userId>` and
+ * `league_event:<leagueId>:<userId>:<event>` (the event name may itself hold colons).
  */
 export const threadEmailKey = (threadId: string, userId: string) => `thread:${threadId}:${userId}`;
 export const reminderEmailKey = (weekId: string, date: string, userId: string) =>
   `reminder:${weekId}:${date}:${userId}`;
+export const leagueEventEmailKey = (leagueId: string, userId: string, event: string) =>
+  `league_event:${leagueId}:${userId}:${event}`;
 
 export function parseDedupeKey(
   key: string,
 ):
   | { kind: "new_thread"; threadId: string; userId: string }
   | { kind: "pick_reminder"; weekId: string; date: string; userId: string }
+  | { kind: "league_event"; leagueId: string; userId: string; event: string }
   | null {
   const parts = key.split(":");
+  if (parts[0] === "league_event" && parts.length >= 4) {
+    const [, leagueId = "", userId = "", ...event] = parts;
+    return UUID.test(leagueId) && UUID.test(userId) && event.join(":")
+      ? { kind: "league_event", leagueId, userId, event: event.join(":") }
+      : null;
+  }
   if (parts[0] === "thread" && parts.length === 3) {
     const [, threadId = "", userId = ""] = parts;
     return UUID.test(threadId) && UUID.test(userId) ? { kind: "new_thread", threadId, userId } : null;
@@ -135,7 +157,7 @@ export async function queueThreadEmails(
           authorName: author?.name ?? "A player",
           title: input.title,
           body: input.body,
-          links: links(email, userId, "new_thread", { label: "Read and reply", path }),
+          links: notificationLinks(email, userId, "new_thread", { label: "Read and reply", path }),
         }),
       })),
     )
@@ -144,11 +166,12 @@ export async function queueThreadEmails(
 }
 
 /**
- * Queues the evening-before reminder for every current member with games still to pick on the next game day.
- * Safe to run as often as you like: each player gets at most one reminder per week and game day.
+ * Queues the evening-before reminder for every current member with something still to pick on the next game day,
+ * in every league type (`dueReminders`). Safe to run as often as you like: each player gets at most one reminder
+ * per week (or board) and game day.
  */
 export async function queueReminders(db: Db, email: EmailDeps, now: Date): Promise<number> {
-  const targets = await dueReminderTargets(db, now);
+  const targets = await dueReminders(db, now);
   if (!targets.length) return 0;
   // Members without a profile row get the defaults: reminders on, no name.
   const people = await db
@@ -162,23 +185,22 @@ export async function queueReminders(db: Db, email: EmailDeps, now: Date): Promi
   const byUser = new Map(people.map((p) => [p.userId, p]));
 
   let queued = 0;
-  for (const { league, week, due, players } of targets) {
+  for (const { league, subjectId, date, expiresAt, players } of targets) {
     // One week that can't be rendered or stored mustn't stop the others.
     try {
       const rows = players
         .filter(({ userId }) => byUser.get(userId)?.wanted ?? true)
-        .map(({ userId, missing }) => ({
+        .map(({ userId, message }) => ({
           userId,
           kind: "pick_reminder" as const,
-          dedupeKey: reminderEmailKey(week.id, due.date, userId),
+          dedupeKey: reminderEmailKey(subjectId, date, userId),
           nextAttemptAt: now,
-          expiresAt: due.expiresAt,
+          expiresAt,
           message: reminderMessage(email, {
             userId,
             displayName: byUser.get(userId)?.displayName ?? null,
             league,
-            week,
-            games: missing,
+            message,
           }),
         }));
       if (!rows.length) continue;
@@ -201,19 +223,30 @@ function reminderMessage(
     userId: string;
     displayName: string | null;
     league: { name: string; timeZone: string };
-    week: { id: string; number: number };
-    games: Parameters<typeof pickReminderEmail>[0]["games"];
+    message: ReminderMessage;
   },
 ) {
+  const { message } = input;
+  if (message.kind === "text") {
+    return reminderTextEmail({
+      leagueName: input.league.name,
+      heading: message.heading,
+      intro: message.intro,
+      links: notificationLinks(email, input.userId, "pick_reminder", {
+        label: message.actionLabel,
+        path: message.path,
+      }),
+    });
+  }
   return pickReminderEmail({
     leagueName: input.league.name,
     displayName: input.displayName,
-    weekNumber: input.week.number,
+    weekNumber: message.weekNumber,
     timeZone: input.league.timeZone,
-    games: input.games,
-    links: links(email, input.userId, "pick_reminder", {
+    games: message.games,
+    links: notificationLinks(email, input.userId, "pick_reminder", {
       label: "Make your picks",
-      path: `/weeks/${input.week.id}`,
+      path: `/weeks/${message.weekId}`,
     }),
   });
 }
@@ -287,9 +320,9 @@ type ClaimedRow = typeof emailOutbox.$inferSelect;
 /**
  * Rechecks claimed rows just before sending, as push does: a thread email only while its recipient is still a
  * current member of the thread's league, hasn't blocked its author since, and the thread's opening message hasn't
- * been hidden or removed; a reminder only while it is still due (`reminderStillDue`), re-rendered with the games
- * still to pick. The operator's moderation emails go as they are. Returns the message to send, or the reason the
- * row is skipped.
+ * been hidden or removed; a league event only while its recipient is still a current member of the league; a
+ * reminder only while it is still due (`reminderStillDue`), re-rendered with the games still to pick. The
+ * operator's moderation emails go as they are. Returns the message to send, or the reason the row is skipped.
  */
 async function stillWorthSending(
   db: Db,
@@ -342,6 +375,26 @@ async function stillWorthSending(
         )
     : [];
   const current = new Set(members.map((m) => `${m.threadId}:${m.userId}`));
+  // League events: the recipient must still be a current member of the event's league.
+  const events = claimed.flatMap((row) => {
+    const key = keys.get(row.id);
+    return key?.kind === "league_event" && row.kind === "league_event" && key.userId === row.userId
+      ? [key]
+      : [];
+  });
+  const eventMembers = events.length
+    ? await db
+        .select({ leagueId: leagueMembers.leagueId, userId: leagueMembers.userId })
+        .from(leagueMembers)
+        .where(
+          and(
+            inArray(leagueMembers.leagueId, [...new Set(events.map((e) => e.leagueId))]),
+            inArray(leagueMembers.userId, [...new Set(events.map((e) => e.userId))]),
+            isNull(leagueMembers.removedAt),
+          ),
+        )
+    : [];
+  const inLeague = new Set(eventMembers.map((m) => `${m.leagueId}:${m.userId}`));
 
   const result = new Map<string, OutboxMessage | "NOT_A_MEMBER" | "NO_LONGER_DUE">();
   for (const row of claimed) {
@@ -355,11 +408,16 @@ async function stillWorthSending(
       result.set(row.id, ok ? (row.message as OutboxMessage) : "NOT_A_MEMBER");
       continue;
     }
-    let still: Awaited<ReturnType<typeof reminderStillDue>> = null;
+    if (row.kind === "league_event") {
+      const ok = key?.kind === "league_event" && inLeague.has(`${key.leagueId}:${row.userId}`);
+      result.set(row.id, ok ? (row.message as OutboxMessage) : "NOT_A_MEMBER");
+      continue;
+    }
+    let still: Awaited<ReturnType<typeof reminderStillApplies>> = null;
     try {
       still =
         key?.kind === "pick_reminder" && key.userId === row.userId
-          ? await reminderStillDue(db, { weekId: key.weekId, date: key.date, userId: row.userId }, now)
+          ? await reminderStillApplies(db, { subjectId: key.weekId, date: key.date, userId: row.userId }, now)
           : null;
     } catch (error) {
       // The recheck is a refinement. If it can't run for this row, send what was queued rather than leave the
@@ -375,8 +433,7 @@ async function stillWorthSending(
             userId: row.userId,
             displayName: displayNames.get(row.userId) ?? null,
             league: still.league,
-            week: still.week,
-            games: still.missing,
+            message: still.message,
           })
         : "NO_LONGER_DUE",
     );
@@ -438,6 +495,7 @@ export async function drainOutbox(db: Db, email: EmailDeps, now: Date): Promise<
         address: sql<string | null>`u.email`,
         newThreads: wants("new_thread"),
         pickReminders: wants("pick_reminder"),
+        leagueEvents: wants("league_event"),
         displayName: profiles.displayName,
       })
       .from(sql`auth.users u`)
@@ -471,7 +529,9 @@ export async function drainOutbox(db: Db, email: EmailDeps, now: Date): Promise<
           ? true
           : row.kind === "new_thread"
             ? recipient?.newThreads
-            : recipient?.pickReminders;
+            : row.kind === "pick_reminder"
+              ? recipient?.pickReminders
+              : recipient?.leagueEvents;
       if (!recipient?.address || !wanted) {
         await finish(db, row.id, {
           status: "skipped",

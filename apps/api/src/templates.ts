@@ -141,6 +141,48 @@ export function pickReminderEmail(input: {
 }
 
 /**
+ * A league event: a week opening or final, being added to a league, numbers drawn. The headline and detail are
+ * the event's own words; they never carry a pick, a team, a square, or whether the reader is in or out.
+ */
+export function leagueEventEmail(input: {
+  leagueName: string;
+  headline: string;
+  detail?: string;
+  links: Links;
+}): OutboxMessage {
+  const { leagueName, headline, detail, links } = input;
+  const why = `You're getting this because you're in ${leagueName} on POW Pick'em.`;
+  const stop = "Turn off results and updates emails";
+  const intro = detail ?? `${headline} in ${leagueName}.`;
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:${MUTED};">${escapeHtml(intro)}</p>`;
+  return {
+    subject: toSingleLine(`${leagueName}: ${headline}`),
+    html: layout({ heading: headline, bodyHtml, links, why, stop }),
+    text: `${intro}\n\n${links.action.label}: ${links.action.url}${footerText(links, why, stop)}`,
+    listUnsubscribeUrl: links.listUnsubscribeUrl,
+  };
+}
+
+/** A pick reminder in a league type's own words (survivor, squares), where there are no games to list. */
+export function reminderTextEmail(input: {
+  leagueName: string;
+  heading: string;
+  intro: string;
+  links: Links;
+}): OutboxMessage {
+  const { leagueName, heading, intro, links } = input;
+  const why = `You're getting this because you're in ${leagueName} on POW Pick'em.`;
+  const stop = "Turn off pick reminders";
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:${MUTED};">${escapeHtml(intro)}</p>`;
+  return {
+    subject: toSingleLine(`${leagueName}: ${heading}`),
+    html: layout({ heading, bodyHtml, links, why, stop }),
+    text: `${intro}\n\n${links.action.label}: ${links.action.url}${footerText(links, why, stop)}`,
+    listUnsubscribeUrl: links.listUnsubscribeUrl,
+  };
+}
+
+/**
  * The operator's moderation emails. They never quote what was reported (that stays on the operator screen), so a
  * forwarded or previewed email can't spread it, and they have no unsubscribe link: only operators receive them.
  */

@@ -7,10 +7,11 @@ import {
   picks,
   profiles,
   seasons,
+  squareBoards,
   weekParticipants as weekParticipantRows,
   weeks,
 } from "@picks/db";
-import type { Member, Role } from "@picks/shared";
+import type { LeagueType, Member, RandomSource, Role } from "@picks/shared";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -56,6 +57,8 @@ export type AppDeps = {
   background?: (task: () => Promise<unknown>) => void;
   /** Accounts that run the app (`OPERATOR_USER_IDS`): they can read feedback and app-wide counts. */
   operatorUserIds?: readonly string[];
+  /** 32-bit random values for a squares board's draw. Defaults to `crypto.getRandomValues`; tests fix it. */
+  random?: RandomSource;
   /**
    * Checks posts and names before they are saved (Workers AI's Clef). Without one (`MODERATION_MODE=off`, Node
    * development, most tests) content is saved as `skipped` and nothing is refused.
@@ -98,10 +101,22 @@ export const query = <T extends z.ZodType>(schema: T, message?: string) =>
 export const leagueParam = param(z.object({ leagueId: z.uuid() }));
 export const weekParam = param(z.object({ weekId: z.uuid() }));
 export const gameParam = param(z.object({ gameId: z.uuid() }));
+export const boardParam = param(z.object({ boardId: z.uuid() }));
 
 /** A database handle or an open transaction. */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-type Store = Db | Tx;
+export type Store = Db | Tx;
+
+/**
+ * Holds a type-specific route to the league types it serves. Any other type is a 404, as an unknown id is: an old
+ * browser tab can't save weekly picks into a survivor pool, and the route doesn't reveal what the league is.
+ */
+export function requireLeagueType<T extends LeagueType>(
+  league: { type: LeagueType },
+  ...types: T[]
+): asserts league is { type: T } {
+  if (!types.includes(league.type as T)) fail(404, "Not found");
+}
 
 /**
  * Players need a display name before they create or join a league or post, so nobody shows up as "Player". The
@@ -124,7 +139,7 @@ const activeMember = (userId: string) =>
   );
 
 /** The caller's role in a league. Non-members get a 404, so league ids don't leak. */
-export async function requireMember(db: Db, leagueId: string, userId: string) {
+export async function requireMember(db: Store, leagueId: string, userId: string) {
   const [row] = await db
     .select({ league: leagues, role: leagueMembers.role, joinedAt: leagueMembers.joinedAt })
     .from(leagues)
@@ -151,6 +166,20 @@ export async function requireWeek(db: Db, weekId: string, userId: string) {
   return row;
 }
 export type WeekContext = Awaited<ReturnType<typeof requireWeek>>;
+
+/** A squares board with its league and the caller's role. Anyone but a current member, or a non-squares league, gets a 404. */
+export async function requireBoard(db: Store, boardId: string, userId: string) {
+  const [row] = await db
+    .select({ board: squareBoards, league: leagues, role: leagueMembers.role })
+    .from(squareBoards)
+    .innerJoin(leagues, eq(leagues.id, squareBoards.leagueId))
+    .innerJoin(leagueMembers, activeMember(userId))
+    .where(eq(squareBoards.id, boardId));
+  if (!row) fail(404, "Board not found");
+  requireLeagueType(row.league, "squares");
+  return row;
+}
+export type BoardContext = Awaited<ReturnType<typeof requireBoard>>;
 
 export type MemberRecord = Member & { joinedAt: Date; removedAt: Date | null };
 

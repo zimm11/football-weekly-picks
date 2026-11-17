@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PLAYOFF_POW_BONUS } from "./playoff";
 import {
   checkPickSubmission,
   checkTiebreakerGuess,
@@ -504,5 +505,20 @@ describe("seasonStandings", () => {
   it("shares a rank when nothing separates two players", () => {
     const standings = seasonStandings([[week("a", { points: 5 }), week("b", { points: 5 })]], ["a", "b"]);
     expect(standings.map((e) => e.rank)).toEqual([1, 1]);
+  });
+});
+
+describe("the POW bonus", () => {
+  const game: ScoredGame = { id: "g", kickoff: THU, spread: -3.5, points: 3, homeScore: 27, awayScore: 10 };
+  const picks = [{ userId: "a", gameId: "g", side: "home" as const, isPow: true }];
+  const week = (powBonus?: number) =>
+    scoreWeek({ games: [game], picks, guesses: [], userIds: ["a"], tiebreakerGameId: null, powBonus })[0];
+
+  it("is 5 unless the league type passes its own (3 Traditional playoff, 1 Guillotine)", () => {
+    expect(week()?.points).toBe(8);
+    expect(week(PLAYOFF_POW_BONUS.traditional)?.points).toBe(6);
+    expect(week(PLAYOFF_POW_BONUS.guillotine)?.points).toBe(4);
+    expect(pickPoints(game, { side: "home", isPow: true }, 1)).toBe(4);
+    expect(scoreSoFar([game], picks, 3).points).toBe(6);
   });
 });

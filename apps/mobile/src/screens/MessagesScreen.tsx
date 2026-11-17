@@ -211,7 +211,15 @@ function StandaloneMessages({ leagueId, threadId }: { leagueId: string; threadId
   const header = league.data ? (
     <>
       <LeagueHeader leagueId={leagueId} leagueName={league.data.name} />
-      {wide && <LeagueTabBar wide leagueId={leagueId} active="messages" unreadCount={unreadCount} />}
+      {wide && (
+        <LeagueTabBar
+          wide
+          leagueId={leagueId}
+          type={league.data?.type}
+          active="messages"
+          unreadCount={unreadCount}
+        />
+      )}
     </>
   ) : league.error ? (
     <Failure error={league.error} retry={league.reload} />
@@ -231,7 +239,14 @@ function StandaloneMessages({ leagueId, threadId }: { leagueId: string; threadId
       ) : (
         <Thread leagueId={leagueId} threadId={threadId} header={header} />
       )}
-      {!wide && <LeagueTabBar leagueId={leagueId} active="messages" unreadCount={unreadCount} />}
+      {!wide && (
+        <LeagueTabBar
+          leagueId={leagueId}
+          type={league.data?.type}
+          active="messages"
+          unreadCount={unreadCount}
+        />
+      )}
     </View>
   );
 }

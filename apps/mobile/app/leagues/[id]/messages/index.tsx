@@ -5,7 +5,7 @@ export default function Page() {
   const { id } = useLocalSearchParams<{ id: string }>();
   return (
     <AuthGate>
-      <LeagueScreen leagueId={id} tab="messages" />
+      <LeagueScreen leagueId={id} path="messages" />
     </AuthGate>
   );
 }

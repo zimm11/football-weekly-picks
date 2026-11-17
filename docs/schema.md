@@ -48,8 +48,17 @@ erDiagram
   leagues ||--o{ push_deliveries : "league_id"
   message_threads |o--o{ push_deliveries : "thread_id"
   weeks |o--o{ push_deliveries : "week_id"
+  square_boards |o--o{ push_deliveries : "board_id"
   auth_users ||--o{ push_subscriptions : "user_id"
   leagues ||--o{ seasons : "league_id"
+  leagues ||--o{ square_boards : "league_id"
+  square_boards ||--o{ square_claims : "board_id"
+  auth_users |o--o{ square_claims : "user_id"
+  square_boards ||--o{ square_scores : "board_id"
+  weeks ||--o{ survivor_picks : "week_id"
+  auth_users ||--o{ survivor_picks : "user_id"
+  games ||--o{ survivor_picks : "game_id"
+  games ||--o{ survivor_picks : "game_id, week_id"
   weeks ||--o{ tiebreaker_guesses : "week_id"
   auth_users ||--o{ tiebreaker_guesses : "user_id"
   auth_users ||--o{ user_blocks : "blocker_id"
@@ -115,6 +124,7 @@ erDiagram
     text away_team
     timestamptz kickoff
     float8 spread
+    boolean spread_by_admin
     integer points
     integer home_score
     integer away_score
@@ -133,6 +143,8 @@ erDiagram
     text name
     text time_zone
     text invite_code UK
+    text type
+    text management
     timestamptz created_at
   }
   message_posts {
@@ -195,6 +207,7 @@ erDiagram
     text display_name
     boolean email_new_threads
     boolean email_pick_reminders
+    boolean email_league_events
     timestamptz terms_accepted_at
     timestamptz muted_until
     timestamptz suspended_at
@@ -207,8 +220,10 @@ erDiagram
     uuid league_id FK
     uuid thread_id FK
     uuid week_id FK
+    uuid board_id FK
     text kind
     text event_key
+    jsonb payload
     text[] game_ids
     text status
     integer attempts
@@ -226,13 +241,54 @@ erDiagram
     text auth
     boolean new_threads
     boolean pick_reminders
+    boolean league_events
     timestamptz created_at
   }
   seasons {
     uuid id PK
     uuid league_id FK
     integer year
+    jsonb settings
     timestamptz created_at
+  }
+  square_boards {
+    uuid id PK
+    uuid league_id FK
+    text external_id
+    integer year
+    integer week
+    text home_team
+    text away_team
+    timestamptz kickoff
+    integer max_per_player
+    integer[] home_digits
+    integer[] away_digits
+    timestamptz drawn_at
+    timestamptz created_at
+  }
+  square_claims {
+    uuid board_id PK, FK
+    integer row PK
+    integer col PK
+    uuid user_id FK
+    text guest_name
+    timestamptz created_at
+  }
+  square_scores {
+    uuid board_id PK, FK
+    text period PK
+    integer home_score
+    integer away_score
+    boolean by_admin
+  }
+  survivor_picks {
+    uuid week_id PK, FK
+    uuid user_id PK, FK
+    uuid game_id FK
+    text side
+    boolean by_admin
+    timestamptz created_at
+    timestamptz updated_at
   }
   tiebreaker_guesses {
     uuid week_id PK, FK
@@ -302,7 +358,7 @@ Emails waiting to be sent, and a short history of those that were. Rows are queu
 | --- | --- | --- | --- | --- |
 | `id` | uuid | no | PK | Has a default. |
 | `user_id` | uuid | no | FK → `auth.users.id` |  |
-| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`, `moderation`. |
+| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`, `league_event`, `moderation`. |
 | `dedupe_key` | text | no | unique | Identifies the email's purpose (e.g. `thread:<id>:<user>`) so a retried or repeated job never queues it twice. |
 | `message` | jsonb | no |  | Rendered message: subject, HTML and plain-text bodies, and the one-click unsubscribe URL for its headers. |
 | `status` | text | no |  | pending → sending → sent; or failed (gave up), or skipped (no address, opted out, or too late to be useful). One of: `pending`, `sending`, `sent`, `failed`, `skipped`. Has a default. |
@@ -350,6 +406,7 @@ A game on a week's slate, with the spread and point value the league is using fo
 | `away_team` | text | no |  | Team abbreviation, e.g. "DAL". |
 | `kickoff` | timestamptz | no |  |  |
 | `spread` | float8 | yes |  | The home team's line: -3.5 means the home team is favored by 3.5. Null until a line is set. |
+| `spread_by_admin` | boolean | no |  | The admin typed this spread in (or changed the feed's). The feed then never replaces it, in automatic leagues as in hands-on ones that refresh a draft's lines. Has a default. |
 | `points` | integer | no |  | What a correct pick is worth. |
 | `home_score` | integer | yes |  | Final score. Null until the game is final; a game with a score is closed to picks. |
 | `away_score` | integer | yes |  | Final score. Null until the game is final. |
@@ -380,6 +437,8 @@ A group of players who pick against each other, run by league admins.
 | `name` | text | no |  |  |
 | `time_zone` | text | no |  | IANA zone game days and kickoff times are shown in. Has a default. |
 | `invite_code` | text | no | unique | Anyone holding this code can join. Admins can rotate it. |
+| `type` | text | no |  | The game the league plays, fixed when it is created: weekly (pick'em every regular-season week), playoff (pick'em over the four postseason rounds), squares (boards on single games) or survivor. Rows from before league types, and creates from old clients, are weekly. One of: `weekly`, `playoff`, `squares`, `survivor`. Has a default. |
+| `management` | text | no |  | Who does a week's chores. auto: the feed imports, opens and finalizes each week by itself. manual: the admins do (today's hands-on game). Only a weekly league may be manual; existing leagues stay manual. One of: `auto`, `manual`. Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 ### `message_posts`
@@ -483,6 +542,7 @@ What a player is called on leaderboards, and which emails they want.
 | `display_name` | text | no |  |  |
 | `email_new_threads` | boolean | no |  | Email the player when someone starts a message thread in one of their leagues. Has a default. |
 | `email_pick_reminders` | boolean | no |  | Email the player the evening before a game day on which they still have games to pick. Has a default. |
+| `email_league_events` | boolean | no |  | Email the player about results and updates in their leagues (a week opening or final, being added, …). Has a default. |
 | `terms_accepted_at` | timestamptz | yes |  | When the player agreed to the Terms of use. Posting, replying and reacting need it. |
 | `muted_until` | timestamptz | yes |  | No posts, replies or reactions anywhere until then: from repeated removals, or the operator. Never limits picking. |
 | `suspended_at` | timestamptz | yes |  | Set by the operator: no posts, replies, reactions or name changes until lifted. Never limits picking. |
@@ -500,8 +560,10 @@ Durable per-device delivery queue. Unique event keys prevent repeated cron calls
 | `league_id` | uuid | no | FK → `leagues.id` |  |
 | `thread_id` | uuid | yes | FK → `message_threads.id` |  |
 | `week_id` | uuid | yes | FK → `weeks.id` |  |
-| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`. |
-| `event_key` | text | no |  | Thread id or week id + local game date, scoped to subscription by the unique index. |
+| `board_id` | uuid | yes | FK → `square_boards.id` | The squares board a notification is about, so deleting the board clears what is still queued. |
+| `kind` | text | no |  | One of: `new_thread`, `pick_reminder`, `league_event`. |
+| `event_key` | text | no |  | Thread id, week id + local game date, or league id + event name; scoped to the subscription by the unique index. |
+| `payload` | jsonb | yes |  | A league event's notification (title, body, link), rendered when it is queued. Null for the other kinds. |
 | `game_ids` | text[] | no |  | Game ids are rechecked for missing picks immediately before a reminder is sent. Has a default. |
 | `status` | text | no |  | One of: `pending`, `sent`, `skipped`, `failed`. Has a default. |
 | `attempts` | integer | no |  | Has a default. |
@@ -526,6 +588,7 @@ A browser/device explicitly opted into push for one player. Endpoints and keys a
 | `auth` | text | no |  | Web Push encryption secret; empty for Expo devices. |
 | `new_threads` | boolean | no |  | Preferences apply to this device, independently of the player's other devices. Has a default. |
 | `pick_reminders` | boolean | no |  | Has a default. |
+| `league_events` | boolean | no |  | Results and updates in the player's leagues (league events), on this device. Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 ### `seasons`
@@ -537,9 +600,69 @@ One NFL season of a league. A league keeps its members from year to year.
 | `id` | uuid | no | PK | Has a default. |
 | `league_id` | uuid | no | FK → `leagues.id` |  |
 | `year` | integer | no |  | The year the NFL season starts in. |
+| `settings` | jsonb | no |  | The league type's settings for this season, e.g. `{ format }` for playoff or `{ lives, startWeek }` for survivor. Parsed with the type's Zod schema (packages/shared/src/leagueTypes.ts) on every write and read. Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 Unique together: (`league_id`, `year`).
+
+### `square_boards`
+
+A squares board: a 10 by 10 grid on one NFL game. Players claim squares until it locks, then two random orders of 0–9 are drawn, one per team. Its phase (open, locked, underway, final) is worked out, never stored.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | no | PK | Has a default. |
+| `league_id` | uuid | no | FK → `leagues.id` |  |
+| `external_id` | text | yes |  | The schedule provider's id for the game; null for a game typed in by hand. |
+| `year` | integer | yes |  | The NFL season year the provider lists the game under; null for a game typed in by hand. |
+| `week` | integer | yes |  | The provider's week for the game, on the app's 1–22 line; null for a game typed in by hand. |
+| `home_team` | text | no |  | Team abbreviation, e.g. "KC". Its digits run across the top. |
+| `away_team` | text | no |  | Team abbreviation. Its digits run down the side. |
+| `kickoff` | timestamptz | no |  |  |
+| `max_per_player` | integer | no |  | Most squares one player may claim. Can be raised before the lock, never lowered. Has a default. |
+| `home_digits` | integer[] | yes |  | The home team's digit for each column, 0–9 in drawn order. Null until the draw. |
+| `away_digits` | integer[] | yes |  | The away team's digit for each row, 0–9 in drawn order. Null until the draw. |
+| `drawn_at` | timestamptz | yes |  | When the board locked and its numbers were drawn. Null while squares can still be claimed. |
+| `created_at` | timestamptz | no |  | Has a default. |
+
+### `square_claims`
+
+A claimed square, by a player or, for someone without an account, a guest name an admin typed.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `board_id` | uuid | no | PK, FK → `square_boards.id` |  |
+| `row` | integer | no | PK | The grid row, 0–9 from the top: the away team's side. |
+| `col` | integer | no | PK | The grid column, 0–9 from the left: the home team's side. |
+| `user_id` | uuid | yes | FK → `auth.users.id` | The player who holds it. Null for a guest square. |
+| `guest_name` | text | yes |  | Who holds a guest square. Guests count against nobody's limit, can win, and are never notified. |
+| `created_at` | timestamptz | no |  | Has a default. |
+
+### `square_scores`
+
+A board's game score at the end of a scoring period, cumulative (the final includes overtime). Filled from the feed once it has moved past the period; a score an admin typed is never overwritten.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `board_id` | uuid | no | PK, FK → `square_boards.id` |  |
+| `period` | text | no | PK | q1, half, q3 or final. One of: `q1`, `half`, `q3`, `final`. |
+| `home_score` | integer | no |  |  |
+| `away_score` | integer | no |  |  |
+| `by_admin` | boolean | no |  | An admin typed this score; the feed leaves it alone. Has a default. |
+
+### `survivor_picks`
+
+A survivor player's pick for one week: one team to win outright. No team may be used twice in a season (the save checks it); who is still alive is worked out from the final weeks, never stored.
+
+| Column | Type | Null | Key | Description |
+| --- | --- | --- | --- | --- |
+| `week_id` | uuid | no | PK, FK → `weeks.id` |  |
+| `user_id` | uuid | no | PK, FK → `auth.users.id` |  |
+| `game_id` | uuid | no | FK → `games.id` |  |
+| `side` | text | no |  | The team picked to win: the game's home or away side. One of: `home`, `away`. |
+| `by_admin` | boolean | no |  | An admin entered or last changed this pick for the player. Has a default. |
+| `created_at` | timestamptz | no |  | Has a default. |
+| `updated_at` | timestamptz | no |  | Has a default. |
 
 ### `tiebreaker_guesses`
 
@@ -583,13 +706,13 @@ A player has been shown a closed week's results recap. It counts only if it is n
 
 ### `weeks`
 
-One week of a season: the unit players pick, and the admin opens and closes.
+One week of a season: the unit players pick, and the admin (or the feed) opens and closes.
 
 | Column | Type | Null | Key | Description |
 | --- | --- | --- | --- | --- |
 | `id` | uuid | no | PK | Has a default. |
 | `season_id` | uuid | no | FK → `seasons.id` |  |
-| `number` | integer | no |  | Regular-season week, 1–18. |
+| `number` | integer | no |  | The NFL week: 1–18 the regular season, then the postseason rounds 19 (Wild Card), 20 (Divisional), 21 (Conference) and 22 (Super Bowl). |
 | `status` | text | no |  | draft: the admin is setting games and spreads. open: players pick. final: scored, picks revealed. One of: `draft`, `open`, `final`. Has a default. |
 | `tiebreaker_game_id` | uuid | yes | FK → `games.id` | The admin's explicit choice of tiebreaker game. Null means "use the default" (the last Monday game, else the last game), worked out from the slate on every read. Players guess this game's total. |
 | `finalized_at` | timestamptz | yes |  | When the admin last closed the week. Null while it isn't final, and for weeks closed before results recaps existed, which never get one. |

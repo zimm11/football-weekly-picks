@@ -95,7 +95,11 @@ export function DeviceNotifications() {
         userVisibleOnly: true,
         applicationServerKey: state.config.publicKey,
       });
-      const device = await savePush(subscription, { newThreads: true, pickReminders: true }, userId);
+      const device = await savePush(
+        subscription,
+        { newThreads: true, pickReminders: true, leagueEvents: true },
+        userId,
+      );
       setState({ ...state, subscription, device });
       notifyDone("Notifications enabled on this device.");
     });
@@ -127,7 +131,7 @@ export function DeviceNotifications() {
       configured={state.config.configured}
       enabled={!!state.device}
       denied={denied}
-      preferences={state.device ?? { newThreads: true, pickReminders: true }}
+      preferences={state.device ?? { newThreads: true, pickReminders: true, leagueEvents: true }}
       onEnable={() => change(enable)}
       onDisable={() =>
         change(async () => {
@@ -172,7 +176,9 @@ function PushNotificationSettings({
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
   const dirty =
-    draft.newThreads !== preferences.newThreads || draft.pickReminders !== preferences.pickReminders;
+    draft.newThreads !== preferences.newThreads ||
+    draft.pickReminders !== preferences.pickReminders ||
+    (draft.leagueEvents ?? true) !== (preferences.leagueEvents ?? true);
   useFormGuard(dirty, () => setDraft(preferences));
   // Call immediately: an awaited step before onEnable would lose iOS's user gesture.
   function run(label: string, action: () => Promise<void>) {
@@ -187,8 +193,8 @@ function PushNotificationSettings({
     <Card>
       <SettingsHeading>On this device</SettingsHeading>
       <Body muted>
-        New threads and missing-pick reminders as notifications. They can show league names and thread titles
-        on your lock screen.
+        New threads, missing-pick reminders, and results and updates as notifications. They can show league
+        names and thread titles on your lock screen.
       </Body>
       {support === "home-screen" ? (
         <>
@@ -252,6 +258,12 @@ function PushNotificationSettings({
                 checked={draft.pickReminders}
                 disabled={!!busy}
                 onChange={(value) => setDraft((old) => ({ ...old, pickReminders: value }))}
+              />
+              <PreferenceToggle
+                label="Results and updates"
+                checked={draft.leagueEvents ?? true}
+                disabled={!!busy}
+                onChange={(value) => setDraft((old) => ({ ...old, leagueEvents: value }))}
               />
               <Body muted style={small}>
                 Reminders start at 7pm in your league's time zone the evening before game day, only when you

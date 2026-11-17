@@ -85,6 +85,21 @@ function sideOf(ticker: string, game: ProviderGame): "home" | "away" | null {
   return null;
 }
 
+/**
+ * Whether Kalshi lists the rungs a cover price at ESPN's line is read from. The ladder skips strikes (10.5, then
+ * 13.5), so a line between two rungs has no cover price, and that is the feed's gap, not a broken contract.
+ */
+function ladderHasLine(board: ReturnType<typeof parseKalshiBoard>, spread: number): boolean {
+  const margin = spread === 0 ? 0 : -spread;
+  // A whole-number line is priced from the half points either side; within half a point it's the winner market.
+  const needed = Number.isInteger(margin) ? [margin + 0.5, margin - 0.5] : [margin];
+  return needed.every((x) =>
+    Math.abs(x) <= 0.5
+      ? board.homeWin !== null
+      : board.rungs.some((r) => r.side === (x > 0 ? "home" : "away") && r.over === Math.abs(x)),
+  );
+}
+
 function read(json: unknown, what: string): Markets {
   // The app's own schema first, then the strict one, so a failure says which kind it is.
   expectShape(kalshiMarketsSchema, json, what);
@@ -151,8 +166,7 @@ describe("Kalshi markets", () => {
 
     const insights = liveInsights(fetchWithRetry);
     const problems: string[] = [];
-    let covered = 0;
-    for (const { game } of lined) {
+    for (const { game, winner, spread: ladder } of lined) {
       const spread = game.spread as number;
       const name = `${gameName(game)} (ESPN line ${spread})`;
       const market = await insights.getMarket(game);
@@ -160,7 +174,9 @@ describe("Kalshi markets", () => {
         problems.push(`${name}: no market prices`);
         continue;
       }
-      if (market.cover) covered++;
+      // A cover price is owed only where the ladder has ESPN's line: on a week's lone game it may not.
+      if (!market.cover && ladderHasLine(parseKalshiBoard(winner, ladder, game), spread))
+        problems.push(`${name}: Kalshi lists this line's rungs, but the app read no cover price`);
       if (Math.abs(spread) < CLEAR_FAVORITE) continue;
       const espnHome = spread < 0;
       // A home/away mix-up would flip these.
@@ -170,6 +186,5 @@ describe("Kalshi markets", () => {
         problems.push(`${name}: Kalshi's own line is ${market.spread}`);
     }
     expectNone(problems, "Market prices that don't fit the game");
-    expect(covered, "Games with a cover price against ESPN's line").toBeGreaterThan(0);
   });
 });
