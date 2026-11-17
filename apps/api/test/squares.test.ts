@@ -254,11 +254,15 @@ describe.skipIf(!process.env.DATABASE_URL)("squares with a database (requires `p
         })
       ).status,
     ).toBe(409);
+    expect(
+      (await call(ADMIN, "POST", `/leagues/${leagueId}/boards`, { game: { source: "superbowl" } })).status,
+    ).toBe(201);
     const manual = await manualBoard(leagueId, 4);
     expect(await board(manual)).toMatchObject({ externalId: null, year: null, week: null, maxPerPlayer: 4 });
 
     const list = await call<BoardSummary[]>(PAT, "GET", `/leagues/${leagueId}/boards`);
     expect(list.body.map((b) => [b.phase, b.claimed, b.mine])).toEqual([
+      ["open", 0, 0],
       ["open", 0, 0],
       ["open", 0, 0],
     ]);

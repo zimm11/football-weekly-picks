@@ -282,6 +282,7 @@ async function resolveGame(
   now: Date,
   requestId?: string,
 ): Promise<Pick<BoardRow, "externalId" | "year" | "week" | "homeTeam" | "awayTeam" | "kickoff">> {
+  const pick = game?.source === "feed" ? game : undefined;
   if (game?.source === "manual") {
     return {
       externalId: null,
@@ -292,15 +293,15 @@ async function resolveGame(
       kickoff: new Date(game.kickoff),
     };
   }
-  const year = game?.year ?? seasonYear(now);
-  const week = game?.week ?? 22;
+  const year = pick?.year ?? seasonYear(now);
+  const week = pick?.week ?? 22;
   const provided = await results(year, week, requestId);
   if (!provided) fail(502, "Couldn't load the schedule. Type the game in, or try again.");
-  const found = game ? provided.find((g) => g.externalId === game.externalId) : provided[0];
+  const found = pick ? provided.find((g) => g.externalId === pick.externalId) : provided[0];
   if (!found) {
     fail(
       409,
-      game
+      pick
         ? "That game isn't on the schedule anymore. Choose another."
         : "The Super Bowl isn't on the schedule yet. Choose another game, or type it in.",
     );

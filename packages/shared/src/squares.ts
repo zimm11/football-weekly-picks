@@ -239,10 +239,12 @@ export const guestNameSchema = z
   .refine((value) => !CONTROL_CHARACTERS.test(value), "Use a single line of text.");
 
 /**
- * A board's game: one from the feed (its season year, week on the 1–22 line and the feed's id), or teams and a
- * kickoff typed by hand. Creating a board without one picks the Super Bowl, once the feed lists it.
+ * A board's game: the season's Super Bowl (once the feed lists it; also what creating a board without a game
+ * picks), one from the feed (its season year, week on the 1–22 line and the feed's id), or teams and a kickoff
+ * typed by hand.
  */
 export const boardGameSchema = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("superbowl") }),
   z.object({
     source: z.literal("feed"),
     year: z.int().min(2000).max(2100),

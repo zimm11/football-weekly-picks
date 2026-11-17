@@ -35,6 +35,8 @@ export type LeagueTypeScreens = {
   Recap?: ComponentType<{ weekId: string; userId: string; close: () => void }>;
   /** Whether the header's selector is the season (week-based types). Squares picks a board in its own tab. */
   seasonSelector: boolean;
+  /** The header's selector when it isn't the season: squares' board selector. Shown on every tab but Messages. */
+  HeaderSelector?: ComponentType<{ league: LeagueDetail }>;
 };
 
 export const LEAGUE_TYPE_SCREENS: Record<LeagueType, LeagueTypeScreens> = {
