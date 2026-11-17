@@ -1,4 +1,4 @@
-import { DISPLAY_NAME_MAX, updateProfileSchema } from "@picks/shared";
+import { DISPLAY_NAME_MAX, MINIMUM_AGE, updateProfileSchema } from "@picks/shared";
 import { usePathname, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { ScrollView, Text, useWindowDimensions, View } from "react-native";
@@ -103,19 +103,28 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
             editable={!busy}
           />
           <PreferenceToggle
-            label="I agree to the Terms of use"
+            label={`I'm ${MINIMUM_AGE} or older and I agree to the Terms of use`}
             description="No harassment, hate, sexual content, threats or spam on the message board."
             checked={agreed}
             disabled={!!busy}
             onChange={setAgreed}
           />
-          <Button
-            title="Read the Terms of use"
-            variant="link"
-            link
-            style={{ alignSelf: "flex-start", paddingHorizontal: 0 }}
-            onPress={() => router.push("/terms")}
-          />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 20 }}>
+            <Button
+              title="Read the Terms of use"
+              variant="link"
+              link
+              style={{ paddingHorizontal: 0 }}
+              onPress={() => router.push("/terms")}
+            />
+            <Button
+              title="Read the Privacy policy"
+              variant="link"
+              link
+              style={{ paddingHorizontal: 0 }}
+              onPress={() => router.push("/privacy")}
+            />
+          </View>
         </>
       ) : (
         <>
@@ -195,6 +204,24 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
           />
         )}
       </View>
+      {!nameOnly && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 20, justifyContent: "center" }}>
+          <Button
+            title="Terms of use"
+            variant="link"
+            link
+            style={{ paddingHorizontal: 0 }}
+            onPress={() => router.push("/terms")}
+          />
+          <Button
+            title="Privacy policy"
+            variant="link"
+            link
+            style={{ paddingHorizontal: 0 }}
+            onPress={() => router.push("/privacy")}
+          />
+        </View>
+      )}
     </Card>
   );
   if (!landing)

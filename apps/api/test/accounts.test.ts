@@ -4,6 +4,7 @@ import {
   contentReports,
   createDb,
   emailOutbox,
+  feedback,
   games,
   leagueMembers,
   leagues,
@@ -36,6 +37,8 @@ const SAM = randomUUID();
 const USERS = [ADMIN, PAT, SAM];
 const NAMES = ["Commish", "Pat", "Sam"];
 const PASSWORD = "the right password";
+/** Unique to this run, so the test finds and deletes only its own feedback. */
+const FEEDBACK = `Deletion feedback ${randomUUID()}`;
 const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: "test" };
 const tokens = async (token: string) => ((USERS as string[]).includes(token) ? { id: token } : null);
 
@@ -170,6 +173,7 @@ describe.skipIf(!process.env.DATABASE_URL)("account deletion (requires `pnpm db:
       .delete(contentReports)
       .where(or(inArray(contentReports.subjectUserId, USERS), inArray(contentReports.reporterId, USERS)));
     await db.delete(userBlocks).where(inArray(userBlocks.blockerId, USERS));
+    await db.delete(feedback).where(eq(feedback.message, FEEDBACK));
     await db.delete(emailOutbox).where(inArray(emailOutbox.userId, USERS));
     await db.delete(pushSubscriptions).where(inArray(pushSubscriptions.userId, USERS));
     await db.delete(profiles).where(inArray(profiles.userId, USERS));
@@ -323,6 +327,13 @@ describe.skipIf(!process.env.DATABASE_URL)("account deletion (requires `pnpm db:
       termsAcceptedAt: null,
     });
     expect(profile?.deletedAt).not.toBeNull();
+  });
+
+  it("keeps feedback they sent, without saying who sent it", async () => {
+    expect((await call(PAT, "POST", "/feedback", { kind: "other", message: FEEDBACK })).status).toBe(201);
+    await remove(PAT);
+    const kept = await db.select().from(feedback).where(eq(feedback.message, FEEDBACK));
+    expect(kept.map((f) => f.userId)).toEqual([null]);
   });
 
   it("still answers when Auth doesn't confirm, and the scheduled job retries", async () => {

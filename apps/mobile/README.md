@@ -87,4 +87,28 @@ CI typechecks the app, tests its pure behavioral helpers, exports the iOS JavaSc
 
 The EAS profiles include development, simulator, preview and production. After signing in to EAS and linking the Apple account, use `pnpm mobile:eas build --platform ios --profile production` and `pnpm mobile:eas submit --platform ios --profile production`. These commands upload externally and require the account owner's credentials and release authorization.
 
-Before App Store submission, complete physical-device QA, store metadata/screenshots/privacy declarations, account deletion and message-board reporting/blocking/filtering requirements. Those last account/moderation features are missing from the current web product too and are not claimed complete by this migration. Verify sports-data/logo rights and the actual contest/prize model as part of preparing the submission. No App Store or TestFlight release has been performed by this source migration.
+Before App Store submission, complete physical-device QA and the store metadata and screenshots. Account deletion (Settings → Delete account) and message-board reporting, blocking and screening are in the app, and so are the Terms of use (`/terms`) and the Privacy policy (`/privacy`). Verify sports-data/logo rights as part of preparing the submission. No App Store or TestFlight release has been performed by this source migration.
+
+## App Store privacy answers
+
+App Store Connect asks what the app collects (**App Privacy**) and for a privacy policy URL. The answers below say what the Privacy policy ([`app/privacy.tsx`](app/privacy.tsx)) says; when one changes, change the other.
+
+- **Privacy Policy URL:** `https://www.pow-pickem.com/privacy`. The Terms are at `https://www.pow-pickem.com/terms`; both pages show the support address.
+- **License Agreement:** leave Apple's standard EULA selected. The Terms of use add to it and don't replace it.
+- **Age rating:** Apple works it out from the content questionnaire, separately from the Terms, which require 18 (`MINIMUM_AGE` in `packages/shared`). If it comes out lower, raising it to 18+ keeps the listing in step with the Terms; that is a choice, not a requirement.
+- **Account deletion:** in the app, Settings → Delete account. Say so in the App Review notes, with a demo account.
+- **Tracking:** none. The app has no ads, no analytics or crash-reporting SDK, and shares nothing with data brokers, so there is no tracking prompt and "Data Used to Track You" is empty.
+
+Data collected, all linked to the player, none used for tracking, each for **App Functionality** only:
+
+| Apple's data type                 | What it is here                                                        |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| Contact Info → Email Address      | The account's email: sign-in, and notification emails                  |
+| Contact Info → Name               | The display name                                                       |
+| User Content → Gameplay Content   | Picks, the Pick of the Week and tiebreaker guesses                     |
+| User Content → Other User Content | Message-board threads, replies and reactions; reports and blocks       |
+| User Content → Customer Support   | Feedback: the message, the screen it was sent from and the device type |
+| Identifiers → User ID             | The account ID                                                         |
+| Identifiers → Device ID           | The push token, only on a device where notifications were turned on    |
+
+Declaring the push token as a Device ID is the cautious reading; Apple doesn't list push tokens by name. Not collected: location, contacts, photos, health, financial or payment details, sensitive information, browsing or search history, purchases, usage data and diagnostics. Sign-in sessions and the host's request logs hold IP addresses (the Privacy policy says so), which App Privacy has no category for, and nothing is derived from them.

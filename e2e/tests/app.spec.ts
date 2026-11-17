@@ -63,6 +63,23 @@ test("signed-out visitors can explore the landing page and public guide", async 
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
+test("signed-out visitors can read the Privacy policy and the Terms of use", async ({ page }) => {
+  // The App Store listing links straight to both pages.
+  await page.goto("/privacy");
+  await expect(page.getByRole("heading", { name: "Privacy policy", exact: true })).toBeVisible();
+  await expect(page.getByText(/^Last updated /)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Deleting your account" })).toBeVisible();
+  await page.getByRole("link", { name: "Terms of use", exact: true }).click();
+  await expect(page).toHaveURL(/\/terms$/);
+  await expect(page.getByRole("heading", { name: "Terms of use", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Who can use it" })).toBeVisible();
+  // And the sign-in form links to them before an account exists.
+  await page.goto("/login");
+  await page.getByRole("link", { name: "Privacy policy", exact: true }).click();
+  await expect(page).toHaveURL(/\/privacy$/);
+  await expect(page.getByRole("heading", { name: "Privacy policy", exact: true })).toBeVisible();
+});
+
 test("signed-in users can read the guide and return to their leagues", async ({
   page,
   signedIn,

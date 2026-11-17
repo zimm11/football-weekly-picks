@@ -111,6 +111,7 @@ export default function Layout() {
                 <Stack.Screen name="account" options={{ title: "Settings" }} />
                 <Stack.Screen name="how-to-play" options={{ title: "How to play" }} />
                 <Stack.Screen name="terms" options={{ title: "Terms of use" }} />
+                <Stack.Screen name="privacy" options={{ title: "Privacy policy" }} />
               </Stack>
               <NotificationBanner />
               {web && <HomeScreenOffer />}

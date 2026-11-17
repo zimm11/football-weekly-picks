@@ -44,7 +44,7 @@ const playerSteps = [
   ],
   [
     "Manage your account",
-    "Tap your name in the header to change your name or password, open Settings, or sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only admin, make someone else an admin first.",
+    "Tap your name in the header to change your name or password, open Settings, or sign out. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only admin, make someone else an admin first. The Privacy policy, linked in Settings, says what POW Pick'em keeps about you.",
   ],
 ];
 const adminSteps = [
