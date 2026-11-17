@@ -1,4 +1,4 @@
-import { updateProfileSchema } from "@picks/shared";
+import { DISPLAY_NAME_MAX, updateProfileSchema } from "@picks/shared";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { BackLink } from "../components/BackLink";
@@ -31,7 +31,7 @@ export function NameScreen() {
           label="Display name"
           value={name}
           onChangeText={setName}
-          maxLength={40}
+          maxLength={DISPLAY_NAME_MAX}
           editable={!action.busy}
         />
         <ErrorMessage message={action.error} />

@@ -24,6 +24,19 @@ export * from "./time";
 
 // ---------- Requests ----------
 
+/*
+ * Longest text a player can save. Everything below is screened by the moderation model before it is saved
+ * (`apps/api/src/screening.ts`), which is paid per token, so these also bound what one post can cost.
+ */
+export const DISPLAY_NAME_MAX = 40;
+export const LEAGUE_NAME_MAX = 80;
+export const THREAD_TITLE_MAX = 120;
+/** A thread's first message or a reply. */
+export const MESSAGE_BODY_MAX = 2000;
+
+const tooLong = (what: string, max: number) =>
+  `Keep the ${what} to ${max.toLocaleString("en-US")} characters or fewer.`;
+
 /** Line breaks, tabs and the other control characters, plus Unicode's own line and paragraph separators. */
 const CONTROL_CHARACTERS = /[\p{Cc}\u2028\u2029]/u;
 
@@ -31,12 +44,12 @@ const CONTROL_CHARACTERS = /[\p{Cc}\u2028\u2029]/u;
  * A name or title: one line of text. These end up in email subjects, notification titles and table cells, so
  * a line break in one is never wanted, and in a subject it would be a way to forge headers.
  */
-const singleLine = (max: number, empty: string) =>
+const singleLine = (what: string, max: number, empty: string) =>
   z
     .string()
     .trim()
     .min(1, empty)
-    .max(max)
+    .max(max, tooLong(what, max))
     .refine((value) => !CONTROL_CHARACTERS.test(value), "Use a single line of text.");
 
 /** Collapses anything `singleLine` would refuse into spaces, for text stored before that rule. */
@@ -44,7 +57,7 @@ export const toSingleLine = (text: string) =>
   text.replace(new RegExp(`${CONTROL_CHARACTERS.source}+`, "gu"), " ").trim();
 
 export const updateProfileSchema = z.object({
-  displayName: singleLine(40, "Enter a name"),
+  displayName: singleLine("name", DISPLAY_NAME_MAX, "Enter a name"),
   /** Agrees to the Terms of use at the same time, as the first name step does. */
   acceptTerms: z.literal(true).optional(),
 });
@@ -77,13 +90,13 @@ const timeZoneSchema = z
   });
 
 export const createLeagueSchema = z.object({
-  name: singleLine(80, "Enter a league name"),
+  name: singleLine("league name", LEAGUE_NAME_MAX, "Enter a league name"),
   timeZone: timeZoneSchema.default("America/New_York"),
 });
 
 export const updateLeagueSchema = z
   .object({
-    name: singleLine(80, "Enter a league name").optional(),
+    name: singleLine("league name", LEAGUE_NAME_MAX, "Enter a league name").optional(),
     timeZone: timeZoneSchema.optional(),
   })
   .refine((v) => v.name !== undefined || v.timeZone !== undefined, "Nothing to change");
@@ -286,8 +299,12 @@ export function lineFor(side: Side, spread: number): number {
 }
 
 export const createThreadSchema = z.object({
-  title: singleLine(120, "Enter a title"),
-  body: z.string().trim().min(1, "Enter a message").max(5000),
+  title: singleLine("title", THREAD_TITLE_MAX, "Enter a title"),
+  body: z
+    .string()
+    .trim()
+    .min(1, "Enter a message")
+    .max(MESSAGE_BODY_MAX, tooLong("message", MESSAGE_BODY_MAX)),
 });
 export const replySchema = createThreadSchema.pick({ body: true }).extend({
   quotedPostId: z.uuid().optional(),

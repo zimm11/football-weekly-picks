@@ -1,6 +1,7 @@
 import {
   createThreadSchema,
   type LeagueDetail,
+  MESSAGE_BODY_MAX,
   MESSAGE_REACTIONS,
   type MessageEmoji,
   type MessagePost,
@@ -9,6 +10,7 @@ import {
   type MessageThread,
   replySchema,
   THREAD_PAGE_SIZE,
+  THREAD_TITLE_MAX,
   type ThreadDetail,
   type ThreadPage,
 } from "@picks/shared";
@@ -428,7 +430,7 @@ function NewThread({ leagueId, header }: { leagueId: string; header?: ReactNode 
             placeholder="Thread title"
             placeholderTextColor={colors.mutedForeground}
             value={title}
-            maxLength={120}
+            maxLength={THREAD_TITLE_MAX}
             onChangeText={setTitle}
             editable={!busy}
           />
@@ -440,7 +442,7 @@ function NewThread({ leagueId, header }: { leagueId: string; header?: ReactNode 
             placeholderTextColor={colors.mutedForeground}
             multiline
             value={body}
-            maxLength={5000}
+            maxLength={MESSAGE_BODY_MAX}
             onChangeText={setBody}
             editable={!busy}
             textAlignVertical="top"
@@ -1015,7 +1017,7 @@ function Thread({ leagueId, threadId, header }: { leagueId: string; threadId: st
               selectionColor={colors.primary}
               style={[s.input, s.replyInput, { height: replyHeight }]}
               multiline
-              maxLength={5000}
+              maxLength={MESSAGE_BODY_MAX}
               value={body}
               onChangeText={setBody}
               editable={!busy}

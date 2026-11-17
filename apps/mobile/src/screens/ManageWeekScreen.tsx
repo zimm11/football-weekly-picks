@@ -3,8 +3,10 @@ import {
   createGameSchema,
   type Game,
   lowPointLosers,
+  MESSAGE_BODY_MAX,
   NFL_TEAMS,
   TEAM_ABBRS,
+  THREAD_TITLE_MAX,
   WEEK_PHASE_LABEL,
   type WeekView,
   weekPhase,
@@ -873,12 +875,18 @@ function Announcement({
           </Action>
         </View>
       )}
-      <Input label="Thread title" value={title} onChangeText={setTitle} maxLength={120} editable={!busy} />
+      <Input
+        label="Thread title"
+        value={title}
+        onChangeText={setTitle}
+        maxLength={THREAD_TITLE_MAX}
+        editable={!busy}
+      />
       <Input
         label="Message"
         value={body}
         onChangeText={setBody}
-        maxLength={5000}
+        maxLength={MESSAGE_BODY_MAX}
         multiline
         editable={!busy}
         style={{ minHeight: 128, textAlignVertical: "top", paddingTop: 12 }}

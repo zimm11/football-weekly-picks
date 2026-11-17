@@ -1,5 +1,5 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Action, Heading and Label render their children inside native Text.
-import { createLeagueSchema, type InvitePreview, type LeagueSummary } from "@picks/shared";
+import { createLeagueSchema, type InvitePreview, LEAGUE_NAME_MAX, type LeagueSummary } from "@picks/shared";
 import { router } from "expo-router";
 import { useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
@@ -88,7 +88,13 @@ export function LeaguesScreen() {
       <NotificationsPrompt />
       <Card>
         <Eyebrow>Start a league</Eyebrow>
-        <Input label="League name" value={name} onChangeText={setName} maxLength={80} editable={!busy} />
+        <Input
+          label="League name"
+          value={name}
+          onChangeText={setName}
+          maxLength={LEAGUE_NAME_MAX}
+          editable={!busy}
+        />
         <Failure message={error} />
         <Action
           disabled={busy}

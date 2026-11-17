@@ -1,5 +1,6 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Action and Eyebrow render native Text.
 import {
+  LEAGUE_NAME_MAX,
   type LeagueDetail,
   MAX_WEEK,
   type Member,
@@ -434,7 +435,13 @@ export function LeagueTools({
       {admin && (
         <Card label="League settings">
           <Eyebrow>League settings</Eyebrow>
-          <Input label="League name" value={name} onChangeText={setName} maxLength={80} editable={!busy} />
+          <Input
+            label="League name"
+            value={name}
+            onChangeText={setName}
+            maxLength={LEAGUE_NAME_MAX}
+            editable={!busy}
+          />
           <Select
             label="Time zone for game times"
             value={timeZone}

@@ -1,4 +1,4 @@
-import { updateProfileSchema } from "@picks/shared";
+import { DISPLAY_NAME_MAX, updateProfileSchema } from "@picks/shared";
 import { usePathname, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { ScrollView, Text, useWindowDimensions, View } from "react-native";
@@ -99,7 +99,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
             value={name}
             onChangeText={setName}
             autoComplete="name"
-            maxLength={40}
+            maxLength={DISPLAY_NAME_MAX}
             editable={!busy}
           />
           <PreferenceToggle

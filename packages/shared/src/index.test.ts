@@ -5,10 +5,15 @@ import {
   createLeagueSchema,
   createThreadSchema,
   createWeekSchema,
+  DISPLAY_NAME_MAX,
   formatLine,
+  LEAGUE_NAME_MAX,
   lineFor,
+  MESSAGE_BODY_MAX,
   MESSAGE_REACTIONS,
   messageReactionSchema,
+  replySchema,
+  THREAD_TITLE_MAX,
   toSingleLine,
   updateLeagueSchema,
   updateProfileSchema,
@@ -35,6 +40,32 @@ describe("request schemas", () => {
       "Who's in? 🏈 Señor's picks",
     );
     expect(toSingleLine("Sunday\r\nCrew:\tWeek 10")).toBe("Sunday Crew: Week 10");
+  });
+
+  it("caps every screened text, counting after trimming, and says which one is too long", () => {
+    const at = (max: number) => "x".repeat(max);
+    const over = (max: number) => "x".repeat(max + 1);
+    const error = (result: { error?: { issues: { message: string }[] } }) => result.error?.issues[0]?.message;
+    expect(
+      createThreadSchema.safeParse({ title: at(THREAD_TITLE_MAX), body: at(MESSAGE_BODY_MAX) }).success,
+    ).toBe(true);
+    expect(createThreadSchema.safeParse({ title: "Hi", body: `  ${at(MESSAGE_BODY_MAX)}\n` }).success).toBe(
+      true,
+    );
+    expect(error(createThreadSchema.safeParse({ title: "Hi", body: over(MESSAGE_BODY_MAX) }))).toBe(
+      "Keep the message to 2,000 characters or fewer.",
+    );
+    expect(replySchema.safeParse({ body: over(MESSAGE_BODY_MAX) }).success).toBe(false);
+    expect(error(createThreadSchema.safeParse({ title: over(THREAD_TITLE_MAX), body: "hi" }))).toBe(
+      "Keep the title to 120 characters or fewer.",
+    );
+    expect(error(createLeagueSchema.safeParse({ name: over(LEAGUE_NAME_MAX) }))).toBe(
+      "Keep the league name to 80 characters or fewer.",
+    );
+    expect(updateLeagueSchema.safeParse({ name: over(LEAGUE_NAME_MAX) }).success).toBe(false);
+    expect(error(updateProfileSchema.safeParse({ displayName: over(DISPLAY_NAME_MAX) }))).toBe(
+      "Keep the name to 40 characters or fewer.",
+    );
   });
 
   it("rejects an unknown time zone", () => {
