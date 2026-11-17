@@ -1,21 +1,35 @@
 import type { Db } from "@picks/db";
 import { logError, logJobRun } from "./logging";
+import { runModerationJobs } from "./moderationJobs";
 import { type EmailDeps, runEmailJobs } from "./outbox";
 import { runPushJobs } from "./pushQueue";
 import type { PushSender } from "./pushSender";
+import type { Screener } from "./screening";
 
 /**
- * The scheduled work: pick reminders and retries, by email and by push. Production runs it from the Worker's
- * Cron Trigger (wrangler.jsonc), local development on a timer (src/index.ts). Each part is idempotent and fails
- * on its own: a push service outage never holds up email or the other way round, and within each channel a
- * failure to queue reminders (logged as `email_queue` / `push_queue`) never stops the send step.
+ * The scheduled work: the moderation jobs (rechecking posts saved unchecked, clearing removed text, the operator's
+ * digest), then pick reminders and retries, by email and by push. Production runs it from the Worker's Cron
+ * Trigger (wrangler.jsonc), local development on a timer (src/index.ts). Each part is idempotent and fails on its
+ * own: a push service outage never holds up email or the other way round, and within each channel a failure to
+ * queue reminders (logged as `email_queue` / `push_queue`) never stops the send step. Moderation runs first, so a
+ * digest it queues goes out in the same run.
  */
 export async function runScheduledJobs(
   db: Db,
-  deps: { email?: EmailDeps; push?: PushSender; nativePush?: PushSender },
+  deps: {
+    email?: EmailDeps;
+    push?: PushSender;
+    nativePush?: PushSender;
+    screener?: Screener;
+    operatorUserIds?: readonly string[];
+  },
   now: Date,
 ) {
   const { email, push, nativePush } = deps;
+  await runModerationJobs(db, deps, now).then(
+    (result) => logJobRun("moderation_jobs", result),
+    (error) => logError("moderation_jobs", error),
+  );
   await Promise.all([
     email &&
       runEmailJobs(db, email, now).then(

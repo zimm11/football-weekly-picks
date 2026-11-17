@@ -1,11 +1,12 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: SettingsHeading renders its children inside native Text.
-import type { NotificationSettings } from "@picks/shared";
+import { type BlockedPlayer, type NotificationSettings, SUPPORT_EMAIL } from "@picks/shared";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 import { BackLink } from "../components/BackLink";
 import { DeviceNotifications } from "../components/DeviceNotifications";
 import { useHomeScreenHelp } from "../components/HomeScreenInstall";
 import { Icon } from "../components/Icon";
+import { setBlocked } from "../components/Moderation";
 import { PreferenceToggle } from "../components/PreferenceToggle";
 import { SettingsHeading } from "../components/SettingsHeading";
 import {
@@ -23,8 +24,9 @@ import {
 import { getSupabase, request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { appLink } from "../lib/config";
-import { useAction, useFormGuard } from "../lib/hooks";
+import { useAction, useFormGuard, useResource } from "../lib/hooks";
 import { openScreen } from "../lib/navigation";
+import { notifyDone, notifyError } from "../lib/notify";
 export function AccountScreen() {
   const auth = useAuth();
   const [email, setEmail] = useState("");
@@ -114,6 +116,17 @@ export function AccountScreen() {
           }
         />
       </Card>
+      <BlockedPlayers />
+      <Card>
+        <SettingsHeading>Help</SettingsHeading>
+        <SettingsLink
+          icon="email"
+          label="Contact support"
+          detail={SUPPORT_EMAIL}
+          onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+        />
+        <SettingsLink icon="document" label="Terms of use" onPress={() => void openScreen("/terms")} />
+      </Card>
       <Card>
         <SettingsHeading>Password</SettingsHeading>
         <Pressable
@@ -132,5 +145,72 @@ export function AccountScreen() {
       </Card>
       {homeScreen.sheet}
     </Screen>
+  );
+}
+
+function SettingsLink({
+  icon,
+  label,
+  detail,
+  onPress,
+}: {
+  icon: "email" | "document";
+  label: string;
+  detail?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={detail ? `${label}, ${detail}` : label}
+      onPress={onPress}
+      style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10 }}
+    >
+      <Icon name={icon} size={18} color={colors.mutedForeground} />
+      <View style={{ flex: 1 }}>
+        <Body style={{ fontFamily: fonts.medium }}>{label}</Body>
+        {detail && <Body muted>{detail}</Body>}
+      </View>
+      <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
+/** Players you blocked, with Unblock. Hidden while there are none. */
+function BlockedPlayers() {
+  const blocked = useResource<BlockedPlayer[]>("/blocks");
+  const [busy, setBusy] = useState<string>();
+  if (!blocked.data?.length) return null;
+  return (
+    <Card>
+      <SettingsHeading>Blocked players</SettingsHeading>
+      <Body muted>
+        Their threads, replies and reactions are hidden from you. Picks and standings don't change.
+      </Body>
+      {blocked.data.map((player) => (
+        <View
+          key={player.userId}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 }}
+        >
+          <Body style={{ flex: 1 }}>{player.displayName}</Body>
+          <Button
+            small
+            variant="outline"
+            title={busy === player.userId ? "Unblocking…" : "Unblock"}
+            disabled={!!busy}
+            onPress={() => {
+              setBusy(player.userId);
+              void setBlocked(player.userId, false)
+                .then(() => {
+                  notifyDone(`${player.displayName} is unblocked.`);
+                  blocked.setData(blocked.data?.filter((p) => p.userId !== player.userId));
+                })
+                .catch((err) => notifyError(err instanceof Error ? err.message : "Couldn't unblock."))
+                .finally(() => setBusy(undefined));
+            }}
+          />
+        </View>
+      ))}
+    </Card>
   );
 }

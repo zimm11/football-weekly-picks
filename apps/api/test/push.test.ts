@@ -73,7 +73,9 @@ describe.skipIf(!process.env.DATABASE_URL)("push with a local database", () => {
     for (const id of users)
       await db.execute(sql`insert into auth.users (id, email) values (${id}, ${`${id}@push.test`})`);
     // Posting needs a display name. Removed with the users (cascade).
-    await db.insert(profiles).values(users.map((userId, i) => ({ userId, displayName: `Push ${i}` })));
+    await db
+      .insert(profiles)
+      .values(users.map((userId, i) => ({ userId, displayName: `Push ${i}`, termsAcceptedAt: new Date() })));
   });
   beforeEach(async () => {
     send.mockReset().mockResolvedValue("sent");

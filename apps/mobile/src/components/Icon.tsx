@@ -2,6 +2,7 @@
 // own file: Metro bundles everything a module imports, and the package root re-exports ~1,500 icons.
 import type { IconWeight, Icon as PhosphorIcon } from "phosphor-react-native";
 import { ArrowBendUpLeftIcon } from "phosphor-react-native/src/icons/ArrowBendUpLeft";
+import { ArrowCounterClockwiseIcon } from "phosphor-react-native/src/icons/ArrowCounterClockwise";
 import { ArrowSquareOutIcon } from "phosphor-react-native/src/icons/ArrowSquareOut";
 import { ArrowsClockwiseIcon } from "phosphor-react-native/src/icons/ArrowsClockwise";
 import { BellIcon } from "phosphor-react-native/src/icons/Bell";
@@ -14,7 +15,11 @@ import { CheckIcon } from "phosphor-react-native/src/icons/Check";
 import { CheckCircleIcon } from "phosphor-react-native/src/icons/CheckCircle";
 import { CopyIcon } from "phosphor-react-native/src/icons/Copy";
 import { DotsThreeIcon } from "phosphor-react-native/src/icons/DotsThree";
+import { EnvelopeSimpleIcon } from "phosphor-react-native/src/icons/EnvelopeSimple";
 import { EqualsIcon } from "phosphor-react-native/src/icons/Equals";
+import { EyeIcon } from "phosphor-react-native/src/icons/Eye";
+import { FileTextIcon } from "phosphor-react-native/src/icons/FileText";
+import { FlagIcon } from "phosphor-react-native/src/icons/Flag";
 import { FootballIcon } from "phosphor-react-native/src/icons/Football";
 import { GearIcon } from "phosphor-react-native/src/icons/Gear";
 import { InfoIcon } from "phosphor-react-native/src/icons/Info";
@@ -24,6 +29,7 @@ import { PaperPlaneRightIcon } from "phosphor-react-native/src/icons/PaperPlaneR
 import { PawPrintIcon } from "phosphor-react-native/src/icons/PawPrint";
 import { PencilSimpleLineIcon } from "phosphor-react-native/src/icons/PencilSimpleLine";
 import { PlusIcon } from "phosphor-react-native/src/icons/Plus";
+import { ProhibitIcon } from "phosphor-react-native/src/icons/Prohibit";
 import { PushPinIcon } from "phosphor-react-native/src/icons/PushPin";
 import { QuotesIcon } from "phosphor-react-native/src/icons/Quotes";
 import { ShareNetworkIcon } from "phosphor-react-native/src/icons/ShareNetwork";
@@ -31,6 +37,7 @@ import { ShieldIcon } from "phosphor-react-native/src/icons/Shield";
 import { SignOutIcon } from "phosphor-react-native/src/icons/SignOut";
 import { SmileyIcon } from "phosphor-react-native/src/icons/Smiley";
 import { SmileyXEyesIcon } from "phosphor-react-native/src/icons/SmileyXEyes";
+import { SpeakerSlashIcon } from "phosphor-react-native/src/icons/SpeakerSlash";
 import { StarIcon } from "phosphor-react-native/src/icons/Star";
 import { TargetIcon } from "phosphor-react-native/src/icons/Target";
 import { TrashIcon } from "phosphor-react-native/src/icons/Trash";
@@ -81,6 +88,13 @@ const ICONS = {
   reply: [ArrowBendUpLeftIcon],
   shield: [ShieldIcon],
   "user-minus": [UserMinusIcon],
+  flag: [FlagIcon],
+  block: [ProhibitIcon],
+  mute: [SpeakerSlashIcon],
+  restore: [ArrowCounterClockwiseIcon],
+  email: [EnvelopeSimpleIcon],
+  eye: [EyeIcon],
+  document: [FileTextIcon],
 } satisfies Record<string, [PhosphorIcon, IconWeight?]>;
 
 export type IconName = keyof typeof ICONS;

@@ -15,6 +15,7 @@ import { logError } from "./logging";
 import { espnProvider } from "./nfl";
 import type { EmailDeps } from "./outbox";
 import { expoPushSender, webPushSender } from "./pushSender";
+import { clefScreener } from "./screening";
 
 /** One request's (or one scheduled run's) database connection, and the work it handed to `background`. */
 type Scope = { db: Db; tasks: Promise<unknown>[] };
@@ -76,6 +77,11 @@ function build() {
         })
       : undefined;
   const nativePush = config.EXPO_PUSH_ENABLED ? expoPushSender(config.EXPO_ACCESS_TOKEN) : undefined;
+  // Every post and name is screened on Workers AI unless MODERATION_MODE=off (the emergency switch).
+  const screener =
+    config.MODERATION_MODE === "enforce"
+      ? clefScreener({ run: (model, input) => env.AI.run(model as never, input as never) })
+      : undefined;
   const app = createApp({
     db,
     verifyToken: supabaseTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY),
@@ -85,6 +91,7 @@ function build() {
     email,
     push,
     nativePush,
+    screener,
     background,
     publicConfig: {
       supabaseUrl: config.SUPABASE_URL,
@@ -92,7 +99,15 @@ function build() {
     },
   });
   // `pnpm worker:dev` sets NODE_ENV=development; deployed Workers always run with wrangler.jsonc's "production".
-  return { app, email, push, nativePush, production: config.NODE_ENV !== "development" };
+  return {
+    app,
+    email,
+    push,
+    nativePush,
+    screener,
+    operatorUserIds: config.OPERATOR_USER_IDS,
+    production: config.NODE_ENV !== "development",
+  };
 }
 
 let worker: ReturnType<typeof build> | undefined;
@@ -126,13 +141,16 @@ export default {
     return withConnection(env, ctx, production, async () => app.fetch(request, env, ctx));
   },
 
-  /** The Cron Trigger (wrangler.jsonc): queue due pick reminders, then send what's waiting, by email and push. */
+  /**
+   * The Cron Trigger (wrangler.jsonc): the moderation jobs, then queue due pick reminders and send what's waiting,
+   * by email and push.
+   */
   async scheduled(_controller, env, ctx) {
-    if (!worker || (!worker.email && !worker.push && !worker.nativePush)) return;
-    const { email, push, nativePush, production } = worker;
+    if (!worker) return;
+    const { email, push, nativePush, screener, operatorUserIds, production } = worker;
     // Each job logs its own failures through the safe logger, so nothing raw reaches the runtime's log.
     await withConnection(env, ctx, production, () =>
-      runScheduledJobs(db, { email, push, nativePush }, new Date()),
+      runScheduledJobs(db, { email, push, nativePush, screener, operatorUserIds }, new Date()),
     );
   },
 } satisfies ExportedHandler<Env>;

@@ -279,17 +279,22 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       displayName: null,
       isOperator: false,
       notifications: { newThreads: true, pickReminders: true },
+      moderation: { termsAccepted: false, mutedUntil: null, suspended: false },
     });
-    expect((await call(ADMIN, "PUT", "/me", { displayName: "  Commish  " })).body).toMatchObject({
+    // The first name step also agrees to the terms, which posting needs.
+    expect(
+      (await call(ADMIN, "PUT", "/me", { displayName: "  Commish  ", acceptTerms: true })).body,
+    ).toMatchObject({
       displayName: "Commish",
+      moderation: { termsAccepted: true },
     });
-    await call(PLAYER, "PUT", "/me", { displayName: "Pat" });
+    await call(PLAYER, "PUT", "/me", { displayName: "Pat", acceptTerms: true });
     expect((await call(ADMIN, "PUT", "/me", { displayName: "" })).status).toBe(400);
 
     // A name comes before anything else, so nobody shows up in a league as "Player".
     const nameless = await call(OUTSIDER, "POST", "/leagues", { name: "No name yet" });
     expect(nameless).toEqual({ status: 409, body: { error: "Choose a display name first." } });
-    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer" });
+    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer", acceptTerms: true });
   });
 
   it("creates a league with its creator as admin", async () => {
@@ -689,7 +694,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     // A player without a profile has no settings to change.
     await db.delete(profiles).where(eq(profiles.userId, OUTSIDER));
     expect((await call(OUTSIDER, "PUT", "/me/notifications", { newThreads: true })).status).toBe(409);
-    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer" });
+    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer", acceptTerms: true });
     const fromPage = await app.request(`/api/unsubscribe?token=${encodeURIComponent(token)}`, {
       method: "POST",
     });
@@ -1377,7 +1382,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     };
 
     // Someone who joins after the week was played is in the league, but not in that week's results.
-    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer" });
+    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer", acceptTerms: true });
     await call(OUTSIDER, "POST", `/invites/${inviteCode}/join`);
     await db
       .update(leagueMembers)
@@ -1531,7 +1536,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
         body: { error: "Choose a display name first." },
       });
     }
-    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer" });
+    await call(OUTSIDER, "PUT", "/me", { displayName: "Newcomer", acceptTerms: true });
     now = before;
   });
 

@@ -24,6 +24,10 @@
 -- suggests them once per browser.
 -- No push subscriptions are seeded; VAPID is unset locally, so devices can't subscribe.
 -- Later weeks are deliberately absent: create them in the app so the import from ESPN gets exercised.
+-- Moderation: everyone but Alex has agreed to the Terms of use, so Alex sees the terms sheet before a first post.
+-- One thread ("Week 9 talk") has a reply from Sam that Alex reported as spam, so the League tab's Reports card
+-- (as Commish) has an item. Sam has blocked Alex. Screening is off locally (no Workers AI), so nothing is refused.
+-- Accounts are dated 2026-08-01, so the tighter limits on accounts under a day old don't apply.
 
 -- ---------- Accounts ----------
 
@@ -43,7 +47,7 @@ insert into auth.users (
 select
   '00000000-0000-0000-0000-000000000000', id, 'authenticated', 'authenticated', email,
   extensions.crypt('password123', extensions.gen_salt('bf')), now(),
-  '{"provider":"email","providers":["email"]}', '{}', now(), now(),
+  '{"provider":"email","providers":["email"]}', '{}', '2026-08-01T12:00:00Z', now(),
   '', '', '', ''
 from seed_users;
 
@@ -53,8 +57,8 @@ select
   jsonb_build_object('sub', id::text, 'email', email, 'email_verified', true), now(), now(), now()
 from seed_users;
 
-insert into profiles (user_id, display_name)
-select id, display_name from seed_users;
+insert into profiles (user_id, display_name, terms_accepted_at)
+select id, display_name, case when n = 3 then null else '2026-08-01T12:00:00Z'::timestamptz end from seed_users;
 
 -- ---------- League ----------
 
@@ -210,3 +214,30 @@ insert into week_participants (week_id, user_id)
 select ('44444444-4444-4444-8444-' || lpad(w::text, 12, '0'))::uuid, u.id
 from generate_series(6, 9) w
 cross join seed_users u;
+
+-- ---------- Message board and moderation ----------
+
+insert into message_threads (id, league_id, author_id, title, version, created_at, updated_at)
+values ('55555555-5555-4555-8555-000000000001', '22222222-2222-4222-8222-000000000001',
+        '11111111-1111-4111-8111-000000000002', 'Week 9 talk', 2,
+        '2026-11-10T14:00:00Z', '2026-11-10T15:00:00Z');
+
+insert into message_posts (id, thread_id, author_id, body, position, created_at)
+values
+  ('66666666-6666-4666-8666-000000000001', '55555555-5555-4555-8555-000000000001',
+   '11111111-1111-4111-8111-000000000002', 'Who had the Monday night total? Not me.', 1, '2026-11-10T14:00:00Z'),
+  ('66666666-6666-4666-8666-000000000002', '55555555-5555-4555-8555-000000000001',
+   '11111111-1111-4111-8111-000000000003', 'Buy my picks newsletter, link in bio!', 2, '2026-11-10T15:00:00Z');
+
+insert into message_reads (thread_id, user_id, version)
+values ('55555555-5555-4555-8555-000000000001', '11111111-1111-4111-8111-000000000002', 1),
+       ('55555555-5555-4555-8555-000000000001', '11111111-1111-4111-8111-000000000003', 2);
+
+-- Alex reported Sam's reply; it waits on the League tab's Reports card for an admin.
+insert into content_reports (kind, target_key, post_id, subject_user_id, league_id, reporter_id, source, reason, created_at)
+values ('post', 'post:66666666-6666-4666-8666-000000000002', '66666666-6666-4666-8666-000000000002',
+        '11111111-1111-4111-8111-000000000003', '22222222-2222-4222-8222-000000000001',
+        '11111111-1111-4111-8111-000000000004', 'player', 'spam', '2026-11-10T16:00:00Z');
+
+insert into user_blocks (blocker_id, blocked_id)
+values ('11111111-1111-4111-8111-000000000003', '11111111-1111-4111-8111-000000000004');

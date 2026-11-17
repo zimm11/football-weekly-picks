@@ -38,6 +38,35 @@ const PICK_SIDES = ["home", "away"] as const;
 const FEEDBACK_KINDS = ["bug", "feature", "other"] as const;
 const FEEDBACK_STATUSES = ["open", "done"] as const;
 const NOTIFICATION_KINDS = ["new_thread", "pick_reminder"] as const;
+/** Email also carries the operator's moderation alerts and daily digest, which have no push counterpart. */
+const EMAIL_KINDS = [...NOTIFICATION_KINDS, "moderation"] as const;
+/** The model's verdict on a post. `skipped`: not checked (screening off, or posted before screening existed). */
+const SCREENING_VERDICTS = ["allow", "block", "unchecked", "skipped"] as const;
+const REPORT_KINDS = ["post", "display_name", "league_name"] as const;
+/** Where a report came from: a player, the screening model's recheck of a post saved unchecked, or an appeal. */
+const REPORT_SOURCES = ["player", "recheck", "appeal"] as const;
+const REPORT_REASONS = [
+  "harassment",
+  "hate",
+  "sexual",
+  "threat_self_harm",
+  "spam",
+  "other",
+  "flagged",
+  "appeal",
+] as const;
+const REPORT_STATUSES = ["open", "removed", "dismissed"] as const;
+const MODERATION_ACTIONS = [
+  "remove",
+  "hide",
+  "restore",
+  "dismiss",
+  "mute",
+  "unmute",
+  "suspend",
+  "unsuspend",
+  "reset_name",
+] as const;
 const EMAIL_STATUSES = ["pending", "sending", "sent", "failed", "skipped"] as const;
 const PUSH_STATUSES = ["pending", "sent", "skipped", "failed"] as const;
 
@@ -59,6 +88,12 @@ export const profiles = pgTable("profiles", {
   emailNewThreads: boolean().notNull().default(true),
   /** Email the player the evening before a game day on which they still have games to pick. */
   emailPickReminders: boolean().notNull().default(true),
+  /** When the player agreed to the Terms of use. Posting, replying and reacting need it. */
+  termsAcceptedAt: timestamp({ withTimezone: true }),
+  /** No posts, replies or reactions anywhere until then: from repeated removals, or the operator. Never limits picking. */
+  mutedUntil: timestamp({ withTimezone: true }),
+  /** Set by the operator: no posts, replies, reactions or name changes until lifted. Never limits picking. */
+  suspendedAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
 }).enableRLS();
 
@@ -85,6 +120,8 @@ export const leagueMembers = pgTable(
     joinedAt: createdAt(),
     /** Set when the admin removes the player. They lose access, but stay in the results of weeks already played. */
     removedAt: timestamp({ withTimezone: true }),
+    /** A league admin's mute: no posts, replies or reactions in this league until then. Never limits picking. */
+    mutedUntil: timestamp({ withTimezone: true }),
   },
   (t) => [
     primaryKey({ columns: [t.leagueId, t.userId] }),
@@ -296,12 +333,29 @@ export const messagePosts = pgTable(
     /** Optional original message quoted by this reply; the API restricts it to the same thread. */
     quotedPostId: uuid().references((): AnyPgColumn => messagePosts.id, { onDelete: "set null" }),
     position: integer().notNull(),
+    /** The screening model's verdict when it was posted (or rechecked). */
+    screening: text({ enum: SCREENING_VERDICTS }).notNull().default("skipped"),
+    /** The model's probabilities for allow and block, kept for tuning the threshold. */
+    screeningScores: jsonb().$type<{ allow: number; block: number }>(),
+    /** Waiting for review: other players see a placeholder, the author and admins still see the text. */
+    hiddenAt: timestamp({ withTimezone: true }),
+    /**
+     * Removed by a moderator or automatically: everyone sees "Message removed" in its place. The row stays so
+     * positions, unread counts and quotes still line up; the text is cleared 30 days later.
+     */
+    removedAt: timestamp({ withTimezone: true }),
+    /** Who removed it. Null when automation did, or once that account is deleted. */
+    removedBy: uuid().references(() => authUsers.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [
     unique("message_posts_thread_position_key").on(t.threadId, t.position),
-    index("message_posts_author_idx").on(t.authorId),
+    index("message_posts_author_idx").on(t.authorId, t.createdAt),
     index("message_posts_quoted_post_idx").on(t.quotedPostId),
+    index("message_posts_removed_by_idx").on(t.removedBy),
+    index("message_posts_unchecked_idx").on(t.createdAt).where(sql`${t.screening} = 'unchecked'`),
+    index("message_posts_removed_idx").on(t.removedAt).where(sql`${t.removedAt} is not null`),
+    oneOf("message_posts_screening_check", t.screening, SCREENING_VERDICTS),
   ],
 ).enableRLS();
 
@@ -334,6 +388,106 @@ export const messageReads = pgTable(
   (t) => [primaryKey({ columns: [t.threadId, t.userId] }), index("message_reads_user_idx").on(t.userId)],
 ).enableRLS();
 
+/**
+ * One item in the moderation queue: a player's report of a message, a display name or a league name; a flag from
+ * the screening model's recheck of a post saved while it was down; or an author's appeal against a removal or mute. League admins review their league's
+ * items, except those about admins, which only the operator sees.
+ */
+export const contentReports = pgTable(
+  "content_reports",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    kind: text({ enum: REPORT_KINDS }).notNull(),
+    /** What the report is about, e.g. `post:<id>`, `name:<userId>` or `league:<id>`; one open report per reporter. */
+    targetKey: text().notNull(),
+    /** The reported message, for `post` reports. */
+    postId: uuid().references(() => messagePosts.id, { onDelete: "cascade" }),
+    /** Who wrote the message or holds the name. Null for a league name. */
+    subjectUserId: uuid().references(() => authUsers.id, { onDelete: "cascade" }),
+    /** The league it was reported in. Null for a display name flagged when it was saved. */
+    leagueId: uuid().references(() => leagues.id, { onDelete: "cascade" }),
+    /** Who reported it. Null for automatic flags; for an appeal, the author appealing. */
+    reporterId: uuid().references(() => authUsers.id, { onDelete: "cascade" }),
+    source: text({ enum: REPORT_SOURCES }).notNull(),
+    reason: text({ enum: REPORT_REASONS }).notNull(),
+    /** The reporter's (or appealing author's) own words, if any. */
+    note: text(),
+    /** open: waiting for review. removed: the content was taken down. dismissed: it stays. */
+    status: text({ enum: REPORT_STATUSES }).notNull().default("open"),
+    createdAt: createdAt(),
+    resolvedAt: timestamp({ withTimezone: true }),
+    /** Who resolved it. Null while open, when automation did, or once that account is deleted. */
+    resolvedBy: uuid().references(() => authUsers.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    index("content_reports_open_idx").on(t.status, t.createdAt),
+    index("content_reports_target_idx").on(t.targetKey),
+    index("content_reports_post_idx").on(t.postId),
+    index("content_reports_subject_idx").on(t.subjectUserId),
+    index("content_reports_league_idx").on(t.leagueId),
+    index("content_reports_reporter_idx").on(t.reporterId, t.createdAt),
+    index("content_reports_resolved_by_idx").on(t.resolvedBy),
+    uniqueIndex("content_reports_one_open_per_reporter")
+      .on(t.targetKey, t.reporterId)
+      .where(sql`${t.status} = 'open' and ${t.reporterId} is not null`),
+    uniqueIndex("content_reports_one_open_flag")
+      .on(t.targetKey)
+      .where(sql`${t.status} = 'open' and ${t.reporterId} is null`),
+    oneOf("content_reports_kind_check", t.kind, REPORT_KINDS),
+    oneOf("content_reports_source_check", t.source, REPORT_SOURCES),
+    oneOf("content_reports_reason_check", t.reason, REPORT_REASONS),
+    oneOf("content_reports_status_check", t.status, REPORT_STATUSES),
+    check("content_reports_post_check", sql`(${t.kind} = 'post') = (${t.postId} is not null)`),
+  ],
+).enableRLS();
+
+/**
+ * A player has blocked another: one-way and app-wide. The blocker no longer sees the blocked player's threads,
+ * replies or reactions, and gets no notifications about their threads. Picks and standings are untouched.
+ */
+export const userBlocks = pgTable(
+  "user_blocks",
+  {
+    blockerId: userRef(),
+    blockedId: userRef(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.blockerId, t.blockedId] }),
+    index("user_blocks_blocked_idx").on(t.blockedId),
+    check("user_blocks_not_self", sql`${t.blockerId} <> ${t.blockedId}`),
+  ],
+).enableRLS();
+
+/** Append-only log of every moderation action, by a person or automatically. */
+export const moderationActions = pgTable(
+  "moderation_actions",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    action: text({ enum: MODERATION_ACTIONS }).notNull(),
+    /** The message acted on, if any. */
+    postId: uuid().references(() => messagePosts.id, { onDelete: "set null" }),
+    /** The player acted on: the author, or the muted or suspended player. */
+    userId: uuid().references(() => authUsers.id, { onDelete: "cascade" }),
+    leagueId: uuid().references(() => leagues.id, { onDelete: "cascade" }),
+    /** Who did it. Null when automation did, or once that account is deleted. */
+    actorId: uuid().references(() => authUsers.id, { onDelete: "set null" }),
+    reportId: uuid().references(() => contentReports.id, { onDelete: "set null" }),
+    /** A short reason, from the moderator or the rule that acted. */
+    note: text(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("moderation_actions_user_idx").on(t.userId, t.createdAt),
+    index("moderation_actions_created_idx").on(t.createdAt),
+    index("moderation_actions_post_idx").on(t.postId),
+    index("moderation_actions_league_idx").on(t.leagueId),
+    index("moderation_actions_actor_idx").on(t.actorId),
+    index("moderation_actions_report_idx").on(t.reportId),
+    oneOf("moderation_actions_action_check", t.action, MODERATION_ACTIONS),
+  ],
+).enableRLS();
+
 /** A bug report, feature request or note a player sent to the people who run the app. Read on the operator screen. */
 export const feedback = pgTable(
   "feedback",
@@ -357,7 +511,8 @@ export const feedback = pgTable(
     oneOf("feedback_status_check", t.status, FEEDBACK_STATUSES),
   ],
 ).enableRLS();
-export type OutboxMessage = { subject: string; html: string; text: string; listUnsubscribeUrl: string };
+/** `listUnsubscribeUrl` is absent only on the operator's moderation emails, which players never receive. */
+export type OutboxMessage = { subject: string; html: string; text: string; listUnsubscribeUrl?: string };
 
 /**
  * Emails waiting to be sent, and a short history of those that were. Rows are queued with their content
@@ -368,7 +523,7 @@ export const emailOutbox = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     userId: userRef(),
-    kind: text({ enum: NOTIFICATION_KINDS }).notNull(),
+    kind: text({ enum: EMAIL_KINDS }).notNull(),
     /** Identifies the email's purpose (e.g. `thread:<id>:<user>`) so a retried or repeated job never queues it twice. */
     dedupeKey: text().notNull().unique(),
     /** Rendered message: subject, HTML and plain-text bodies, and the one-click unsubscribe URL for its headers. */
@@ -388,7 +543,7 @@ export const emailOutbox = pgTable(
   (t) => [
     index("email_outbox_due_idx").on(t.status, t.nextAttemptAt),
     index("email_outbox_user_idx").on(t.userId),
-    oneOf("email_outbox_kind_check", t.kind, NOTIFICATION_KINDS),
+    oneOf("email_outbox_kind_check", t.kind, EMAIL_KINDS),
     oneOf("email_outbox_status_check", t.status, EMAIL_STATUSES),
   ],
 ).enableRLS();

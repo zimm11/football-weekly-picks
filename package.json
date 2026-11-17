@@ -23,6 +23,7 @@
     "db:erd": "pnpm --filter @picks/db erd",
     "db:migrate:custom": "pnpm --filter @picks/db generate:custom",
     "test:contract": "pnpm --filter @picks/api test:contract",
+    "moderation:eval": "pnpm --filter @picks/api exec tsx scripts/moderation-eval.ts",
     "test:e2e": "pnpm --filter @picks/e2e e2e",
     "test:e2e:ui": "pnpm --filter @picks/e2e e2e:ui",
     "test:all": "pnpm test && pnpm test:e2e",

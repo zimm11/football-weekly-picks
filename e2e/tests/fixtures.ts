@@ -9,6 +9,8 @@ export async function signUp(page: Page, displayName: string) {
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
   await page.getByLabel("Display name").fill(displayName);
+  // The first name step agrees to the Terms of use, which posting needs.
+  await page.getByRole("checkbox", { name: "I agree to the Terms of use" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("button", { name: displayName })).toBeVisible();
   return { email, password: PASSWORD, displayName };

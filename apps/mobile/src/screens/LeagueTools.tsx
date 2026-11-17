@@ -3,6 +3,8 @@ import {
   type LeagueDetail,
   MAX_WEEK,
   type Member,
+  MUTE_DURATION_LABELS,
+  type MuteDuration,
   nextWeekNumber,
   updateLeagueSchema,
   WEEK_PHASE_LABEL,
@@ -13,6 +15,7 @@ import { router } from "expo-router";
 import { type ComponentRef, useRef, useState } from "react";
 import { Platform, Pressable, Share, Text, TextInput, View } from "react-native";
 import { Avatar } from "../components/Avatar";
+import { ReportSheet, type ReportTarget, setBlocked } from "../components/Moderation";
 import { type Anchor, Menu, MenuItem } from "../components/Popover";
 import { PreferenceToggle } from "../components/PreferenceToggle";
 import { fonts } from "../components/ui";
@@ -38,6 +41,7 @@ import {
   s,
   useEditsGuard,
 } from "./leagueUi";
+import { ReportsQueue } from "./ReportsQueue";
 
 export const timeZones = [
   { value: "America/New_York", label: "Eastern" },
@@ -76,6 +80,7 @@ export function LeagueTools({
   const member = league.members.find((m) => m.userId === memberId);
   const setMember = (target: Member | undefined) => setMemberId(target?.userId);
   const [memberAnchor, setMemberAnchor] = useState<Anchor>();
+  const [reporting, setReporting] = useState<{ target: ReportTarget; subject: string; member?: Member }>();
   const memberButtons = useRef(new Map<string, ComponentRef<typeof View>>());
   const admin = league.role === "admin",
     adminCount = league.members.filter((m) => m.role === "admin").length,
@@ -146,6 +151,35 @@ export function LeagueTools({
       "remove",
       () => request(`${base}/members/${target.userId}`, { method: "DELETE" }),
       `${target.displayName} removed.`,
+    );
+  }
+  async function block(target: Member, blocked: boolean) {
+    setMember(undefined);
+    if (
+      blocked &&
+      !(await showConfirm({
+        title: `Block ${target.displayName}?`,
+        message:
+          "Their threads, replies and reactions are hidden from you in every league, and you won't be notified about their threads. Picks and standings don't change, and they aren't told.",
+        confirmLabel: `Block ${target.displayName}`,
+        destructive: true,
+      }))
+    )
+      return;
+    void run(
+      "block",
+      () => setBlocked(target.userId, blocked),
+      blocked ? `${target.displayName} is blocked.` : `${target.displayName} is unblocked.`,
+    );
+  }
+  function mute(target: Member, duration: MuteDuration | null) {
+    setMember(undefined);
+    void run(
+      "mute",
+      () => request(`${base}/members/${target.userId}/mute`, { method: "PUT", body: { duration } }),
+      duration
+        ? `${target.displayName} is muted here for ${MUTE_DURATION_LABELS[duration]}.`
+        : `${target.displayName} can post again.`,
     );
   }
   async function copy() {
@@ -321,6 +355,12 @@ export function LeagueTools({
           </Action>
         </Card>
       )}
+      {admin && (
+        <Card label="Reports">
+          <Eyebrow>Reports{league.openReports ? ` (${league.openReports})` : ""}</Eyebrow>
+          <ReportsQueue path={`${base}/reports`} onChanged={reload} />
+        </Card>
+      )}
       <Card label="Members">
         <Eyebrow>Members ({league.members.length})</Eyebrow>
         <View>
@@ -346,7 +386,8 @@ export function LeagueTools({
                 {busy === "role" && member?.userId === target.userId && <Label>Saving…</Label>}
               </View>
               {target.role === "admin" && <Pill inline>Admin</Pill>}
-              {admin && (
+              {admin && target.mutedUntil && <Pill inline>Muted</Pill>}
+              {(admin || target.userId !== userId) && (
                 <IconButton
                   ref={(node) => {
                     if (node) memberButtons.current.set(target.userId, node);
@@ -366,6 +407,23 @@ export function LeagueTools({
             </View>
           ))}
         </View>
+        {!admin && (
+          <Action
+            ghost
+            muted
+            compact
+            icon="flag"
+            disabled={!!busy}
+            onPress={() =>
+              setReporting({
+                target: { kind: "league_name", leagueId: league.id },
+                subject: `the league name “${league.name}”`,
+              })
+            }
+          >
+            Report this league's name
+          </Action>
+        )}
         {!admin && (
           <Label>
             Game times are shown in{" "}
@@ -450,18 +508,63 @@ export function LeagueTools({
       >
         {member && (
           <>
-            <MenuItem
-              icon="shield"
-              disabled={member.role === "admin" && adminCount === 1}
-              label={member.role === "admin" ? "Revoke admin" : "Make admin"}
-              accessibilityLabel={
-                member.role === "admin"
-                  ? `Revoke admin access for ${member.displayName}`
-                  : `Make ${member.displayName} an admin`
-              }
-              onPress={() => void role(member)}
-            />
             {member.userId !== userId && (
+              <>
+                <MenuItem
+                  icon="flag"
+                  label="Report name"
+                  accessibilityLabel={`Report ${member.displayName}'s name`}
+                  onPress={() => {
+                    setMember(undefined);
+                    setReporting({
+                      target: { kind: "display_name", leagueId: league.id, userId: member.userId },
+                      subject: `${member.displayName}'s name`,
+                      member,
+                    });
+                  }}
+                />
+                <MenuItem
+                  icon="block"
+                  label={member.blocked ? `Unblock ${member.displayName}` : `Block ${member.displayName}`}
+                  onPress={() => void block(member, !member.blocked)}
+                />
+              </>
+            )}
+            {admin && member.userId !== userId && member.role !== "admin" && (
+              <>
+                {(["24h", "7d"] as const).map((duration) => (
+                  <MenuItem
+                    key={duration}
+                    icon="mute"
+                    label={`Mute for ${MUTE_DURATION_LABELS[duration]}`}
+                    accessibilityLabel={`Mute ${member.displayName} for ${MUTE_DURATION_LABELS[duration]}`}
+                    onPress={() => mute(member, duration)}
+                  />
+                ))}
+                {member.mutedUntil && (
+                  <MenuItem
+                    icon="mute"
+                    label="Lift mute"
+                    accessibilityLabel={`Lift ${member.displayName}'s mute`}
+                    onPress={() => mute(member, null)}
+                  />
+                )}
+              </>
+            )}
+            {admin && (
+              <MenuItem
+                icon="shield"
+                disabled={member.role === "admin" && adminCount === 1}
+                label={member.role === "admin" ? "Revoke admin" : "Make admin"}
+                accessibilityLabel={
+                  member.role === "admin"
+                    ? `Revoke admin access for ${member.displayName}`
+                    : `Make ${member.displayName} an admin`
+                }
+                onPress={() => void role(member)}
+              />
+            )}
+            {admin && member.userId !== userId && (
               <MenuItem
                 icon="user-minus"
                 destructive
@@ -474,6 +577,23 @@ export function LeagueTools({
           </>
         )}
       </Menu>
+      <ReportSheet
+        target={reporting?.target ?? null}
+        subject={reporting?.subject ?? ""}
+        onClose={() => setReporting(undefined)}
+        onBlock={
+          reporting?.member && !reporting.member.blocked
+            ? {
+                name: reporting.member.displayName,
+                run: async () => {
+                  const target = reporting.member;
+                  if (target) await setBlocked(target.userId, true);
+                  reload();
+                },
+              }
+            : undefined
+        }
+      />
     </>
   );
 }

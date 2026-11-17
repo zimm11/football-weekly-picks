@@ -27,6 +27,7 @@ import {
   s,
   useLeagueLoad,
 } from "./leagueUi";
+import { ReportsQueue } from "./ReportsQueue";
 
 const date = (iso: string | null) =>
   iso
@@ -160,6 +161,11 @@ function OperatorDashboard() {
                 ))}
               </View>
             ))}
+          </View>
+          <View role="region" aria-label="Reports" style={{ gap: 12 }}>
+            <Heading>Reports</Heading>
+            <Label>Every league, oldest first. Act within 24 hours.</Label>
+            <ReportsQueue path="/operator/reports" operator />
           </View>
           <View style={{ gap: 12 }}>
             <Heading>Feedback</Heading>
