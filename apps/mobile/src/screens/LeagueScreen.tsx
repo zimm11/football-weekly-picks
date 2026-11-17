@@ -160,7 +160,6 @@ export function LeagueScreen({ leagueId, path = "" }: { leagueId: string; path?:
               key={year}
               league={seasonal}
               userId={userId}
-              isOperator={me?.isOperator ?? false}
               reload={league.reload}
               adminTools={<AdminTools league={seasonal} year={year} userId={userId} reload={league.reload} />}
             />

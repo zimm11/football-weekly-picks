@@ -19,7 +19,6 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { NotificationsPrompt } from "../components/NotificationsPrompt";
 import { colors, fonts } from "../components/ui";
 import { request } from "../lib/api";
-import { useAuth } from "../lib/auth";
 import {
   chooseType,
   copyableLeagues,
@@ -65,18 +64,14 @@ const PLAYOFF_FORMATS: { value: PlayoffFormat; label: string }[] = [
 
 export function LeaguesScreen() {
   const leagues = useLeagueLoad(() => request<LeagueSummary[]>("/leagues"), "leagues");
-  const { me } = useAuth();
-  const isOperator = me?.isOperator ?? false;
   const deviceZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const [draft, setDraft] = useState<NewLeagueDraft>(() => initialDraft(isOperator, deviceZone()));
+  const [draft, setDraft] = useState<NewLeagueDraft>(() => initialDraft(deviceZone()));
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const change = (patch: Partial<NewLeagueDraft>) => setDraft((old) => ({ ...old, ...patch }));
-  useEditsGuard(draft.name.trim().length > 0 && !busy, () =>
-    setDraft(initialDraft(isOperator, deviceZone())),
-  );
-  const types = typeChoices(isOperator);
-  const ways = managementChoices(draft.type, isOperator);
+  useEditsGuard(draft.name.trim().length > 0 && !busy, () => setDraft(initialDraft(deviceZone())));
+  const types = typeChoices();
+  const ways = managementChoices(draft.type);
   const sources = copyableLeagues(leagues.data ?? []);
   async function create() {
     const parsed = createLeagueSchema.safeParse(newLeagueBody({ ...draft, timeZone: deviceZone() }));
@@ -85,7 +80,7 @@ export function LeaguesScreen() {
     setError(undefined);
     try {
       const league = await request<CreateLeagueResult>("/leagues", { method: "POST", body: parsed.data });
-      setDraft(initialDraft(isOperator, deviceZone()));
+      setDraft(initialDraft(deviceZone()));
       // Anyone the copy left out is named where the creator is looking; the banner outlives the navigation.
       const notice = skippedNotice(league, MAX_LEAGUES_PER_USER);
       if (notice) notifyDone(notice);
@@ -144,7 +139,7 @@ export function LeaguesScreen() {
             label="Game"
             value={draft.type}
             disabled={busy}
-            onChange={(type) => setDraft((old) => chooseType(old, type, isOperator))}
+            onChange={(type) => setDraft((old) => chooseType(old, type))}
             choices={types.map((type) => ({
               value: type,
               title: LEAGUE_TYPE_INFO[type].name,

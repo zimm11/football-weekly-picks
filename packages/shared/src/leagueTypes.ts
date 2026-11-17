@@ -121,44 +121,16 @@ export const LEAGUE_TYPE_INFO: { [T in LeagueType]: LeagueTypeInfo<T> } = {
 export const leagueTypeInfo = <T extends LeagueType>(type: T): LeagueTypeInfo<T> =>
   LEAGUE_TYPE_INFO[type] as unknown as LeagueTypeInfo<T>;
 
-// ---------- Release gate ----------
+// ---------- Management ----------
 
-/**
- * Which types anyone may create. Until a type's phase is signed off only operators (`OPERATOR_USER_IDS`) can
- * create one: the API refuses everyone else and the app hides its card. Flip an entry to release it.
- */
-export const RELEASED_LEAGUE_TYPES: Record<LeagueType, boolean> = {
-  weekly: true,
-  playoff: false,
-  squares: false,
-  survivor: false,
-};
-/** Automatic management for weekly pick'em, gated like an unreleased type. */
-export const AUTOMATIC_WEEKLY_RELEASED = false;
-
-export function mayCreateLeagueType(type: LeagueType, isOperator: boolean): boolean {
-  return isOperator || RELEASED_LEAGUE_TYPES[type];
+/** Whether a league of `type` can be run the `management` way (on create, or by switching). */
+export function mayUseManagement(type: LeagueType, management: LeagueManagement): boolean {
+  return LEAGUE_TYPE_INFO[type].management.includes(management);
 }
 
-/** The types this player can create, in the registry's order (weekly first). */
-export function creatableLeagueTypes(isOperator: boolean): LeagueType[] {
-  return LEAGUE_TYPES.filter((type) => mayCreateLeagueType(type, isOperator));
-}
-
-/** Whether this player may run a league of `type` the `management` way (on create, or by switching). */
-export function mayUseManagement(
-  type: LeagueType,
-  management: LeagueManagement,
-  isOperator: boolean,
-): boolean {
-  if (!LEAGUE_TYPE_INFO[type].management.includes(management)) return false;
-  if (type === "weekly" && management === "auto") return isOperator || AUTOMATIC_WEEKLY_RELEASED;
-  return true;
-}
-
-/** How this player may run a new league of `type`, the default first. One choice means there is nothing to ask. */
-export function managementChoices(type: LeagueType, isOperator: boolean): LeagueManagement[] {
-  return LEAGUE_TYPE_INFO[type].management.filter((m) => mayUseManagement(type, m, isOperator));
+/** How a new league of `type` can be run, the default first. One choice means there is nothing to ask. */
+export function managementChoices(type: LeagueType): LeagueManagement[] {
+  return [...LEAGUE_TYPE_INFO[type].management];
 }
 
 /** What a create request without `management` means: hands-on for weekly (the old web build), else automatic. */

@@ -1,7 +1,6 @@
 import {
   type CreateLeagueResult,
-  creatableLeagueTypes,
-  LEAGUE_TYPE_INFO,
+  LEAGUE_TYPES,
   type LeagueManagement,
   type LeagueSummary,
   type LeagueType,
@@ -11,9 +10,8 @@ import {
 
 /*
  * The New league form's state and the request it sends, kept pure so the type step's rules are tested without a
- * screen: the types this player may create (weekly first and preselected), how a weekly league is run (Automatic
- * first when the player may use it, else hands-on with nothing to choose), each type's settings, and "Start with
- * members from".
+ * screen: the four types (weekly first and preselected), how a weekly league is run (Automatic preselected, or
+ * Hands-on), each type's settings, and "Start with members from".
  */
 
 export type NewLeagueDraft = {
@@ -31,7 +29,7 @@ export type NewLeagueDraft = {
   copyMembersFrom: string | null;
 };
 
-export function initialDraft(isOperator: boolean, timeZone: string): NewLeagueDraft {
+export function initialDraft(timeZone: string): NewLeagueDraft {
   return chooseType(
     {
       type: "weekly",
@@ -44,21 +42,17 @@ export function initialDraft(isOperator: boolean, timeZone: string): NewLeagueDr
       copyMembersFrom: null,
     },
     "weekly",
-    isOperator,
   );
 }
 
 /** Switches the draft to `type`, with that type's default way to run it. */
-export function chooseType(draft: NewLeagueDraft, type: LeagueType, isOperator: boolean): NewLeagueDraft {
-  const [management = LEAGUE_TYPE_INFO[type].management[0] ?? "auto"] = managementChoices(type, isOperator);
+export function chooseType(draft: NewLeagueDraft, type: LeagueType): NewLeagueDraft {
+  const [management = "auto"] = managementChoices(type);
   return { ...draft, type, management };
 }
 
-/** The type cards to show: none when weekly pick'em is the only one this player can create. */
-export function typeChoices(isOperator: boolean): LeagueType[] {
-  const types = creatableLeagueTypes(isOperator);
-  return types.length > 1 ? types : [];
-}
+/** The type cards to show, in the registry's order (weekly first). */
+export const typeChoices = (): readonly LeagueType[] => LEAGUE_TYPES;
 
 /** The leagues a player may copy members from: those they are an admin of. */
 export const copyableLeagues = (leagues: LeagueSummary[]) => leagues.filter((l) => l.role === "admin");

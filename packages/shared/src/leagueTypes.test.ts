@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createLeagueSchema, updateLeagueSchema } from "./index";
 import {
-  AUTOMATIC_WEEKLY_RELEASED,
   coversWeek,
-  creatableLeagueTypes,
   defaultManagement,
   defaultSeasonSettings,
   LEAGUE_TABS,
@@ -12,10 +10,8 @@ import {
   leagueTabFromPath,
   leagueTabPath,
   managementChoices,
-  mayCreateLeagueType,
   mayUseManagement,
   parseSeasonSettings,
-  RELEASED_LEAGUE_TYPES,
   readSeasonSettings,
 } from "./leagueTypes";
 
@@ -74,26 +70,14 @@ describe("league type registry", () => {
   });
 });
 
-describe("release gate", () => {
-  it("opens weekly to everyone and the rest to operators until released", () => {
-    expect(RELEASED_LEAGUE_TYPES).toEqual({ weekly: true, playoff: false, squares: false, survivor: false });
-    expect(creatableLeagueTypes(false)).toEqual(["weekly"]);
-    expect(creatableLeagueTypes(true)).toEqual(["weekly", "playoff", "squares", "survivor"]);
-    expect(mayCreateLeagueType("survivor", false)).toBe(false);
-    expect(mayCreateLeagueType("survivor", true)).toBe(true);
-  });
-
-  it("keeps Automatic weekly to operators, and hands-on to weekly alone", () => {
-    expect(AUTOMATIC_WEEKLY_RELEASED).toBe(false);
-    expect(mayUseManagement("weekly", "auto", false)).toBe(false);
-    expect(mayUseManagement("weekly", "auto", true)).toBe(true);
-    expect(mayUseManagement("weekly", "manual", false)).toBe(true);
-    expect(mayUseManagement("playoff", "manual", true)).toBe(false);
-    expect(mayUseManagement("playoff", "auto", false)).toBe(true);
-    // Automatic first when the player may use it; otherwise nothing to choose.
-    expect(managementChoices("weekly", true)).toEqual(["auto", "manual"]);
-    expect(managementChoices("weekly", false)).toEqual(["manual"]);
-    expect(managementChoices("squares", true)).toEqual(["auto"]);
+describe("management", () => {
+  it("lets weekly pick'em choose, Automatic first, and runs the rest automatically", () => {
+    expect(mayUseManagement("weekly", "auto")).toBe(true);
+    expect(mayUseManagement("weekly", "manual")).toBe(true);
+    expect(mayUseManagement("playoff", "manual")).toBe(false);
+    expect(mayUseManagement("playoff", "auto")).toBe(true);
+    expect(managementChoices("weekly")).toEqual(["auto", "manual"]);
+    expect(managementChoices("squares")).toEqual(["auto"]);
     // A request without management: hands-on for weekly (the old web build), automatic for the rest.
     expect(defaultManagement("weekly")).toBe("manual");
     expect(defaultManagement("survivor")).toBe("auto");

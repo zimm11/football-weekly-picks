@@ -265,14 +265,11 @@ Every league has a type, fixed when it is created: **Weekly pick'em** (the game 
 league created before types existed), **Playoff pick'em**, **Squares** or **Survivor**. The registry in
 [`packages/shared/src/leagueTypes.ts`](packages/shared/src/leagueTypes.ts) says what each owns: its tabs,
 settings, weeks (1–18 the regular season; 19 Wild Card, 20 Divisional, 21 Conference, 22 Super Bowl), when picks
-show, and whether it runs itself. Until a type is released only operators (`OPERATOR_USER_IDS`) can create one,
-and the New league form shows its card to them alone; today Weekly pick'em is the only released type, and its
-**Automatic** management (the feed sets up, opens and closes each week) is operator-only too. A weekly league is
-otherwise **Hands-on**, as before; an admin can switch in **League → League settings** when Automatic is open
-to them. **Start with members from** on New league copies the current members of a league you are an admin of
+show, and whether it runs itself. Every type is open to every player. A weekly league is run **Automatic**
+(the feed sets up, opens and closes each week; preselected on New league) or **Hands-on** (the admins run each
+week, as before, and every league from before types); an admin can switch in **League → League settings**.
+**Start with members from** on New league copies the current members of a league you are an admin of
 into the new one as members, each told once (a league event); anyone already in 25 leagues is skipped and named.
-To try the other types locally, run `pnpm worker:dev` with `OPERATOR_USER_IDS` set to the seeded admin's id
-(`11111111-1111-4111-8111-000000000001`).
 
 ### Leaving, removal, and limits
 

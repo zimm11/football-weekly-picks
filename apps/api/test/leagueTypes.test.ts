@@ -295,7 +295,7 @@ describe.skipIf(!process.env.DATABASE_URL)("league types with a database (requir
     await db.$close();
   });
 
-  it("creates weekly leagues for everyone, hands-on unless an operator chooses Automatic", async () => {
+  it("creates weekly leagues hands-on by default, or Automatic when asked", async () => {
     const plain = await create(ADMIN, { name: "Plain" });
     expect(plain.status).toBe(201);
     expect(plain.body).toMatchObject({ added: 0, skipped: [] });
@@ -308,50 +308,38 @@ describe.skipIf(!process.env.DATABASE_URL)("league types with a database (requir
       management: "manual",
     });
 
-    expect((await create(ADMIN, { name: "Auto", management: "auto" })).status).toBe(403);
-    const auto = await create(OPERATOR, { name: "Auto", management: "auto" });
+    const auto = await create(ADMIN, { name: "Auto", management: "auto" });
     expect(auto.status).toBe(201);
-    expect((await call<LeagueDetail>(OPERATOR, "GET", `/leagues/${auto.body.id}`)).body.management).toBe(
-      "auto",
-    );
+    expect((await call<LeagueDetail>(ADMIN, "GET", `/leagues/${auto.body.id}`)).body.management).toBe("auto");
   });
 
-  it("keeps unreleased types to operators, and starts their first season with its settings", async () => {
-    for (const type of ["playoff", "squares", "survivor"]) {
-      const refused = await create(ADMIN, { name: "Early", type });
-      expect(refused.status).toBe(403);
-    }
-    expect((await create(OPERATOR, { name: "Bad", type: "squares", management: "manual" })).status).toBe(400);
-    expect((await create(OPERATOR, { name: "Bad", type: "survivor", settings: { lives: 5 } })).status).toBe(
+  it("creates every type for everyone, and starts their first season with its settings", async () => {
+    expect((await create(STRANGER, { name: "Bad", type: "squares", management: "manual" })).status).toBe(400);
+    expect((await create(STRANGER, { name: "Bad", type: "survivor", settings: { lives: 5 } })).status).toBe(
       400,
     );
 
-    const pool = await create(OPERATOR, { name: "Pool", type: "survivor", settings: { lives: 2 } });
+    const pool = await create(STRANGER, { name: "Pool", type: "survivor", settings: { lives: 2 } });
     expect(pool.status).toBe(201);
-    const detail = (await call<LeagueDetail>(OPERATOR, "GET", `/leagues/${pool.body.id}`)).body;
+    const detail = (await call<LeagueDetail>(STRANGER, "GET", `/leagues/${pool.body.id}`)).body;
     expect(detail).toMatchObject({ type: "survivor", management: "auto" });
     const [season] = await db.select().from(seasons).where(eq(seasons.leagueId, pool.body.id));
     expect(season).toMatchObject({ year: 2026, settings: { lives: 2 } });
 
-    const playoff = await create(OPERATOR, { name: "Bracket", type: "playoff" });
+    const playoff = await create(STRANGER, { name: "Bracket", type: "playoff" });
     const [playoffSeason] = await db.select().from(seasons).where(eq(seasons.leagueId, playoff.body.id));
     expect(playoffSeason?.settings).toEqual({ format: "traditional" });
   });
 
-  it("switches a weekly league between Automatic and Hands-on, gated like a new league", async () => {
-    const mine = await create(ADMIN, { name: "Switchable" });
+  it("switches a weekly league between Automatic and Hands-on", async () => {
+    const mine = await create(STRANGER, { name: "Switchable" });
     const path = `/leagues/${mine.body.id}`;
-    expect((await call(ADMIN, "PATCH", path, { management: "auto" })).status).toBe(403);
-    expect((await call(ADMIN, "PATCH", path, { management: "manual" })).status).toBe(200);
+    expect((await call(STRANGER, "PATCH", path, { management: "auto" })).status).toBe(200);
+    expect((await call<LeagueDetail>(STRANGER, "GET", path)).body.management).toBe("auto");
+    expect((await call(STRANGER, "PATCH", path, { management: "manual" })).status).toBe(200);
 
-    const ops = await create(OPERATOR, { name: "Ops switch" });
-    const opsPath = `/leagues/${ops.body.id}`;
-    expect((await call(OPERATOR, "PATCH", opsPath, { management: "auto" })).status).toBe(200);
-    expect((await call<LeagueDetail>(OPERATOR, "GET", opsPath)).body.management).toBe("auto");
-    expect((await call(OPERATOR, "PATCH", opsPath, { management: "manual" })).status).toBe(200);
-
-    const pool = await create(OPERATOR, { name: "No switch", type: "squares" });
-    expect((await call(OPERATOR, "PATCH", `/leagues/${pool.body.id}`, { management: "manual" })).status).toBe(
+    const pool = await create(STRANGER, { name: "No switch", type: "squares" });
+    expect((await call(STRANGER, "PATCH", `/leagues/${pool.body.id}`, { management: "manual" })).status).toBe(
       409,
     );
   });

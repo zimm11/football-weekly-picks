@@ -58,14 +58,11 @@ export const timeZones = [
 export function LeagueTools({
   league,
   userId,
-  isOperator = false,
   reload,
   adminTools,
 }: {
   league: LeagueDetail;
   userId: string;
-  /** Operators may use what isn't released yet (Automatic weekly). */
-  isOperator?: boolean;
   reload: () => void;
   /** The league type's own admin tools (Set up a week, Start season, New board), shown to admins first. */
   adminTools?: ReactNode;
@@ -85,10 +82,8 @@ export function LeagueTools({
   const memberButtons = useRef(new Map<string, ComponentRef<typeof View>>());
   const admin = league.role === "admin",
     adminCount = league.members.filter((m) => m.role === "admin").length,
-    // Only weekly pick'em has a choice, and Automatic only once it's open to this player (or already in use).
-    managementOptions = [
-      ...new Set([...managementChoices(league.type, isOperator), league.management]),
-    ].filter((m) => league.type === "weekly" || m === league.management),
+    // Only weekly pick'em has a choice.
+    managementOptions = managementChoices(league.type),
     dirty =
       admin && (name !== league.name || timeZone !== league.timeZone || management !== league.management);
   useEditsGuard(dirty && busy !== "settings", () => {

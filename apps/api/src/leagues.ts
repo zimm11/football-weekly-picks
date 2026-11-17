@@ -22,9 +22,8 @@ import {
   lowPointLosers,
   MAX_LEAGUE_MEMBERS,
   MAX_LEAGUES_PER_USER,
-  mayCreateLeagueType,
-  mayUseManagement,
   MODERATION_MESSAGES,
+  mayUseManagement,
   type PlayerSeasonStats,
   parseSeasonSettings,
   preferredSeasonYear,
@@ -63,9 +62,9 @@ import {
   weekParticipants,
 } from "./context";
 import { deliverLeagueEventsSoon, queueLeagueEvent } from "./leagueEvents";
+import { blockedBy, openReportCount, requireNotSuspended, screen } from "./moderation";
 import type { AppServices } from "./services";
 import { TYPE_HOOKS } from "./typeHooks";
-import { blockedBy, openReportCount, requireNotSuspended, screen } from "./moderation";
 
 const memberParam = param(z.object({ leagueId: z.uuid(), userId: z.uuid() }));
 
@@ -184,13 +183,9 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
       .post("/leagues", auth, body(createLeagueSchema), async (c) => {
         const input = c.req.valid("json");
         const userId = c.var.user.id;
-        const operator = isOperator(deps, userId);
-        const info = leagueTypeInfo(input.type);
-        // Unreleased types, and Automatic weekly, are for operators until signed off.
-        if (!mayCreateLeagueType(input.type, operator)) fail(403, `${info.name} leagues aren't open yet.`);
         const management = input.management ?? defaultManagement(input.type);
-        if (!mayUseManagement(input.type, management, operator)) {
-          fail(403, "Automatic leagues aren't open yet. Choose Hands-on.");
+        if (!mayUseManagement(input.type, management)) {
+          fail(400, `${leagueTypeInfo(input.type).name} leagues run themselves.`);
         }
         const settings = parseSeasonSettings(input.type, input.settings);
         await requireDisplayName(db, userId);
@@ -368,12 +363,9 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
         requireAdmin(role);
         const changes = c.req.valid("json");
         if (changes.management !== undefined && changes.management !== league.management) {
-          // Only weekly pick'em has a choice; Automatic is gated like an unreleased type.
-          if (league.type !== "weekly")
+          // Only weekly pick'em has a choice.
+          if (!mayUseManagement(league.type, changes.management))
             fail(409, `${leagueTypeInfo(league.type).name} leagues run themselves.`);
-          if (!mayUseManagement(league.type, changes.management, isOperator(deps, c.var.user.id))) {
-            fail(403, "Automatic leagues aren't open yet.");
-          }
         }
         const renaming = changes.name !== undefined && changes.name !== league.name;
         if (renaming) await requireNotSuspended(db, c.var.user.id);

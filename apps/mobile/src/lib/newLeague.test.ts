@@ -9,38 +9,36 @@ import {
 } from "./newLeague";
 
 describe("New league", () => {
-  it("starts on weekly pick'em, Automatic when the player may use it and hands-on otherwise", () => {
-    expect(initialDraft(true, "America/Chicago")).toMatchObject({ type: "weekly", management: "auto" });
-    expect(initialDraft(false, "America/Chicago")).toMatchObject({ type: "weekly", management: "manual" });
+  it("starts on weekly pick'em, run Automatic", () => {
+    expect(initialDraft("America/Chicago")).toMatchObject({ type: "weekly", management: "auto" });
   });
 
-  it("shows the type cards only when there is more than one type to choose", () => {
-    expect(typeChoices(false)).toEqual([]);
-    expect(typeChoices(true)).toEqual(["weekly", "playoff", "squares", "survivor"]);
+  it("offers all four types, weekly first", () => {
+    expect(typeChoices()).toEqual(["weekly", "playoff", "squares", "survivor"]);
   });
 
   it("runs the types other than weekly automatically", () => {
-    const draft = initialDraft(true, "UTC");
-    expect(chooseType(draft, "survivor", true).management).toBe("auto");
-    expect(chooseType(chooseType(draft, "squares", true), "weekly", true).management).toBe("auto");
+    const draft = initialDraft("UTC");
+    expect(chooseType(draft, "survivor").management).toBe("auto");
+    expect(chooseType(chooseType(draft, "squares"), "weekly").management).toBe("auto");
   });
 
   it("sends the type's settings and the league to copy members from", () => {
-    const draft = { ...initialDraft(true, "UTC"), name: "Crew" };
+    const draft = { ...initialDraft("UTC"), name: "Crew" };
     expect(newLeagueBody(draft)).toEqual({
       name: "Crew",
       timeZone: "UTC",
       type: "weekly",
       management: "auto",
     });
-    expect(newLeagueBody({ ...chooseType(draft, "playoff", true), format: "guillotine" })).toMatchObject({
+    expect(newLeagueBody({ ...chooseType(draft, "playoff"), format: "guillotine" })).toMatchObject({
       type: "playoff",
       settings: { format: "guillotine" },
     });
-    expect(newLeagueBody({ ...chooseType(draft, "survivor", true), lives: 2 })).toMatchObject({
+    expect(newLeagueBody({ ...chooseType(draft, "survivor"), lives: 2 })).toMatchObject({
       settings: { lives: 2 },
     });
-    expect(newLeagueBody({ ...chooseType(draft, "survivor", true), startWeek: 5 }).settings).toEqual({
+    expect(newLeagueBody({ ...chooseType(draft, "survivor"), startWeek: 5 }).settings).toEqual({
       lives: 1,
       startWeek: 5,
     });
