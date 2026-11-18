@@ -1,4 +1,4 @@
-/** The app's color and font tokens, shared by the iPhone app and the web build (see AGENTS.md, Design). */
+/** The app's color and font tokens, shared by the iPhone app and the web build (see docs/agents/design.md). */
 const palette = {
   background: "#070d1f",
   foreground: "#f1f4fb",
@@ -78,7 +78,7 @@ export const tabular = { fontVariant: ["tabular-nums"] } as const;
 /**
  * The text styles: font, size, line height and, for the display faces, tracking and capitals. No color, so
  * they spread into any style. Display (Barlow Condensed capitals) for titles, team names, scores and big
- * numbers; Barlow in sentence case for everything else (see AGENTS.md, Design).
+ * numbers; Barlow in sentence case for everything else (see docs/agents/design.md).
  */
 export const type = {
   hero: {

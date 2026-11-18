@@ -1047,8 +1047,8 @@ pbpaste | node scripts/check-db-url.mjs
 | A password reset email never arrives locally            | Local Auth doesn't send real email. Open the test inbox URL from `pnpm ports`.                                        |
 | Production health or migration connection check fails   | Check the session pooler URL, verified TLS, and Supabase SSL enforcement. Use the connection diagnostic above.        |
 
-See [`AGENTS.md`](AGENTS.md) for additional contributor guidance on UI conventions, API structure, and
-repository tooling.
+See [`AGENTS.md`](AGENTS.md) for contributor guidance: the commands, the rules no change may break, and a table
+of per-area docs in [`docs/agents`](docs/agents) (design, app and API structure, each league type, testing, deploy).
 
 ## Native iPhone app (Expo)
 
