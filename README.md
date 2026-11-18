@@ -389,8 +389,9 @@ account can be in at most 25 leagues; removed and departed members don't count t
 
 **Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
 password. Locally, that email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
-use **Change password** or **Change your name** from the account menu in the header. **Settings**
-(`/account`) lets you choose one of 100 profile logos or return to your initials. It also holds notifications (by email and on this device: new threads, pick reminders, and results and
+use **Change password** or **Name and picture** from the account menu in the header; **Name and picture**
+(`/change-name`) changes the display name and lets you choose one of 100 profile logos or return to your initials. **Settings**
+(`/account`) holds notifications (by email and on this device: new threads, pick reminders, and results and
 updates), the home-screen app help, and the email
 address (a change is confirmed from both the old and the new address).
 

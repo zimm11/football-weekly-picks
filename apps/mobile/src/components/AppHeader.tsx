@@ -16,7 +16,7 @@ export function AppHeader() {
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState(false);
   const rows: { label: string; icon: IconName; path?: Href; action?: () => void }[] = [
-    { label: "Change your name", icon: "users", path: "/change-name" },
+    { label: "Name and picture", icon: "users", path: "/change-name" },
     { label: "Settings", icon: "settings", path: "/account" },
     { label: "Change password", icon: "lock", path: "/reset-password" },
     { label: "Send feedback", icon: "chat", path: { pathname: "/feedback", params: { from: path } } },
