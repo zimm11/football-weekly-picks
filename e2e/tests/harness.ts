@@ -28,6 +28,7 @@ export type HarnessGame = {
   awayScore?: number | null;
   status?: "scheduled" | "in_progress" | "final";
   period?: number;
+  liveScore?: { home: number; away: number };
   periodScores?: Partial<Record<"q1" | "half" | "q3" | "final", { home: number; away: number }>>;
 };
 

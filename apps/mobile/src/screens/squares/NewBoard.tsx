@@ -1,35 +1,58 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Heading and Action render native Text.
 import {
-  BOARD_PHASE_LABEL,
-  type BoardSummary,
   DEFAULT_SQUARES_PER_PLAYER,
+  type LeagueDetail,
   MAX_SQUARES_PER_PLAYER,
   seasonYear,
 } from "@picks/shared";
+import { router, useNavigation } from "expo-router";
 import { useState } from "react";
-import { Text, View } from "react-native";
-import { AppLink } from "../../components/AppLink";
-import { hoverFill, ringInside } from "../../components/pressState";
-import { colors } from "../../components/ui";
+import { View } from "react-native";
+import { NotFound } from "../../components/NotFound";
 import { messageOf, request } from "../../lib/api";
 import { now } from "../../lib/clock";
 import { notifyDone } from "../../lib/notify";
-import { boardTitle, type GameDraft, gameFromDraft, scheduleWeekAt } from "../../lib/squaresBoard";
-import type { AdminToolsProps } from "../leagueTypeScreens";
-import {
-  Action,
-  Card,
-  Failure,
-  Heading,
-  Input,
-  Label,
-  Pill,
-  s,
-  useEditsGuard,
-  useLeagueLoad,
-} from "../leagueUi";
-import { chooseBoard, setBoards } from "./boardChoice";
+import { usePageTitle } from "../../lib/pageTitle";
+import { type GameDraft, gameFromDraft, scheduleWeekAt } from "../../lib/squaresBoard";
+import { Action, Card, Failure, Heading, Input, Label, s, useEditsGuard, useLeagueLoad } from "../leagueUi";
+import { BoardFrame } from "./BoardFrame";
 import { GameChooser } from "./GameChooser";
+
+/** `/boards/new?league=:id`: a commissioner sets up a board, then lands on it. */
+export function NewBoardScreen({ leagueId }: { leagueId: string }) {
+  const loaded = useLeagueLoad(() => request<LeagueDetail>(`/leagues/${leagueId}`), `/leagues/${leagueId}`);
+  const league = loaded.data;
+  // Not the player's league, or not a squares league: there is no such page.
+  const missing = league ? league.type !== "squares" : loaded.status === 404;
+  usePageTitle(missing ? "Page not found" : league ? `New board · ${league.name}` : "New board");
+  if (missing) return <NotFound />;
+  return (
+    <BoardFrame league={league} reload={loaded.refresh}>
+      {!league ? (
+        loaded.error ? (
+          <Failure message={loaded.error} retry={loaded.reload} />
+        ) : (
+          <View
+            accessible
+            accessibilityLabel="Loading league"
+            accessibilityState={{ busy: true }}
+            style={[s.card, { height: 320 }]}
+          />
+        )
+      ) : league.role !== "admin" ? (
+        <Card>
+          <Heading>New board</Heading>
+          <Label>Only league commissioners can set up a board.</Label>
+          <Action href={`/leagues/${leagueId}`} how="replace">
+            Go to the boards
+          </Action>
+        </Card>
+      ) : (
+        <NewBoardForm league={league} />
+      )}
+    </BoardFrame>
+  );
+}
 
 /** A new board's game: the Super Bowl, with "A game from the schedule" starting on this week's games. */
 export const newGameDraft = (): GameDraft => ({
@@ -48,12 +71,9 @@ export const parseLimit = (value: string) => {
   return /^\d+$/.test(value.trim()) && n >= 1 && n <= MAX_SQUARES_PER_PLAYER ? n : null;
 };
 
-/** Squares' admin tool on the League tab: New board, and the league's boards to manage. */
-export function SquaresAdminTools({ league }: AdminToolsProps) {
-  const boards = useLeagueLoad(
-    () => request<BoardSummary[]>(`/leagues/${league.id}/boards`),
-    `${league.id}:boards`,
-  );
+/** The form: the game (the Super Bowl unless another is chosen) and how many squares each player may hold. */
+function NewBoardForm({ league }: { league: LeagueDetail }) {
+  const navigation = useNavigation();
   const [draft, setDraft] = useState<GameDraft>(newGameDraft);
   const [limit, setLimit] = useState(String(DEFAULT_SQUARES_PER_PLAYER));
   const [busy, setBusy] = useState(false);
@@ -80,12 +100,7 @@ export function SquaresAdminTools({ league }: AdminToolsProps) {
       notifyDone("Board created.");
       setDraft(newGameDraft());
       setLimit(String(DEFAULT_SQUARES_PER_PLAYER));
-      chooseBoard(league.id, created.id);
-      const list = await request<BoardSummary[]>(`/leagues/${league.id}/boards`).catch(() => undefined);
-      if (list) {
-        boards.setData(list);
-        setBoards(league.id, list);
-      }
+      if (navigation.isFocused()) router.replace(`/boards/${created.id}` as never);
     } catch (err) {
       setError(messageOf(err));
     } finally {
@@ -93,43 +108,9 @@ export function SquaresAdminTools({ league }: AdminToolsProps) {
     }
   }
   return (
-    <Card label="Boards">
-      <Heading>Boards</Heading>
-      <Failure message={boards.error} retry={boards.reload} />
-      {boards.data?.length === 0 && <Label>No boards yet. Set up the first one below.</Label>}
-      {!!boards.data?.length && (
-        <View>
-          {boards.data.map((board) => (
-            <AppLink
-              key={board.id}
-              href={`/boards/${board.id}/manage`}
-              accessibilityLabel={`Manage ${boardTitle(board, league.timeZone)}`}
-              style={(state) => [
-                {
-                  minHeight: 56,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  borderTopWidth: 1,
-                  borderTopColor: colors.border,
-                  backgroundColor: hoverFill(state),
-                },
-                ringInside,
-              ]}
-            >
-              <Text style={[s.subtitle, { fontSize: 20, flexShrink: 1 }]}>
-                {boardTitle(board, league.timeZone)}
-              </Text>
-              <Pill inline tone={board.phase === "open" ? "primary" : "muted"}>
-                {BOARD_PHASE_LABEL[board.phase]}
-              </Pill>
-            </AppLink>
-          ))}
-        </View>
-      )}
-      <View style={{ gap: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
-        <Heading>New board</Heading>
+    <Card label="New board">
+      <Heading>New board</Heading>
+      <View style={{ gap: 12 }}>
         <GameChooser
           leagueId={league.id}
           timeZone={league.timeZone}

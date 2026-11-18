@@ -4,12 +4,14 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Text, useWindowDimensions, View } from "react-native";
 import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
+import { TeamLogo } from "../../components/TeamLogo";
 import { colors, fonts } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
 import { haptics } from "../../lib/haptics";
 import { offerHomeScreen } from "../../lib/homeScreen";
 import { notifyError } from "../../lib/notify";
 import {
+  boardScore,
   claimRoom,
   type PendingChange,
   quarterRows,
@@ -21,7 +23,7 @@ import {
 } from "../../lib/squaresBoard";
 import { kickoffDay, kickoffTime } from "../../lib/weekPresentation";
 import { Action, Card, Eyebrow, Failure, Heading, Label, Pill, Sheet, s, useLeagueLoad } from "../leagueUi";
-import { rememberBoardLeague } from "./boardChoice";
+import { rememberBoardLeague } from "./boardLeague";
 import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
 
 /** Loads one board, refetching until it is final: every 30 s while open, every minute once locked. */
@@ -79,8 +81,6 @@ export function BoardPanel({
   userId,
   displayName,
   avatarId,
-  header,
-  standalone,
 }: {
   boardId: string;
   /** The board as `useBoard` loads it. */
@@ -88,10 +88,6 @@ export function BoardPanel({
   userId: string;
   displayName: string;
   avatarId?: number | null;
-  /** Shown above the board once it has loaded (a standalone screen's league header). */
-  header?: (view: BoardView) => ReactNode;
-  /** On `/boards/:id` rather than in the Board tab: Manage board takes this screen's place in history. */
-  standalone?: boolean;
 }) {
   const changes = useSquareChanges(boardId, board.setData, board.reload);
   const [sheet, setSheet] = useState<{ row: number; col: number } | null>(null);
@@ -121,26 +117,39 @@ export function BoardPanel({
   const shown = sheet ? squares.find((sq) => sq.row === sheet.row && sq.col === sheet.col) : undefined;
   return (
     <View style={{ gap: 20 }}>
-      {header?.(view)}
-      <BoardHeading view={view} admin={view.role === "admin"} standalone={standalone} />
+      <BoardHeading view={view} admin={view.role === "admin"} />
       <Failure message={board.error} retry={board.reload} />
-      <SquaresGrid view={view} squares={squares} userId={userId} onPress={tap} />
-      {room.open && (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <Action
-            secondary
-            icon="grid"
-            disabled={room.left === 0}
-            onPress={() => {
-              const open = randomOpenSquare(squares);
-              if (open) claim(open.row, open.col);
-            }}
-          >
-            Claim a random square
-          </Action>
-          <Label>Tap an open square to claim it, and yours to give it back, until the board locks.</Label>
-        </View>
-      )}
+      {/* The score, the grid and its one line of help read as one block, closer together than the cards. */}
+      <View style={{ gap: 12 }}>
+        <GameScore view={view} />
+        <SquaresGrid view={view} squares={squares} userId={userId} onPress={tap} />
+        {room.open && (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+            <Action
+              secondary
+              compact
+              icon="grid"
+              disabled={room.left === 0}
+              onPress={() => {
+                const open = randomOpenSquare(squares);
+                if (open) claim(open.row, open.col);
+              }}
+            >
+              Claim a random square
+            </Action>
+            <View style={{ flex: 1, minWidth: 200 }}>
+              <Label>Tap an open square to claim it, and yours to give it back, until the board locks.</Label>
+            </View>
+          </View>
+        )}
+        {view.current && (
+          <Label>
+            {view.live
+              ? "Now marks the square that would win if the quarter ended on this score. Scores update every minute."
+              : "Now marks the square that would win if the quarter ended on this score."}
+          </Label>
+        )}
+      </View>
       <BoardDetails view={view} squares={squares} mine={mine} userId={userId} />
       {sheet && (
         <SquareSheet
@@ -156,40 +165,105 @@ export function BoardPanel({
 }
 
 /**
+ * The game's score as a scoreboard strip above the grid: the away team on the left and the home team on the
+ * right, as the title reads, with what the score is between them ("Live", "After Q1", "Final"). Nothing until
+ * there is a score. A phone shows the teams' abbreviations at the strip's ends, since the title above spells
+ * the names out; a wider screen gathers the names and scores in the middle.
+ */
+export function GameScore({ view }: { view: BoardView }) {
+  const { width } = useWindowDimensions();
+  const score = boardScore(view);
+  if (!score) return null;
+  const phone = width < 560;
+  // The narrowest phones: smaller type, so "WSH 17" still fits beside its badge.
+  const size =
+    width < 360 ? { logo: 20, name: 16, points: 28, gap: 6 } : { logo: 24, name: 18, points: 32, gap: 8 };
+  const wide = { logo: 28, name: 22, points: 38, gap: 12 };
+  const { logo, name, points, gap } = phone ? size : wide;
+  const side = (team: string, own: number, other: number, home: boolean) => (
+    <View
+      style={{
+        flex: 1,
+        flexDirection: home ? "row-reverse" : "row",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        gap,
+      }}
+    >
+      <TeamLogo team={team} size={logo} />
+      <Text
+        numberOfLines={1}
+        style={[
+          { fontFamily: fonts.displayBold, fontSize: name, letterSpacing: 0.5, color: colors.foreground },
+          phone ? { flex: 1, textAlign: home ? "right" : "left" } : { flexShrink: 1 },
+        ]}
+      >
+        {phone ? team : teamName(team).toUpperCase()}
+      </Text>
+      {/* Once the game is over, the losing score steps back. */}
+      <Text
+        style={{
+          fontFamily: fonts.displayExtraBold,
+          fontSize: points,
+          lineHeight: points + 2,
+          fontVariant: ["tabular-nums"],
+          color: score.status === "Final" && own < other ? colors.mutedForeground : colors.foreground,
+        }}
+      >
+        {own}
+      </Text>
+    </View>
+  );
+  return (
+    <View
+      role="region"
+      aria-label={`${score.label}: ${teamName(view.awayTeam)} ${score.awayScore}, ${teamName(view.homeTeam)} ${score.homeScore}`}
+      style={[
+        s.card,
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: gap + 2,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+        },
+      ]}
+    >
+      {side(view.awayTeam, score.awayScore, score.homeScore, false)}
+      <View
+        style={{ minWidth: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 }}
+      >
+        {score.live && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.win }} />}
+        <Text
+          style={{
+            fontFamily: fonts.semibold,
+            fontSize: 12,
+            lineHeight: 16,
+            color: score.live ? colors.win : colors.mutedForeground,
+          }}
+        >
+          {score.status}
+        </Text>
+      </View>
+      {side(view.homeTeam, score.homeScore, score.awayScore, true)}
+    </View>
+  );
+}
+
+/**
  * The board's heading: its phase, the game and the kickoff, and for an admin the way to the other board screen.
  * On a phone it is two short rows (phase and kickoff, then the game on one line) so the grid starts higher up.
- * `standalone`: on `/boards/:id` or its manage screen, where the link swaps one for the other in place, so going
- * back and forth between them doesn't pile up history.
+ * The link swaps the board and its manage screen in place, so going back and forth doesn't pile up history.
  */
-export function BoardHeading({
-  view,
-  admin,
-  manage,
-  standalone = !!manage,
-}: {
-  view: BoardView;
-  admin: boolean;
-  manage?: boolean;
-  standalone?: boolean;
-}) {
+export function BoardHeading({ view, admin, manage }: { view: BoardView; admin: boolean; manage?: boolean }) {
   const { width } = useWindowDimensions();
   const phone = width < 560;
   const title = manage ? "Manage board" : `${teamName(view.awayTeam)} at ${teamName(view.homeTeam)}`;
   const when = `${manage ? `${view.awayTeam} at ${view.homeTeam} · ` : ""}${kickoffDay(view.kickoff, view.timeZone)}, ${kickoffTime(view.kickoff, view.timeZone)}`;
-  const pills = (
-    <>
-      <Pill
-        inline={phone}
-        tone={view.phase === "open" ? "primary" : view.phase === "final" ? "win" : "muted"}
-      >
-        {BOARD_PHASE_LABEL[view.phase]}
-      </Pill>
-      {view.live && (
-        <Pill inline={phone} tone="win">
-          {`Now ${view.awayTeam} ${view.live.awayScore} · ${view.homeTeam} ${view.live.homeScore}`}
-        </Pill>
-      )}
-    </>
+  const pill = (
+    <Pill inline={phone} tone={view.phase === "open" ? "primary" : view.phase === "final" ? "win" : "muted"}>
+      {BOARD_PHASE_LABEL[view.phase]}
+    </Pill>
   );
   const link =
     admin &&
@@ -198,7 +272,7 @@ export function BoardHeading({
         View board
       </Action>
     ) : (
-      <Action secondary compact href={`/boards/${view.id}/manage`} how={standalone ? "replace" : "push"}>
+      <Action secondary compact href={`/boards/${view.id}/manage`} how="replace">
         Manage board
       </Action>
     ));
@@ -207,7 +281,7 @@ export function BoardHeading({
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-            {pills}
+            {pill}
             <Text style={[s.muted, { flexShrink: 1 }]}>{when}</Text>
           </View>
           {link}
@@ -228,7 +302,7 @@ export function BoardHeading({
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
       <View style={{ gap: 6, flex: 1, minWidth: 220 }}>
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{pills}</View>
+        {pill}
         <Text accessibilityRole="header" style={s.title}>
           {title}
         </Text>

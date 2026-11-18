@@ -300,8 +300,12 @@ into the new one as members, each told once (a league event); anyone already in 
 #### Squares
 
 A **Squares** league holds boards, each a 10 by 10 grid on one NFL game (the Super Bowl by default once ESPN
-lists it, any game from the feed, or teams and a kickoff typed in). A commissioner sets one up under **League → New
-board**; the header's selector switches between a league's boards. Players tap an open square to claim it (the
+lists it, any game from the feed, or teams and a kickoff typed in). The **Boards** tab lists the league's boards,
+the ones still to finish first, each with its phase, kickoff, claimed squares and your count; tap one to open it.
+A commissioner sets one up under **Boards → New board** and lands on it. On a board, the home team's name and
+numbers run across the top and the away team's up the left side. Once there is a score, a scoreboard row above
+the grid shows it: live for a game from the feed (refreshed every minute), else the latest quarter entered; the
+square that would win on that score is marked **Now**. Players tap an open square to claim it (the
 cell fills at once and rolls back if the API refuses) and tap theirs to give it back, up to the board's limit
 (10 by default, 1–100, raised before the lock and never lowered); **Claim a random square** picks one. A commissioner
 can claim squares under a guest's name (counting against nobody's limit), give back any square, and delete a

@@ -47,7 +47,7 @@ import { MessagesScreen } from "./MessagesScreen";
  * - `LeagueTabsFrame` (the navigator's `layout`) knows which tab is showing: it gives the tab bar the active tab
  *   and, on iPhone, the switch between tabs, reloads the league each time another tab is shown, and shows the
  *   recap sheet on the type's own tabs.
- * - `LeagueTab` (each tab's route) draws the league's header (name, season or board selector, the tab row on wide
+ * - `LeagueTab` (each tab's route) draws the league's header (name, season selector, the tab row on wide
  *   screens) at the top of its own scroll, then the tab: the type's screen (`LEAGUE_TYPE_SCREENS`), Messages, or
  *   the League tab. A path the type has no tab for is the not-found screen.
  * - `LeagueBottomBar` (the navigator's `tabBar`) is the bar along the bottom on phones.
@@ -293,7 +293,7 @@ export function LeagueBottomBar() {
 }
 
 /**
- * The league's header at the top of a tab: the name row with "All leagues" and the season (or board) selector,
+ * The league's header at the top of a tab: the name row with "All leagues" and the season selector,
  * the tab row on wide screens, a failed reload, and the Start a new season card while it is open.
  */
 export function LeagueTabHeader({ tab }: { tab: LeagueTabId }) {
@@ -314,12 +314,6 @@ export function LeagueTabHeader({ tab }: { tab: LeagueTabId }) {
         ]}
         onSeason={shell.chooseYear}
         seasonWidth={detail.type === "playoff" ? 156 : undefined}
-        // The type's own selector (squares' board) only on the type's own tabs, where it changes something.
-        selector={
-          tab !== "messages" && tab !== "league" && screens.HeaderSelector ? (
-            <screens.HeaderSelector league={detail} />
-          ) : undefined
-        }
       />
       {width >= 768 && (
         <LeagueTabBar
@@ -391,7 +385,9 @@ export function LeagueTab({ path }: { path: string }) {
             league={seasonal}
             userId={userId}
             reload={shell.reload}
-            adminTools={<AdminTools league={seasonal} year={year} userId={userId} reload={shell.reload} />}
+            adminTools={
+              AdminTools && <AdminTools league={seasonal} year={year} userId={userId} reload={shell.reload} />
+            }
           />
         </LeagueTabScroll>
       ) : TypeTab ? (

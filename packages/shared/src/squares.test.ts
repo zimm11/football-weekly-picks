@@ -9,7 +9,6 @@ import {
   cryptoRandom,
   currentSquare,
   drawDigits,
-  preferredBoard,
   type RandomSource,
   squareWinners,
   updateBoardSchema,
@@ -189,24 +188,6 @@ describe("squareWinners", () => {
     expect(currentSquare(digits, [q1], { homeScore: 14, awayScore: 3 })).toEqual({ row: 5, col: 4 });
     expect(currentSquare(digits, [{ ...q1, period: "final" }], { homeScore: 1, awayScore: 1 })).toBeNull();
     expect(currentSquare(digits, [], null)).toBeNull();
-  });
-});
-
-describe("preferredBoard", () => {
-  it("shows the next board to finish, else the latest one", () => {
-    const board = (id: string, kickoffAt: string, phase: "open" | "final") => ({
-      id,
-      kickoff: kickoffAt,
-      phase,
-    });
-    const boards = [
-      board("old", "2026-02-08T23:30:00Z", "final"),
-      board("next", "2027-02-14T23:30:00Z", "open"),
-      board("later", "2028-02-13T23:30:00Z", "open"),
-    ];
-    expect(preferredBoard(boards)?.id).toBe("next");
-    expect(preferredBoard(boards.slice(0, 1))?.id).toBe("old");
-    expect(preferredBoard([])).toBeUndefined();
   });
 });
 

@@ -38,13 +38,12 @@ export type RecapProps = { weekId: string; userId: string; leagueId: string; clo
 export type LeagueTypeScreens = {
   /** A screen for each of the type's own tabs: every tab but Messages and League, which all types share. */
   tabs: Partial<Record<LeagueTabId, ComponentType<LeagueTabProps>>>;
-  AdminTools: ComponentType<AdminToolsProps>;
+  /** None: the type's admin tools live on its own screens (squares' are on Boards and each board). */
+  AdminTools?: ComponentType<AdminToolsProps>;
   /** The bottom sheet shown once after a week (or round) is finalized (`recapWeekId`). None: no recap. */
   Recap?: ComponentType<RecapProps>;
-  /** Whether the header's selector is the season (week-based types). Squares picks a board in its own tab. */
+  /** Whether the header has the season selector (week-based types). Squares lists its boards in its own tab. */
   seasonSelector: boolean;
-  /** The header's selector when it isn't the season: squares' board selector. Shown on every tab but Messages. */
-  HeaderSelector?: ComponentType<{ league: LeagueDetail }>;
 };
 
 export const LEAGUE_TYPE_SCREENS: Record<LeagueType, LeagueTypeScreens> = {

@@ -1,6 +1,8 @@
 import type { BoardQuarter, BoardSquare } from "@picks/shared";
 import { describe, expect, it } from "vitest";
 import {
+  boardScore,
+  boardsInOrder,
   boardTitle,
   cellLabel,
   claimRoom,
@@ -102,23 +104,82 @@ describe("squares board presentation", () => {
 
   it("sizes the grid so all ten columns fit the width it has", () => {
     // Content width is the screen less the page's 16px gutters.
-    for (const screen of [320, 360, 393, 430, 559, 560, 768, 928, 1280]) {
+    for (const screen of [320, 360, 375, 390, 393, 430, 559, 560, 768, 928, 1280]) {
       const content = Math.min(screen, 928) - 32;
       const layout = gridLayout(content);
       const card = (layout.bleed ? content + 32 : content) - 2 * layout.padding;
       expect(layout.width, `fits at ${screen}`).toBeLessThanOrEqual(card);
-      expect(layout.width).toBe(layout.axis + 10 * (layout.cell + 2));
+      // The away team's name, its numbers, then ten cells with a gap before each.
+      expect(layout.width).toBe(layout.side + layout.axis + 10 * (layout.cell + 2));
+      expect(layout.span).toBe(10 * layout.cell + 9 * 2);
     }
-    // A phone: edge to edge, as large as the width allows.
-    expect(gridLayout(393 - 32)).toMatchObject({ bleed: true, cell: 33, twoLines: true });
-    expect(gridLayout(320 - 32)).toMatchObject({ bleed: true, cell: 26, twoLines: false });
-    // From 560px the cells are full tap targets, and they stop growing at 56px.
-    expect(gridLayout(560 - 32)).toMatchObject({ bleed: false, cell: 45 });
+    // A phone: edge to edge, as large as the width allows, with room for a mark and a label from 390px.
+    expect(gridLayout(393 - 32)).toMatchObject({ bleed: true, cell: 32, twoLines: true });
+    expect(gridLayout(390 - 32)).toMatchObject({ bleed: true, cell: 32, twoLines: true });
+    expect(gridLayout(320 - 32)).toMatchObject({ bleed: true, cell: 25, twoLines: false });
+    // From 560px the cells are tap-sized, and they stop growing at 56px.
+    expect(gridLayout(560 - 32)).toMatchObject({ bleed: false, cell: 43 });
     expect(gridLayout(768 - 32).cell).toBe(56);
-    expect(gridLayout(896 - 32)).toMatchObject({ bleed: false, cell: 56, width: 32 + 580 });
+    expect(gridLayout(896 - 32)).toMatchObject({ bleed: false, cell: 56, width: 24 + 28 + 580 });
     // The type never gets too small to read.
     expect(gridLayout(320 - 32).labelSize).toBeGreaterThanOrEqual(9);
     expect(gridLayout(320 - 32).initialsSize).toBeGreaterThanOrEqual(11);
+    expect(gridLayout(320 - 32).nameSize).toBeGreaterThanOrEqual(13);
+  });
+
+  it("lists boards still to finish first, then finished ones from the latest", () => {
+    const board = (id: string, kickoff: string, phase: "open" | "locked" | "underway" | "final") => ({
+      id,
+      kickoff,
+      phase,
+    });
+    const boards = [
+      board("older", "2025-02-09T23:30:00Z", "final"),
+      board("old", "2026-02-08T23:30:00Z", "final"),
+      board("later", "2028-02-13T23:30:00Z", "open"),
+      board("next", "2027-02-14T23:30:00Z", "underway"),
+    ];
+    expect(boardsInOrder(boards).map((b) => b.id)).toEqual(["next", "later", "old", "older"]);
+    expect(boards.map((b) => b.id)).toEqual(["older", "old", "later", "next"]);
+    expect(boardsInOrder([])).toEqual([]);
+  });
+
+  it("shows the live score, else the latest quarter scored", () => {
+    const quarter = (period: BoardQuarter["period"], homeScore: number, awayScore: number): BoardQuarter => ({
+      period,
+      homeScore,
+      awayScore,
+      square: null,
+      winner: null,
+    });
+    expect(boardScore({ live: null, quarters: [] })).toBeNull();
+    expect(boardScore({ live: { homeScore: 10, awayScore: 3 }, quarters: [quarter("q1", 7, 3)] })).toEqual({
+      homeScore: 10,
+      awayScore: 3,
+      status: "Live",
+      label: "Live score",
+      live: true,
+    });
+    // A board typed in by hand has no live score: the last quarter entered stands in for it.
+    expect(boardScore({ live: null, quarters: [quarter("q1", 7, 3)] })).toMatchObject({
+      homeScore: 7,
+      status: "After Q1",
+      label: "Score after Q1",
+      live: false,
+    });
+    expect(boardScore({ live: null, quarters: [quarter("half", 14, 3), quarter("q1", 7, 3)] })).toMatchObject(
+      {
+        homeScore: 14,
+        status: "Halftime",
+        label: "Halftime score",
+      },
+    );
+    expect(
+      boardScore({
+        live: null,
+        quarters: [quarter("q1", 7, 3), quarter("q3", 17, 10), quarter("final", 26, 20)],
+      }),
+    ).toMatchObject({ homeScore: 26, awayScore: 20, status: "Final", label: "Final score" });
   });
 
   it("moves the keyboard focus one square at a time and stops at the edges", () => {
