@@ -40,12 +40,12 @@ export function HowToPlayManagement() {
       <Heading title="Automatic or hands-on" icon="refresh" />
       <Card>
         <Item title="Automatic (the default)">
-          The league runs itself from the NFL schedule. The commissioner presses Start season on the League
-          tab and picks the start week; the season then runs through Week 18. Each Tuesday at 9 AM Eastern the
-          week's games and that morning's lines come in and it opens for picks, all at once, so the spreads
-          you pick against are never days old (they freeze then). Final scores fill in as games end, and the
-          week finalizes after its last game, usually Monday night. You get a notification when a week opens
-          and when it's final.
+          The league runs itself from the pro football schedule. The commissioner presses Start season on the
+          League tab and picks the start week; the season then runs through Week 18. Each Tuesday at 9 AM
+          Eastern the week's games and that morning's lines come in and it opens for picks, all at once, so
+          the spreads you pick against are never days old (they freeze then). Final scores fill in as games
+          end, and the week finalizes after its last game, usually Monday night. You get a notification when a
+          week opens and when it's final.
         </Item>
         <Item title="What the commissioner can still do">
           Edit spreads and points until a week's first kickoff, choose the tiebreaker game, add or remove a

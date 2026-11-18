@@ -74,8 +74,8 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
       <Card label="Playoff season">
         <Heading>{year} playoffs</Heading>
         <Label>
-          Rounds set themselves up from the NFL schedule: the Wild Card round once the regular season ends,
-          each round open as soon as every game has a line, final once every game has a result.
+          Rounds set themselves up from the pro football schedule: the Wild Card round once the regular season
+          ends, each round open as soon as every game has a line, final once every game has a result.
         </Label>
         <ChoiceList
           label="Format"

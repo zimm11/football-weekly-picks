@@ -14,11 +14,11 @@ export function HowToPlaySquares() {
       <Card>
         <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>A 10 by 10 board on one game</Body>
         <Body muted>
-          A squares league holds boards, each on one NFL game: the Super Bowl by default, or any game. The
-          home team runs across the top and the away team down the side. Tap an open square to claim it, and
-          tap yours to give it back, until the board locks. Claim a random square picks one for you. Each
-          player can hold {DEFAULT_SQUARES_PER_PLAYER} squares unless the commissioner sets another limit (up
-          to {MAX_SQUARES_PER_PLAYER}).
+          A squares league holds boards, each on one pro football game: the Super Bowl by default, or any
+          game. The home team runs across the top and the away team down the side. Tap an open square to claim
+          it, and tap yours to give it back, until the board locks. Claim a random square picks one for you.
+          Each player can hold {DEFAULT_SQUARES_PER_PLAYER} squares unless the commissioner sets another limit
+          (up to {MAX_SQUARES_PER_PLAYER}).
         </Body>
       </Card>
       <Card>
