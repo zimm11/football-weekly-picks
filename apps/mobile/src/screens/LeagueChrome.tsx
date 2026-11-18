@@ -16,6 +16,7 @@ import { colors, fonts } from "../components/ui";
 import { readLoadCache } from "../lib/loadCache";
 import { counted } from "../lib/messagePresentation";
 import { webTransition } from "../lib/motion";
+import { useSoftKeyboardOpen } from "../lib/softKeyboard";
 import { useLeagueTabsNav } from "./leagueContext";
 import { Select } from "./leagueUi";
 
@@ -171,6 +172,8 @@ export function LeagueTabBar({
   const { width } = useWindowDimensions();
   const horizontal = wide && width >= 768;
   const path = usePathname();
+  // A phone browser lifts the bottom edge onto the keyboard: the bar steps aside while the player types.
+  const typing = useSoftKeyboardOpen();
   // Drawn inside this league's own tab navigator (its tabs), or on a screen above it (a week, a board).
   const tabsNav = useLeagueTabsNav();
   const inLeague = tabsNav?.leagueId === leagueId ? tabsNav : null;
@@ -200,6 +203,7 @@ export function LeagueTabBar({
     if (inLeague) inLeague.open(tab);
     else void openPath(target, "dismissTo");
   }
+  if (typing && !horizontal) return null;
   return (
     <View
       // The league's sections are links between screens, as on the web.

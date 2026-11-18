@@ -1207,11 +1207,7 @@ function Thread({
                       accessibilityRole="button"
                       accessibilityLabel={`Options for message ${post.position} by ${post.authorName}`}
                       disabled={!!busy}
-                      style={(state) => [
-                        s.iconButton,
-                        s.postMenuButton,
-                        { backgroundColor: hoverFill(state) },
-                      ]}
+                      style={[s.tool, s.toolEnd]}
                       onPress={() =>
                         postMenuButtons.current
                           .get(post.id)
@@ -1220,7 +1216,11 @@ function Thread({
                           )
                       }
                     >
-                      <Icon name="more" size={20} color={colors.mutedForeground} />
+                      {(state) => (
+                        <View style={[s.toolFace, { backgroundColor: hoverFill(state) }, toolFade]}>
+                          <Icon name="more" size={20} color={colors.mutedForeground} />
+                        </View>
+                      )}
                     </Pressable>
                   );
                   return (
@@ -1375,9 +1375,9 @@ function Thread({
                                             accessibilityRole="button"
                                             accessibilityLabel="Add reaction"
                                             style={[
-                                              s.reactionTarget,
+                                              s.tool,
                                               // Alone, its icon lines up with the text above.
-                                              !post.reactions.some((value) => value.count > 0) && s.addAlone,
+                                              !post.reactions.some((value) => value.count > 0) && s.toolStart,
                                             ]}
                                             onPress={() =>
                                               addReactionButtons.current
@@ -1391,53 +1391,50 @@ function Thread({
                                             {(state) => (
                                               <View
                                                 style={[
-                                                  s.addReaction,
+                                                  s.toolFace,
                                                   { backgroundColor: hoverFill(state) },
-                                                  webTransition(["background-color"]),
+                                                  toolFade,
                                                 ]}
                                               >
-                                                <Icon name="smile" size={18} color={colors.mutedForeground} />
-                                                <Icon name="plus" size={10} color={colors.mutedForeground} />
+                                                <Icon name="smile" size={20} color={colors.mutedForeground} />
                                               </View>
                                             )}
                                           </Pressable>
                                         )}
                                       </View>
                                     )}
-                                    {interactive && !thread.postingBlocked && (
-                                      <Pressable
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`Quote message ${post.position} by ${post.authorName}`}
-                                        disabled={!!busy}
-                                        style={[s.reactionTarget, s.quoteTarget]}
-                                        onPress={() => {
-                                          setQuote({
-                                            id: post.id,
-                                            authorName: post.authorName,
-                                            body: post.body,
-                                          });
-                                          input.current?.focus();
-                                        }}
-                                      >
-                                        {(state) => (
-                                          <View
-                                            style={[
-                                              s.quoteReply,
-                                              { backgroundColor: hoverFill(state) },
-                                              webTransition(["background-color"]),
-                                            ]}
-                                          >
-                                            <Icon
-                                              name="quote"
-                                              size={18}
-                                              color={colors.mutedForeground}
-                                              filled
-                                            />
-                                          </View>
-                                        )}
-                                      </Pressable>
-                                    )}
-                                    {menuButton && <View style={s.menuEnd}>{menuButton}</View>}
+                                    {/* Quote and ⋯ sit together at the row's end, the dots at the column's edge. */}
+                                    <View style={s.tools}>
+                                      {interactive && !thread.postingBlocked && (
+                                        <Pressable
+                                          accessibilityRole="button"
+                                          accessibilityLabel={`Quote message ${post.position} by ${post.authorName}`}
+                                          disabled={!!busy}
+                                          style={[s.tool, !menuButton && s.toolEnd]}
+                                          onPress={() => {
+                                            setQuote({
+                                              id: post.id,
+                                              authorName: post.authorName,
+                                              body: post.body,
+                                            });
+                                            input.current?.focus();
+                                          }}
+                                        >
+                                          {(state) => (
+                                            <View
+                                              style={[
+                                                s.toolFace,
+                                                { backgroundColor: hoverFill(state) },
+                                                toolFade,
+                                              ]}
+                                            >
+                                              <Icon name="reply" size={20} color={colors.mutedForeground} />
+                                            </View>
+                                          )}
+                                        </Pressable>
+                                      )}
+                                      {menuButton}
+                                    </View>
                                   </View>
                                 )}
                               </View>
@@ -1701,8 +1698,10 @@ function Thread({
   );
 }
 
-/** A reply's row reaches 8px past the column on each side, so the landing highlight has room around it. */
-const ROW_INSET = space.md;
+/** A message's small controls: 44px to touch, a 32px circle to see. */
+const TOOL = 44;
+const TOOL_FACE = 32;
+const toolFade = webTransition(["background-color"]);
 /** The avatar's gutter beside every message (32px avatar, 10px to the text). */
 const GUTTER = 32;
 /** What the reply box keeps free at its right for "Ctrl+↩ to post". */
@@ -1799,18 +1798,18 @@ const s = StyleSheet.create({
     padding: layout.cardPad,
     marginBottom: space.xs,
   },
+  // Inset as far as the topic card's padding, so every avatar, name and ⋯ lines up down the thread (and the
+  // landing highlight has room around the row).
   reply: {
     marginTop: space.md,
-    marginHorizontal: -ROW_INSET,
-    paddingHorizontal: ROW_INSET,
+    paddingHorizontal: layout.cardPad,
     paddingVertical: space.xs,
     ...corner(radius.lg),
   },
   // A follow-up from the same author, a few minutes on: 4px under the one above.
   grouped: {
     marginTop: -space.xs,
-    marginHorizontal: -ROW_INSET,
-    paddingHorizontal: ROW_INSET,
+    paddingHorizontal: layout.cardPad,
     paddingVertical: space.xs,
     ...corner(radius.lg),
   },
@@ -1826,13 +1825,26 @@ const s = StyleSheet.create({
     columnGap: space.md,
     marginBottom: -space.xxs,
   },
-  // The ⋯ at the row's end, its dots near the column's edge.
-  postMenuButton: { flexShrink: 0, marginRight: -10 },
-  menuEnd: { marginLeft: "auto" },
-  addAlone: { marginLeft: -space.md },
-  // Reactions wrap inside their own space; the quote button keeps its place at the end of the first row.
-  // The buttons are 44px to touch and 28px to see, so the row takes 28px.
-  postActions: { flexDirection: "row", alignItems: "flex-start", gap: space.md, marginVertical: -space.md },
+  // Reactions (and Add reaction after them) wrap inside their own space; Quote and ⋯ keep their place at the
+  // end of the first row. The buttons are 44px to touch and 32px to see, so the row takes 32px.
+  postActions: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: space.md,
+    marginVertical: -(TOOL - TOOL_FACE) / 2,
+  },
+  tools: { flexDirection: "row", flexShrink: 0, marginLeft: "auto" },
+  tool: { width: TOOL, height: TOOL, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  toolFace: {
+    width: TOOL_FACE,
+    height: TOOL_FACE,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // The first and last circles meet the column's edges.
+  toolStart: { marginLeft: -(TOOL - TOOL_FACE) / 2 },
+  toolEnd: { marginRight: -(TOOL - TOOL_FACE) / 2 },
   name: { flexDirection: "row", alignItems: "baseline", gap: space.xs, flexShrink: 1, minWidth: 0 },
   reactions: {
     flexShrink: 1,
@@ -1857,24 +1869,6 @@ const s = StyleSheet.create({
   reactionEmoji: { fontSize: 15, lineHeight: 18 },
   reactionCount: { ...type.caption, ...tabular, fontFamily: fonts.semibold, color: colors.mutedForeground },
   reactedCount: { color: colors.foreground },
-  addReaction: {
-    height: 28,
-    minWidth: 40,
-    borderRadius: radius.full,
-    paddingHorizontal: space.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.xxs,
-  },
-  quoteTarget: { flexShrink: 0 },
-  quoteReply: {
-    height: 28,
-    width: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.full,
-  },
   // What stands in for a message's text: one quiet 44px line, no avatar or name.
   placeholderRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
   placeholderText: { ...type.small, color: colors.mutedForeground },
