@@ -36,5 +36,6 @@ Code: rules as pure functions in `packages/shared/src/squares.ts`; routes in `ap
 - `/boards/:id` is one board, `/boards/:id/manage` the admin's screen, and `/boards/new?league=:id` creates one and lands on it. All three sit in `BoardFrame` above the league, not in its tab navigator. The season selector is off, and a squares league has no admin tools on the League tab.
 - The board is laid out as a paper one is: the home team across the top, the away team up the left side.
 - **All ten columns show on a phone with no sideways scrolling**: `gridLayout` sizes the cells to the screen. The grid is one tab stop that the arrow keys move through.
-- Only the player's own squares (`primary`) and winning ones (`win`) are solid; everyone else's are a tint of their avatar color (`squareTone`).
+- A held square shows its holder's board name (`boardNames`: first name, "Chris M" when two share it, the whole name when that still collides), or board-unique initials (`boardInitials`) when the name doesn't fit (`cellName`). Fitting uses Barlow Condensed SemiBold's own widths (`condensedWidth`); **never cut a name short**. Profile pictures stay in the Players card and the square's sheet.
+- Only the player's own squares (`primary`) and winning ones (`win`) are solid, each a gradient with a glow; everyone else's fade from their avatar color (`squareTone`). A winner's sweep of light and the "Now" square's breathing ring (`Shine`, `NowRing`) animate transform and opacity only, and stay still under reduced motion.
 - Claiming is optimistic and rolls back with `notifyError`.

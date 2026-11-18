@@ -11,7 +11,7 @@ import {
   type SquarePeriod,
   teamName,
 } from "@picks/shared";
-import { colors } from "../components/theme";
+import { colors, elevation } from "../components/theme";
 import { parseLeagueKickoff } from "./leagueLogic";
 
 /*
@@ -137,18 +137,142 @@ export const holderKey = (holder: Pick<BoardSquare, "userId" | "name">) =>
   holder.userId ?? `guest:${holder.name}`;
 
 /**
- * A held square's fill and the color of its mark. Solid fills mean only "yours" (`primary`) or "won" (`win`);
- * everyone else's square is a tint of their avatar color (`colorOf`, `avatarColor` in components/Avatar.tsx:
- * about 40% over the card), with the foreground's ink, so your own squares stand out from across the room.
- * The Players card draws each holder's chip with the same tone, so it is the grid's legend.
+ * A held square's look. Solid fills mean only "yours" (`primary`) or "won" (`win`), each running from its light
+ * end at the top left (`primaryLight`, `winLight`) and lifted by a glow; everyone else's square is their avatar
+ * color (`colorOf`, `avatarColor` in components/Avatar.tsx), strong at the top left and fading into the card at
+ * the bottom right, with the foreground's ink. Every held square has a lit top edge (`squareEdge`), so the
+ * board reads as glossy tiles rather than flat paint, and your own squares still stand out from across the room.
+ * `fill` is the flat color under the gradient (and all a renderer without gradients shows). The Players card
+ * draws each holder's chip with the same tone, so it is the grid's legend.
  */
 export function squareTone(
   { mine, won, name }: { mine: boolean; won: boolean; name: string },
   colorOf: (name: string) => string | undefined,
-): { fill: string; ink: string } {
-  if (won) return { fill: colors.win, ink: colors.primaryForeground };
-  if (mine) return { fill: colors.primary, ink: colors.primaryForeground };
-  return { fill: `${colorOf(name) ?? colors.avatars[0]}66`, ink: colors.foreground };
+): { fill: string; gradient: string; shadow: string; ink: string } {
+  if (won)
+    return {
+      fill: colors.win,
+      gradient: `linear-gradient(145deg, ${colors.winLight}, ${colors.win} 65%)`,
+      shadow: `${elevation.glowWin}, ${elevation.squareEdge}`,
+      ink: colors.primaryForeground,
+    };
+  if (mine)
+    return {
+      fill: colors.primary,
+      gradient: `linear-gradient(145deg, ${colors.primaryLight}, ${colors.primary} 65%)`,
+      shadow: `${elevation.glowPrimary}, ${elevation.squareEdge}`,
+      ink: colors.primaryForeground,
+    };
+  const hue = colorOf(name) ?? colors.avatars[0];
+  return {
+    fill: `${hue}66`,
+    gradient: `linear-gradient(145deg, ${hue}e6, ${hue}4d)`,
+    shadow: elevation.squareEdge,
+    ink: colors.foreground,
+  };
+}
+
+const words = (name: string) => name.trim().split(/\s+/).filter(Boolean);
+
+/**
+ * What each holder is called on this board's squares (keyed by `holderKey`), as short as stays unique among
+ * everyone holding one: the first name ("Chris"); with the last name's initial when two holders share it
+ * ("Chris M", "Chris H"); the whole name when that still collides. Compared ignoring case, guests included.
+ */
+export function boardNames(holders: Pick<BoardSquare, "userId" | "name">[]): Map<string, string> {
+  const unique = new Map<string, Pick<BoardSquare, "userId" | "name">>();
+  for (const holder of holders) unique.set(holderKey(holder), holder);
+  const first = (name: string) => words(name)[0] ?? name;
+  const firstAndInitial = (name: string) => {
+    const w = words(name);
+    return w.length > 1 ? `${w[0]} ${(w.at(-1) ?? "").charAt(0).toUpperCase()}` : name.trim();
+  };
+  const tally = (pick: (name: string) => string) => {
+    const counts = new Map<string, number>();
+    for (const { name } of unique.values()) {
+      const key = pick(name).toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return (name: string) => counts.get(pick(name).toLowerCase()) === 1;
+  };
+  const firstIsUnique = tally(first);
+  const initialIsUnique = tally(firstAndInitial);
+  const names = new Map<string, string>();
+  for (const [key, { name }] of unique) {
+    names.set(
+      key,
+      firstIsUnique(name) ? first(name) : initialIsUnique(name) ? firstAndInitial(name) : name.trim(),
+    );
+  }
+  return names;
+}
+
+/**
+ * Each holder's initials on this board (keyed by `holderKey`), for a square too narrow for their name: two
+ * letters as their avatar shows them ("CM"), and the last name's first two when two holders share those
+ * ("CMA", "CMO").
+ */
+export function boardInitials(holders: Pick<BoardSquare, "userId" | "name">[]): Map<string, string> {
+  const unique = new Map<string, string>();
+  for (const holder of holders) unique.set(holderKey(holder), holder.name);
+  const two = (name: string) => {
+    const w = words(name);
+    return ((w[0]?.[0] ?? "?") + (w.length > 1 ? (w.at(-1)?.[0] ?? "") : (w[0]?.[1] ?? ""))).toUpperCase();
+  };
+  const counts = new Map<string, number>();
+  for (const name of unique.values()) counts.set(two(name), (counts.get(two(name)) ?? 0) + 1);
+  const initials = new Map<string, string>();
+  for (const [key, name] of unique) {
+    const w = words(name);
+    const clash = (counts.get(two(name)) ?? 0) > 1 && w.length > 1;
+    initials.set(key, clash ? `${w[0]?.[0] ?? ""}${(w.at(-1) ?? "").slice(0, 2)}`.toUpperCase() : two(name));
+  }
+  return initials;
+}
+
+/**
+ * Barlow Condensed SemiBold's advance widths for the printable ASCII characters (space to "~"), in thousandths
+ * of an em, read from assets/fonts/BarlowCondensed_600SemiBold.ttf. They size a name to its square without
+ * laying the text out first.
+ */
+const CONDENSED_WIDTHS = [
+  200, 269, 306, 606, 434, 772, 581, 152, 279, 279, 361, 439, 199, 325, 211, 386, 450, 274, 425, 426, 459,
+  428, 429, 392, 434, 423, 252, 218, 439, 439, 439, 413, 759, 456, 462, 457, 472, 435, 415, 462, 477, 224,
+  443, 477, 415, 538, 507, 467, 457, 455, 461, 434, 452, 478, 471, 665, 460, 456, 406, 330, 386, 330, 413,
+  405, 206, 434, 437, 422, 437, 426, 291, 431, 439, 215, 211, 433, 199, 665, 439, 432, 441, 441, 313, 398,
+  282, 438, 415, 592, 417, 403, 368, 319, 171, 319, 480,
+];
+
+/**
+ * How wide `text` sets in Barlow Condensed SemiBold at `fontSize`. A letter outside ASCII (an accent, another
+ * script) counts as a wide one, and an emoji as a full em, so an estimate errs toward not fitting.
+ */
+export function condensedWidth(text: string, fontSize: number): number {
+  let thousandths = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    thousandths +=
+      code >= 32 && code < 127 ? (CONDENSED_WIDTHS[code - 32] ?? 480) : code >= 0x2000 ? 1000 : 520;
+  }
+  return (thousandths / 1000) * fontSize;
+}
+
+/** The room a square leaves its name: 2px each side, so the letters don't touch the edge. */
+const NAME_INSET = 4;
+
+/**
+ * What a held square shows for its holder: their board name (`boardNames`) when it fits the square at the
+ * layout's `holderSize`, else their initials (`boardInitials`), never a name cut short.
+ */
+export function cellName(
+  key: string,
+  names: Map<string, string>,
+  initials: Map<string, string>,
+  layout: { cell: number; holderSize: number },
+): string {
+  const name = names.get(key);
+  if (name && condensedWidth(name, layout.holderSize) <= layout.cell - NAME_INSET) return name;
+  return initials.get(key) ?? "?";
 }
 
 /**
@@ -232,16 +356,14 @@ export function gridLayout(contentWidth: number, gutter = 16, maxHeight?: number
     width: side + axis + BOARD_SIZE * (cell + GRID_GAP),
     /** The whole card's height: its padding, the home team's name, the row of numbers and the ten rows. */
     height: gridChrome(bleed, side) + (BOARD_SIZE + 1) * cell,
-    /** Room for a holder's mark and a quarter's label, one above the other; a smaller cell shows one of them. */
+    /** Room for a holder's name and a quarter's label, one above the other; a smaller cell shows one of them. */
     twoLines: cell >= 32,
     /** Type sizes that stay readable as the cell shrinks. */
     digitSize: Math.max(13, Math.min(22, Math.round(cell * 0.5))),
     nameSize: bleed ? (cell < 28 ? 13 : 14) : 18,
-    initialsSize: cell >= 52 ? 15 : cell >= 44 ? 13 : cell >= 30 ? 12 : 11,
+    /** A holder's name in their square (Barlow Condensed, `cellName`). */
+    holderSize: cell >= 52 ? 15 : cell >= 44 ? 13 : 11,
     labelSize: cell >= 52 ? 12 : cell >= 44 ? 11 : cell >= 30 ? 10 : 9,
-    /** A profile picture alone in its cell, and with a quarter's label under it. */
-    avatarSize: Math.max(14, Math.min(30, cell - 10)),
-    avatarSizeLabelled: Math.max(14, Math.min(26, cell - 18)),
   };
 }
 

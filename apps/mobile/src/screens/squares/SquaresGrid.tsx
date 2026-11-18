@@ -1,5 +1,5 @@
 import { BOARD_SIZE, type BoardSquare, type BoardView, type SquarePeriod, teamName } from "@picks/shared";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   type LayoutChangeEvent,
@@ -9,15 +9,18 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { Avatar, avatarColor, avatarInitials } from "../../components/Avatar";
+import { avatarColor } from "../../components/Avatar";
 import { pressTile } from "../../components/pressState";
 import { SkeletonBlock } from "../../components/SkeletonBlock";
 import { TeamLogo } from "../../components/TeamLogo";
 import { layout as pageLayout, radius, space, widths } from "../../components/theme";
 import { colors, fonts } from "../../components/ui";
-import { usePop, webTransition } from "../../lib/motion";
+import { easing, nativeDriver, usePop, useReducedMotion, webTransition } from "../../lib/motion";
 import {
+  boardInitials,
+  boardNames,
   cellLabel,
+  cellName,
   digitAt,
   GRID_GAP,
   gridLayout,
@@ -118,11 +121,13 @@ type GridKeyEvent = { nativeEvent: { key?: string }; preventDefault?: () => void
 
 /**
  * The 10 by 10 board, laid out as a paper one is: the home team's name and numbers across the top, the away
- * team's up the left side ("?" until the draw). A cell shows its holder's profile logo or initials: yours on a
- * solid primary fill, everyone else's on a tint of their avatar color (`squareTone`), so only yours and the
- * winners are solid. A winning square takes the win fill and its quarter's label (with a primary ring when it is yours),
- * a square that hit with nobody on it is only tinted and outlined, and the square that would win now says "Now"
- * with its two numbers picked out on the edges, so none of them is color alone.
+ * team's up the left side ("?" until the draw). A cell shows its holder's name as the board knows them
+ * (`boardNames`: "Chris M" when two Chrises hold squares), or their initials where the name doesn't fit
+ * (`cellName`). Yours run solid primary, everyone else's fade from their avatar color (`squareTone`), so only
+ * yours and the winners are solid. A winning square takes the win fill, a glow, a sweep of light every few
+ * seconds and its quarter's label (with a primary ring when it is yours), a square that hit with nobody on it is
+ * only tinted and outlined, and the square that would win now says "Now" in a pulsing ring with its two numbers
+ * picked out on the edges, so none of them is color alone.
  *
  * The whole board always fits the width (`gridLayout`): edge to edge with small cells on a phone, 43px cells and
  * up from 560px, centered in its card; beside the rail (`fit`), the window's height too. `highlight` picks out
@@ -159,6 +164,8 @@ export function SquaresGrid({
   const [active, setActive] = useState({ row: 0, col: 0 });
   const cells = useRef(new Map<string, { focus?: () => void }>());
   const byKey = new Map(squares.map((sq) => [squareKey(sq.row, sq.col), sq]));
+  // Names are made unique across everyone on the board, so they are worked out once for the whole grid.
+  const names = useMemo(() => ({ short: boardNames(squares), initials: boardInitials(squares) }), [squares]);
 
   function onKeyDown(event: GridKeyEvent) {
     const next = gridMove(event.nativeEvent.key ?? "", active.row, active.col);
@@ -240,6 +247,9 @@ export function SquaresGrid({
                         }}
                         layout={layout}
                         square={square}
+                        holder={
+                          square ? cellName(holderKey(square), names.short, names.initials, layout) : ""
+                        }
                         mine={!!square && square.userId === userId}
                         wins={wins}
                         current={current}
@@ -307,11 +317,12 @@ function Digit({
   );
 }
 
-/** One square: its holder's mark, and what it has won or would win now. */
+/** One square: its holder's name, and what it has won or would win now. */
 function Cell({
   nodeRef,
   layout,
   square,
+  holder,
   mine,
   wins,
   current,
@@ -325,6 +336,8 @@ function Cell({
   nodeRef: (node: { focus?: () => void } | null) => void;
   layout: GridLayout;
   square: BoardSquare | undefined;
+  /** What the square calls its holder: their board name, or initials where that doesn't fit (`cellName`). */
+  holder: string;
   mine: boolean;
   wins: SquarePeriod[];
   current: boolean;
@@ -353,10 +366,11 @@ function Cell({
   const text = both ? `${period}\nNow` : current ? "Now" : period;
   // A cell too small for two lines keeps the label: it is what says "won" without color.
   const showMark = !!square && !both && (layout.twoLines || !text);
-  // Your own winning square keeps a ring in your color; the square that would win now has a ring as well as
-  // its "Now"; a hit on nobody's square is an outline, not a fill. Two lines of label leave a small cell no
-  // room for a thick ring.
-  const ring = won && mine ? (both && cell < 32 ? 1 : 3) : current && !won ? 2 : emptyHit ? 1 : 0;
+  // Your own winning square keeps a ring in your color; the square that would win now has a pulsing ring as
+  // well as its "Now" (`NowRing`); a hit on nobody's square is an outline, not a fill. Two lines of label leave
+  // a small cell no room for a thick ring.
+  const ring = won && mine ? (both && cell < 32 ? 1 : 3) : emptyHit ? 1 : 0;
+  const corner = cell >= 40 ? 8 : 6;
   return (
     <Pressable
       ref={(node) => nodeRef(node as unknown as { focus?: () => void } | null)}
@@ -371,8 +385,10 @@ function Cell({
         {
           width: cell,
           height: cell,
-          borderRadius: cell >= 40 ? 8 : 6,
+          borderRadius: corner,
           backgroundColor: fill,
+          backgroundImage: tone?.gradient,
+          boxShadow: tone?.shadow,
           alignItems: "center",
           justifyContent: "center",
           overflow: "hidden",
@@ -386,27 +402,29 @@ function Cell({
         dimmed && { opacity: DIMMED },
       ]}
     >
+      {won && <Shine cell={cell} />}
+      {current && !won && <NowRing corner={corner} />}
       {showMark && square && (
-        <Animated.View style={{ transform: [{ scale }] }}>
-          {square.avatarId ? (
-            <Avatar
-              name={square.name}
-              avatarId={square.avatarId}
-              size={text ? layout.avatarSizeLabelled : layout.avatarSize}
-            />
-          ) : (
-            <Text
-              numberOfLines={1}
-              style={{
-                fontFamily: fonts.semibold,
-                fontSize: layout.initialsSize,
-                lineHeight: layout.initialsSize + 2,
-                color: ink,
-              }}
-            >
-              {avatarInitials(square.name)}
-            </Text>
-          )}
+        <Animated.View style={{ transform: [{ scale }], maxWidth: cell - 4 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              fontFamily: fonts.displaySemibold,
+              fontSize: layout.holderSize,
+              lineHeight: layout.holderSize + 2,
+              color: ink,
+              // A soft shadow lifts the name off a tile that fades into the card; the solid ones don't need it.
+              ...(mine || won
+                ? null
+                : {
+                    textShadowColor: colors.overlay,
+                    textShadowOffset: { width: 0, height: 1 },
+                    textShadowRadius: 2,
+                  }),
+            }}
+          >
+            {holder}
+          </Text>
         </Animated.View>
       )}
       {text && (
@@ -424,6 +442,89 @@ function Cell({
         </Text>
       )}
     </Pressable>
+  );
+}
+
+/** How long a winning square waits between sweeps of light, and how long a sweep takes. */
+const SHINE_PAUSE = 2800;
+const SHINE_SWEEP = 900;
+
+/**
+ * A band of light sweeping across a winning square, corner to corner, every few seconds; the cell's
+ * `overflow: hidden` clips it to the square. It only moves (transform), and isn't there under reduced motion.
+ */
+function Shine({ cell }: { cell: number }) {
+  const reduced = useReducedMotion();
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: SHINE_SWEEP,
+          easing: easing.out,
+          useNativeDriver: nativeDriver,
+        }),
+        Animated.delay(SHINE_PAUSE),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [progress, reduced]);
+  if (reduced) return null;
+  const band = Math.round(cell * 0.45);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      aria-hidden
+      style={{
+        position: "absolute",
+        top: -cell * 0.25,
+        left: 0,
+        width: band,
+        height: cell * 1.5,
+        backgroundImage: `linear-gradient(90deg, ${colors.sheenClear}, ${colors.sheen}, ${colors.sheenClear})`,
+        transform: [
+          { translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [-band, cell + band] }) },
+          { rotate: "20deg" },
+        ],
+      }}
+    />
+  );
+}
+
+/**
+ * The ring around the square that would win now, breathing slowly between full and faint so the eye finds it.
+ * Under reduced motion it stays full.
+ */
+function NowRing({ corner }: { corner: number }) {
+  const reduced = useReducedMotion();
+  const opacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (reduced) {
+      opacity.setValue(1);
+      return;
+    }
+    const breathe = (toValue: number) =>
+      Animated.timing(opacity, { toValue, duration: 900, easing: easing.out, useNativeDriver: nativeDriver });
+    const loop = Animated.loop(Animated.sequence([breathe(0.35), breathe(1)]));
+    loop.start();
+    return () => loop.stop();
+  }, [opacity, reduced]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      aria-hidden
+      style={{
+        position: "absolute",
+        inset: 0,
+        borderRadius: corner,
+        borderWidth: 2,
+        borderColor: colors.win,
+        opacity,
+      }}
+    />
   );
 }
 

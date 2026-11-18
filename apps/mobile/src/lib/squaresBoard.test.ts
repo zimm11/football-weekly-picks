@@ -1,12 +1,16 @@
 import type { BoardQuarter, BoardSquare } from "@picks/shared";
 import { describe, expect, it } from "vitest";
-import { colors } from "../components/theme";
+import { colors, elevation } from "../components/theme";
 import {
+  boardInitials,
+  boardNames,
   boardScore,
   boardsInOrder,
   boardTitle,
   cellLabel,
+  cellName,
   claimRoom,
+  condensedWidth,
   digitAt,
   gameFromDraft,
   gridLayout,
@@ -138,7 +142,7 @@ describe("squares board presentation", () => {
     expect(gridLayout(390 - 32).height).toBe(2 * 10 + 22 + 2 + 20 + 11 * 32);
     // The type never gets too small to read.
     expect(gridLayout(320 - 32).labelSize).toBeGreaterThanOrEqual(9);
-    expect(gridLayout(320 - 32).initialsSize).toBeGreaterThanOrEqual(11);
+    expect(gridLayout(320 - 32).holderSize).toBeGreaterThanOrEqual(11);
     expect(gridLayout(320 - 32).nameSize).toBeGreaterThanOrEqual(13);
   });
 
@@ -212,23 +216,106 @@ describe("squares board presentation", () => {
     expect(gridMove("Enter", 3, 3)).toBeUndefined();
   });
 
-  it("fills only your squares and winning ones solid; everyone else's is a tint of their color", () => {
+  it("fills only your squares and winning ones solid; everyone else's fades from their color", () => {
     const colorOf = () => "#7c3aed";
     expect(squareTone({ mine: true, won: false, name: "Me" }, colorOf)).toEqual({
       fill: colors.primary,
+      gradient: `linear-gradient(145deg, ${colors.primaryLight}, ${colors.primary} 65%)`,
+      shadow: `${elevation.glowPrimary}, ${elevation.squareEdge}`,
       ink: colors.primaryForeground,
     });
-    expect(squareTone({ mine: true, won: true, name: "Me" }, colorOf)).toEqual({
+    expect(squareTone({ mine: true, won: true, name: "Me" }, colorOf)).toMatchObject({
       fill: colors.win,
+      shadow: `${elevation.glowWin}, ${elevation.squareEdge}`,
       ink: colors.primaryForeground,
     });
     expect(squareTone({ mine: false, won: true, name: "Pat" }, colorOf).fill).toBe(colors.win);
     expect(squareTone({ mine: false, won: false, name: "Pat" }, colorOf)).toEqual({
       fill: "#7c3aed66",
+      gradient: "linear-gradient(145deg, #7c3aede6, #7c3aed4d)",
+      shadow: elevation.squareEdge,
       ink: colors.foreground,
     });
     expect(holderKey(pat)).toBe("pat");
     expect(holderKey(ray)).toBe("guest:Uncle Ray");
+  });
+
+  it("calls each holder by a name that is as short as stays unique on the board", () => {
+    const holder = (userId: string | null, name: string) => ({ userId, name });
+    const names = boardNames([
+      holder("a", "Chris Martin"),
+      holder("b", "Chris Howard"),
+      holder("c", "Sam Patel"),
+      holder("c", "Sam Patel"),
+      holder("d", "jordan lee"),
+      holder("e", "Jordan Lake"),
+      holder("f", "Kate"),
+      holder(null, "Uncle Rob"),
+      holder("g", "  Bo   Jackson "),
+    ]);
+    expect(Object.fromEntries(names)).toEqual({
+      a: "Chris M",
+      b: "Chris H",
+      // The same player twice is one holder.
+      c: "Sam",
+      // Same first name and last initial, ignoring case: the whole name.
+      d: "jordan lee",
+      e: "Jordan Lake",
+      f: "Kate",
+      "guest:Uncle Rob": "Uncle",
+      g: "Bo",
+    });
+    // A guest who shares a player's first name is told apart the same way.
+    expect(Object.fromEntries(boardNames([holder("a", "Rob Smith"), holder(null, "Rob")]))).toEqual({
+      a: "Rob S",
+      "guest:Rob": "Rob",
+    });
+  });
+
+  it("gives each holder initials unique on the board, for squares too narrow for a name", () => {
+    const initials = boardInitials([
+      { userId: "a", name: "Chris Martin" },
+      { userId: "b", name: "Chris Moore" },
+      { userId: "c", name: "Sam Patel" },
+      { userId: "d", name: "Kate" },
+    ]);
+    expect(Object.fromEntries(initials)).toEqual({ a: "CMA", b: "CMO", c: "SP", d: "KA" });
+  });
+
+  it("shows a holder's name when it fits the square, and their initials when it doesn't", () => {
+    // Barlow Condensed's own widths: "i" is narrow, "M" wide, and anything outside ASCII errs wide.
+    expect(condensedWidth("i", 10)).toBeCloseTo(2.15);
+    expect(condensedWidth("MM", 10)).toBeCloseTo(10.76);
+    expect(condensedWidth("é", 10)).toBeGreaterThan(condensedWidth("e", 10));
+    expect(condensedWidth("🏈", 10)).toBe(10);
+    const names = new Map([
+      ["a", "Jordan"],
+      ["b", "Maximilian"],
+      ["c", "Chris M"],
+    ]);
+    const initials = new Map([
+      ["a", "JL"],
+      ["b", "MO"],
+      ["c", "CMA"],
+    ]);
+    const phone = gridLayout(390 - 32);
+    const small = gridLayout(320 - 32);
+    const desktop = gridLayout(896 - 32);
+    expect(cellName("a", names, initials, phone)).toBe("Jordan");
+    expect(cellName("b", names, initials, phone)).toBe("MO");
+    expect(cellName("c", names, initials, phone)).toBe("CMA");
+    // "Chris M" needs a computer's square; a long name is initials even there.
+    expect(cellName("b", names, initials, desktop)).toBe("MO");
+    expect(cellName("c", names, initials, desktop)).toBe("Chris M");
+    expect(cellName("a", names, initials, small)).toBe("JL");
+    expect(cellName("c", names, initials, small)).toBe("CMA");
+    // Every name that is shown fits its square, with room to spare at the edges.
+    for (const layout of [small, phone, desktop])
+      for (const key of names.keys()) {
+        const shown = cellName(key, names, initials, layout);
+        if (shown === names.get(key))
+          expect(condensedWidth(shown, layout.holderSize)).toBeLessThanOrEqual(layout.cell - 4);
+      }
   });
 
   it("lists your squares with their numbers once drawn, and what each has won", () => {
