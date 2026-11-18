@@ -6,6 +6,7 @@ import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
 import { colors, fonts } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
+import { haptics } from "../../lib/haptics";
 import { offerHomeScreen } from "../../lib/homeScreen";
 import { notifyError } from "../../lib/notify";
 import {
@@ -47,6 +48,8 @@ export function useSquareChanges(boardId: string, setData: (view: BoardView) => 
   const [pending, setPending] = useState<PendingChange[]>([]);
   const queue = useRef(Promise.resolve());
   function send(change: PendingChange, guestName?: string) {
+    // Felt as the cell fills; a refusal is felt through notifyError's banner.
+    haptics.select();
     setPending((list) => [...list, change]);
     queue.current = queue.current.then(async () => {
       try {

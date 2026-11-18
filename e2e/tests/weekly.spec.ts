@@ -54,6 +54,8 @@ async function finalizeWeek(page: Page) {
   await page.getByRole("alertdialog").getByRole("button", { name: "Finalize week" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("Post a league message?");
   await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  // The dialog keeps its words while it fades out: wait for it to go, so text queries see only the page.
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(page.getByRole("table", { name: "Week results" })).toBeVisible();
 }
 
@@ -66,12 +68,32 @@ test("a game that has kicked off is locked on the pick sheet, and the rest can s
   await openWeek(page, "Lock rules", [kickedOff, upcoming]);
   await page.getByRole("link", { name: "Make your own picks" }).click();
 
-  // Yesterday's game says Locked, and neither side nor its POW can be chosen.
+  // Yesterday's game was locked before the sheet opened: it folds behind one line, so the game still to pick
+  // starts on the first screen, phone included.
+  const fold = page.getByRole("button", { name: "1 game locked", exact: true });
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Eagles -2.5, home" })).toBeInViewport();
+  await expect(page.getByText("Locked", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("0 of 2 picked")).toBeVisible();
+
+  // Shown, it is one compact row: the matchup, Locked, and no pick.
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  const locked = page.getByRole("button", { name: "KC at ATL, locked, no pick", exact: true });
+  await expect(locked).toHaveAttribute("aria-expanded", "false");
+  await expect(locked).toContainText("No pick");
   await expect(page.getByText("Locked", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toHaveCount(0);
+  // Opened, it is the game's card, where neither side nor its POW can be chosen; Stats & news is still there.
+  await locked.click();
+  await expect(locked).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Falcons +3.5, home" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "POW: KC at ATL" })).toBeDisabled();
-  await expect(page.getByText("0 of 2 picked")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Matchup: KC at ATL" })).toBeVisible();
+  await locked.click();
+  await expect(locked).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toHaveCount(0);
 
   // The game still to come takes a pick, and the POW once it has one.
   const eagles = page.getByRole("button", { name: "Eagles -2.5, home" });
@@ -102,6 +124,8 @@ test("a game that has kicked off is locked on the pick sheet, and the rest can s
   await expect(eagles).toHaveAttribute("aria-pressed", "false");
   await expect(pow).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByLabel("Tiebreaker: total points scored in DAL at PHI")).toHaveValue("41");
+  await page.getByRole("button", { name: "1 game locked", exact: true }).click();
+  await page.getByRole("button", { name: "KC at ATL, locked, no pick", exact: true }).click();
   await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toBeDisabled();
 });
 
@@ -150,7 +174,14 @@ test("a commissioner reopens a final week to correct a score, and the corrected 
     await page.getByRole("alertdialog").getByRole("button", { name: "Reopen week" }).click();
     await expect(page.getByText("Week reopened.")).toBeVisible();
     await player.reload();
+    // The scored game is the week's only one, so nothing is folded: its row says how Pat's pick did.
     await expect(player.getByText("Final 30–10")).toBeVisible();
+    const scored = player.getByRole("button", {
+      name: "KC at ATL, final 30–10, your pick: Falcons (+3.5), lost",
+      exact: true,
+    });
+    await expect(scored).toContainText("Lost");
+    await scored.click();
     await expect(player.getByRole("button", { name: "Falcons +3.5, home" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -222,7 +253,18 @@ test("a commissioner's kickoff change locks and unlocks a game on the pick sheet
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Changes saved.")).toBeVisible();
     await page.goto(picksUrl);
+    // Nothing is left to pick, so nothing folds: the sheet is the week's scoreboard, one row a game.
+    await expect(page.getByRole("button", { name: /^\d+ games? locked$/ })).toHaveCount(0);
     await expect(page.getByText("Locked", { exact: true })).toHaveCount(2);
+    await expect(
+      page.getByRole("button", { name: "DAL at PHI, locked, no pick", exact: true }),
+    ).toBeVisible();
+    const chiefsRow = page.getByRole("button", {
+      name: "KC at ATL, locked, your pick: Chiefs (-3.5)",
+      exact: true,
+    });
+    await chiefsRow.click();
+    await expect(chiefsRow).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toHaveAttribute("aria-pressed", "true");
     // Nothing can change, so there is nothing to save.
@@ -236,8 +278,10 @@ test("a commissioner's kickoff change locks and unlocks a game on the pick sheet
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Changes saved.")).toBeVisible();
     await page.goto(picksUrl);
+    await page.getByRole("button", { name: "1 game locked", exact: true }).click();
     await expect(page.getByText("Locked", { exact: true })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Falcons +3.5, home" })).toBeEnabled();
+    await page.getByRole("button", { name: "DAL at PHI, locked, no pick", exact: true }).click();
     await expect(page.getByRole("button", { name: "Cowboys +2.5" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Save picks" })).toBeDisabled();
     await page.getByRole("button", { name: "Falcons +3.5, home" }).click();

@@ -1,13 +1,8 @@
 import { useLocalSearchParams } from "expo-router";
-import { useGatedPageTitle } from "../../../../src/lib/gatedTitle";
-import { AuthGate } from "../../../../src/screens/AuthScreen";
+import { useLeagueShell } from "../../../../src/screens/leagueContext";
 import { MessagesScreen } from "../../../../src/screens/MessagesScreen";
 export default function Page() {
-  useGatedPageTitle();
-  const { id, threadId } = useLocalSearchParams<{ id: string; threadId: string }>();
-  return (
-    <AuthGate>
-      <MessagesScreen leagueId={id} threadId={threadId} />
-    </AuthGate>
-  );
+  const { leagueId } = useLeagueShell();
+  const { threadId } = useLocalSearchParams<{ threadId: string }>();
+  return <MessagesScreen leagueId={leagueId} threadId={threadId} />;
 }

@@ -15,8 +15,9 @@ const entryId = () => {
   const id = (window.history.state as { id?: unknown } | null)?.id;
   return typeof id === "string" ? id : undefined;
 };
-// `popstate` is Back, Forward or history.go: the browser is already on the entry it moved to. When unsaved
-// work makes `browserGuard.web.ts` hold the step back, it stops this event before it reaches here.
+// `popstate` is Back, Forward or history.go: the browser is already on the entry it moved to. When
+// `browserGuard.web.ts` holds the step back (unsaved work, or a Back that only closes an open sheet, dialog or
+// menu), it stops this event before it reaches here.
 if (typeof window !== "undefined")
   window.addEventListener("popstate", () => notePop(memory, entryId(), Date.now()));
 
