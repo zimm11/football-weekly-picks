@@ -2,7 +2,7 @@ import { expect, test } from "./fixtures";
 
 test("a player can choose a profile logo and switch back to initials", async ({ page, signedIn }) => {
   await page.getByRole("button", { name: signedIn.displayName }).click();
-  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.getByRole("menuitem", { name: "Name and picture" }).click();
   await page.getByRole("button", { name: "Change picture" }).click();
   await page.getByRole("button", { name: "Fantasy", exact: true }).click();
   await page.getByRole("button", { name: "Ruby dragon" }).click();
