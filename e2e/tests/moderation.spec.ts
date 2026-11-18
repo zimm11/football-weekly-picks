@@ -1,5 +1,5 @@
 import type { Browser, Page } from "@playwright/test";
-import { expect, signUp, test } from "./fixtures";
+import { expect, openNewLeague, signUp, test } from "./fixtures";
 
 /** Opens a second player's browser, signs them up through the invite link and joins the league. */
 async function join(browser: Browser, invite: string, name: string) {
@@ -25,6 +25,7 @@ test("a reported reply is removed by an admin, and blocking hides a player's mes
 }) => {
   // Three players in their own browsers.
   test.slow();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Moderated league");
   await page.getByRole("button", { name: "Create league" }).click();
   const invite = await page.getByLabel(/Invite link/).inputValue();

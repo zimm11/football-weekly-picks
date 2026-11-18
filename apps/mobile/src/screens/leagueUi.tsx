@@ -203,7 +203,15 @@ export function Action({
         <Icon
           name={icon}
           size={18}
-          color={danger ? colors.destructive : muted ? colors.mutedForeground : colors.foreground}
+          color={
+            danger
+              ? colors.destructive
+              : muted
+                ? colors.mutedForeground
+                : secondary || ghost
+                  ? colors.foreground
+                  : colors.primaryForeground
+          }
         />
       )}
       <Text

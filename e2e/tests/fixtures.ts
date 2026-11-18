@@ -23,6 +23,12 @@ export async function signUp(page: Page, displayName: string) {
   return { email, password: PASSWORD, displayName };
 }
 
+/** From Your leagues, opens the New league form. */
+export async function openNewLeague(page: Page) {
+  await page.getByRole("link", { name: "New league" }).click();
+  await expect(page.getByRole("heading", { name: "New league" })).toBeVisible();
+}
+
 /**
  * Playwright's WebKit on macOS (1.65.1, WebKit 2388, seen on macOS 27.2) wedges once one browser has opened
  * about nine contexts: the next navigation never sends its request and the browser dies, so `goto`, `reload`

@@ -67,7 +67,7 @@ const everyLeagueSteps = [
   ],
   [
     "Start a league of your own",
-    `From Your leagues, choose the game (Weekly pick'em, Playoff pick'em, Squares, or Survivor; it can't change later), enter a League name, and press Create league. Start with members from adds the players of a league you already run, so the same crew needs no new link. In the League tab, check the time zone and copy the invite link to share. A league can hold up to ${MAX_LEAGUE_MEMBERS} players, and keeps them from season to season.`,
+    `From Your leagues, press New league, choose the game (Weekly pick'em, Playoff pick'em, Squares, or Survivor; it can't change later), enter a League name, and press Create league. Start with members from adds the players of a league you already run, so the same crew needs no new link. In the League tab, check the time zone and copy the invite link to share. A league can hold up to ${MAX_LEAGUE_MEMBERS} players, and keeps them from season to season.`,
   ],
   [
     "Share the commissioner work",
