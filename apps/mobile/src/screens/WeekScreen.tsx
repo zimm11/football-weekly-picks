@@ -29,14 +29,18 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
+import { NotFound } from "../components/NotFound";
+import { hoverFill, pressState } from "../components/pressState";
 import { TeamLogo } from "../components/TeamLogo";
 import { colors, fonts } from "../components/ui";
-import { request } from "../lib/api";
+import { request, statusOf } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { now as clockNow } from "../lib/clock";
 import { offerHomeScreen } from "../lib/homeScreen";
-import { openScreen } from "../lib/navigation";
+import { onlyDigits } from "../lib/leagueLogic";
+import { usePageTitle } from "../lib/pageTitle";
 import {
   draftChanged,
   draftSubmission,
@@ -46,12 +50,15 @@ import {
   reconcileDraft,
   savedDraft,
 } from "../lib/pickDraft";
+import { usePullRefresh } from "../lib/pullRefresh";
+import { useScrollRestore } from "../lib/scrollRestore";
 import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
 import {
   formatRecord,
   gameDays,
   kickoffTime,
   pickStatus,
+  sheetEditable,
   weekHasPow,
   weekUnit,
 } from "../lib/weekPresentation";
@@ -71,10 +78,13 @@ export function WeekScreen({
   weekId,
   embedded = false,
   header,
+  refreshAlso,
 }: {
   weekId: string;
   embedded?: boolean;
   header?: ReactNode;
+  /** Also reloaded by the player's pull to refresh: the Picks tab's league, whose cards sit above the sheet. */
+  refreshAlso?: () => unknown;
 }) {
   const { session } = useAuth();
   // Standalone weeks place the league tabs like every league screen: a row on wide screens, a bottom bar on phones.
@@ -82,9 +92,13 @@ export function WeekScreen({
   const [view, setView] = useState<WeekView>();
   const [draft, setDraft] = useState<PickDraft>(EMPTY);
   const [error, setError] = useState<string>();
+  // The failed load's HTTP status: 404 is a week that is gone or not the player's to see.
+  const [errorStatus, setErrorStatus] = useState<number>();
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  // On iPhone the keyboard is measured from the top of the screen: the app's header (AppHeader: the safe area,
+  // 56 points and a 1-point border) sits above this view.
+  const headerHeight = useSafeAreaInsets().top + 57;
   const [now, setNow] = useState(clockNow);
   const [insightGame, setInsightGame] = useState<Game | null>(null);
   const [showLocks, setShowLocks] = useState(false);
@@ -128,19 +142,34 @@ export function WeekScreen({
   const load = useCallback(async () => {
     if (savingRef.current) return;
     const id = ++serial.current;
-    setRefreshing(true);
     try {
       const next = await request<WeekView>(`/weeks/${weekId}`);
       if (active.current && serial.current === id) {
         accept(next);
         setError(undefined);
+        setErrorStatus(undefined);
       }
     } catch (err) {
-      if (active.current && serial.current === id) setError(errorText(err));
-    } finally {
-      if (active.current && serial.current === id) setRefreshing(false);
+      if (active.current && serial.current === id) {
+        setError(errorText(err));
+        setErrorStatus(statusOf(err));
+      }
     }
   }, [weekId, accept]);
+  // The spinner shows for the player's own pull only, never for the minute-by-minute refresh.
+  const pull = usePullRefresh(() => Promise.all([load(), refreshAlso?.()]));
+  const scrollRef = useScrollRestore();
+  const gone = !view && errorStatus === 404;
+  // Inside the Picks tab the league screen names the page.
+  usePageTitle(
+    embedded
+      ? undefined
+      : view
+        ? `${weekLabel(view.number)} · ${view.leagueName}`
+        : gone
+          ? "Week not found"
+          : undefined,
+  );
 
   useEffect(() => {
     active.current = true;
@@ -237,12 +266,16 @@ export function WeekScreen({
       if (active.current) setError(errorText(err));
     } finally {
       savingRef.current = false;
-      if (active.current) {
-        setSaving(false);
-        setRefreshing(false);
-      }
+      if (active.current) setSaving(false);
     }
   }
+  if (gone && !embedded)
+    return (
+      <NotFound
+        title="Week not found"
+        detail="It may have been deleted, or you’re no longer in its league. An invite link from a commissioner gets you back in."
+      />
+    );
   if (!view)
     return (
       <View style={s.initial}>
@@ -284,21 +317,22 @@ export function WeekScreen({
   const phase = weekPhase(view.status, view.games, now);
   const tab = view.status === "final" ? "results" : "picks";
   const needsPow = pickStatus(view, now).needsPow;
+  // Once every game has locked (or has a result) there is nothing left to change, so nothing to save.
+  const editable = sheetEditable(view, now);
+  const canChange = (!closed && editable.games) || editable.guess;
+  const showSaveBar =
+    view.status === "open" && (!closed || !!tiebreaker) && (canChange || dirty || !!message || !!error);
   return (
     <KeyboardAvoidingView
       style={s.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={headerHeight}
     >
       <ScrollView
+        ref={scrollRef}
         keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing && !saving}
-            onRefresh={() => void load()}
-            tintColor={colors.foreground}
-          />
-        }
+        keyboardDismissMode="interactive"
+        refreshControl={<RefreshControl {...pull} tintColor={colors.foreground} />}
         contentContainerStyle={[s.content, { paddingBottom: 24 }]}
       >
         {header}
@@ -319,16 +353,11 @@ export function WeekScreen({
             </Text>
           </View>
           {view.role === "admin" && (
-            <WeekAction
-              link
-              label={`Manage ${unit}`}
-              onPress={() => void openScreen(`/weeks/${weekId}/manage`)}
-              secondary
-              compact
-            />
+            <WeekAction label={`Manage ${unit}`} href={`/weeks/${weekId}/manage`} secondary compact />
           )}
         </View>
-        {phase === "awaiting" && (
+        {/* In the Picks tab the league's own card above says this, with the commissioner's Review & finalize. */}
+        {phase === "awaiting" && !embedded && (
           <View style={w.card}>
             <Text style={s.cardTitle}>Awaiting finalization</Text>
             <Text style={w.muted}>
@@ -355,7 +384,7 @@ export function WeekScreen({
         {view.status === "open" && (
           <>
             <PlayoffStatusLine view={view} />
-            {!closed && <PickStatusBanner view={view} dirty={dirty} now={now} />}
+            {!closed && <PickStatusBanner view={view} dirty={dirty} now={now} canChange={editable.games} />}
             {score.wins + score.losses + score.pushes > 0 && (
               <View style={w.card} accessibilityLabel={`Your ${unit} so far`}>
                 <View style={[w.between, { alignItems: "baseline", flexWrap: "wrap" }]}>
@@ -406,7 +435,13 @@ export function WeekScreen({
                 accessibilityState={{ expanded: showLocks }}
                 aria-expanded={showLocks}
                 onPress={() => setShowLocks(!showLocks)}
-                style={[w.row, s.touch]}
+                // The fill reaches 8px past the text on each side without moving it.
+                style={(state) => [
+                  w.row,
+                  s.touch,
+                  { marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 10 },
+                  { backgroundColor: hoverFill(state) },
+                ]}
               >
                 <Icon name="info" size={16} color={colors.mutedForeground} />
                 <Text style={s.disclosure}>How locks work</Text>
@@ -484,12 +519,18 @@ export function WeekScreen({
                               aria-pressed={selected}
                               disabled={locked || saving}
                               onPress={() => choose(game, side)}
-                              style={({ pressed }) => [
-                                s.team,
-                                selected && s.selected,
-                                locked && !selected && s.disabled,
-                                pressed && s.pressed,
-                              ]}
+                              style={(state) => {
+                                const { pressed, hovered } = pressState(state);
+                                const live = hovered && !locked && !saving;
+                                return [
+                                  s.team,
+                                  live && !selected && { backgroundColor: colors.raisedHover },
+                                  selected && s.selected,
+                                  live && selected && { opacity: 0.9 },
+                                  locked && !selected && s.disabled,
+                                  pressed && s.pressed,
+                                ];
+                              }}
                             >
                               {selected && (
                                 <View style={s.chosen}>
@@ -525,14 +566,22 @@ export function WeekScreen({
                             aria-pressed={draft.pow === game.id}
                             disabled={locked || powFrozen || !draft.sides[game.id] || saving}
                             onPress={() => togglePow(game)}
-                            style={({ pressed }) => [
-                              s.pow,
-                              draft.pow === game.id && s.powSelected,
-                              (locked || powFrozen || !draft.sides[game.id]) &&
-                                draft.pow !== game.id &&
-                                s.disabled,
-                              pressed && s.pressed,
-                            ]}
+                            style={(state) => {
+                              const { pressed, hovered } = pressState(state);
+                              const off = locked || powFrozen || !draft.sides[game.id] || saving;
+                              return [
+                                s.pow,
+                                hovered &&
+                                  !off &&
+                                  draft.pow !== game.id && { backgroundColor: colors.raisedHover },
+                                draft.pow === game.id && s.powSelected,
+                                hovered && !off && draft.pow === game.id && { opacity: 0.9 },
+                                (locked || powFrozen || !draft.sides[game.id]) &&
+                                  draft.pow !== game.id &&
+                                  s.disabled,
+                                pressed && s.pressed,
+                              ];
+                            }}
                           >
                             <Text
                               style={[s.powText, draft.pow === game.id && { color: colors.powForeground }]}
@@ -546,7 +595,7 @@ export function WeekScreen({
                         accessibilityRole="button"
                         accessibilityLabel={`Matchup: ${matchup(game)}`}
                         onPress={() => setInsightGame(game)}
-                        style={({ pressed }) => [s.insights, pressed && { backgroundColor: colors.raised }]}
+                        style={(state) => [s.insights, { backgroundColor: hoverFill(state) }]}
                       >
                         <Icon name="chart" size={16} color={colors.mutedForeground} filled />
                         <Text style={[s.disclosure, { flex: 1 }]}>Stats & news</Text>
@@ -565,9 +614,18 @@ export function WeekScreen({
                   accessibilityState={{ disabled: gameLocked(tiebreaker, now) || saving }}
                   value={draft.total}
                   editable={!gameLocked(tiebreaker, now) && !saving}
-                  onChangeText={(total) => edit({ ...draftRef.current, total })}
-                  keyboardType="number-pad"
+                  // A whole number: letters and points are dropped as they're typed or pasted.
+                  onChangeText={(total) => edit({ ...draftRef.current, total: onlyDigits(total) })}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  autoCorrect={false}
                   returnKeyType="done"
+                  enterKeyHint="done"
+                  // Enter saves, as the save bar's button does (iPhone's number pad has no return key).
+                  onSubmitEditing={() => {
+                    if (dirty) void save();
+                  }}
+                  blurOnSubmit={Platform.OS !== "web"}
                   maxLength={3}
                   placeholder="Total"
                   placeholderTextColor={colors.mutedForeground}
@@ -595,8 +653,9 @@ export function WeekScreen({
           </View>
         )}
       </ScrollView>
-      {/* A player the guillotine put out has nothing to save but the Super Bowl guess. */}
-      {view.status === "open" && (!closed || !!tiebreaker) && (
+      {/* A player the guillotine put out has nothing to save but the Super Bowl guess. Once nothing can
+          change, the bar goes too, unless it still has something to say. */}
+      {showSaveBar && (
         <View style={s.savebar}>
           {!closed && (
             <View
@@ -614,7 +673,9 @@ export function WeekScreen({
             <WeekAction
               label={saving ? "Saving…" : closed ? "Save guess" : "Save picks"}
               style={{ minWidth: 144 }}
-              disabled={saving}
+              // Nothing to save until something changes; while saving it keeps the focus.
+              disabled={!dirty && !saving}
+              busy={saving}
               onPress={() => void save()}
             />
             <View style={{ flex: 1, gap: 4 }}>
@@ -641,7 +702,18 @@ export function WeekScreen({
   );
 }
 
-function PickStatusBanner({ view, dirty, now }: { view: WeekView; dirty: boolean; now: Date }) {
+function PickStatusBanner({
+  view,
+  dirty,
+  now,
+  canChange,
+}: {
+  view: WeekView;
+  dirty: boolean;
+  now: Date;
+  /** A game is still open to a pick: only then does "you can still change a pick" hold. */
+  canChange: boolean;
+}) {
   const { savedCount, left, missed, needsTotal, needsPow } = pickStatus(view, now);
   const extras = Number(needsTotal) + Number(needsPow);
   const complete = left === 0 && extras === 0;
@@ -657,7 +729,7 @@ function PickStatusBanner({ view, dirty, now }: { view: WeekView; dirty: boolean
   const detail = dirty
     ? `You've made changes. Press Save to keep them. ${savedLine} so far.`
     : complete
-      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : weekHasPow(view) ? ` No POW this ${weekUnit(view)}.` : ""} Nothing more to do. You can still change a pick until kickoff.`
+      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : weekHasPow(view) ? ` No POW this ${weekUnit(view)}.` : ""} Nothing more to do.${canChange ? " You can still change a pick until kickoff." : ""}`
       : `${savedLine}.${needsPow ? " Choose your POW." : ""}${needsTotal ? " Add your tiebreaker guess." : ""}`;
   const tone = dirty ? colors.destructive : complete ? colors.win : colors.primary;
   return (
@@ -678,8 +750,16 @@ function PickStatusBanner({ view, dirty, now }: { view: WeekView; dirty: boolean
 }
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  initial: { flex: 1, padding: 16, backgroundColor: colors.background, gap: 16 },
-  content: { padding: 16, gap: 16, width: "100%", maxWidth: 896, alignSelf: "center" },
+  // The same insets as every league tab (leagueUi's s.content), so the league header doesn't jump between tabs.
+  initial: { flex: 1, paddingHorizontal: 16, paddingTop: 20, backgroundColor: colors.background, gap: 16 },
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    gap: 16,
+    width: "100%",
+    maxWidth: 896,
+    alignSelf: "center",
+  },
   leagueLink: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 },
   title: {
     textTransform: "uppercase",

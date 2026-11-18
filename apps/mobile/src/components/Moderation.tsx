@@ -9,9 +9,10 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { openScreen } from "../lib/navigation";
 import { notifyDone } from "../lib/notify";
+import { AppLink } from "./AppLink";
 import { Icon } from "./Icon";
+import { hoverFill } from "./pressState";
 import { Body, Button, colors, ErrorMessage, Field, fonts, Sheet } from "./ui";
 
 /** What a report is about, minus the reason and note the sheet asks for. */
@@ -23,6 +24,9 @@ export type ReportTarget =
 /**
  * Report a message, a player's name or a league's name: a reason, an optional note, then **Send report**. Once
  * sent, it offers to block the player too (when there is one).
+ *
+ * Closing the sheet before sending (a tap outside, Escape) keeps the reason and note, so opening it again for
+ * the same thing picks up where the player left off; a report about something else starts empty.
  */
 export function ReportSheet({
   target,
@@ -45,12 +49,21 @@ export function ReportSheet({
   const [busy, setBusy] = useState<"send" | "block">();
   const [error, setError] = useState<string>();
   const [sent, setSent] = useState(false);
-  const close = () => {
-    if (busy) return;
+  // What the unsent reason and note are about.
+  const [draftFor, setDraftFor] = useState<string>();
+  const about = target ? JSON.stringify(target) : undefined;
+  if (about && about !== draftFor) {
+    setDraftFor(about);
     setReason(undefined);
     setNote("");
     setError(undefined);
     setSent(false);
+  }
+  const close = () => {
+    if (busy) return;
+    setError(undefined);
+    // A sent report is done with; an unsent one waits for the sheet to open again.
+    if (sent) setDraftFor(undefined);
     onClose();
   };
   async function send() {
@@ -114,17 +127,19 @@ export function ReportSheet({
               <Pressable
                 key={value}
                 accessibilityRole="radio"
+                // Both: `aria-checked` is what a browser reads, `accessibilityState` what VoiceOver does.
+                aria-checked={reason === value}
                 accessibilityState={{ checked: reason === value, disabled: !!busy }}
                 disabled={!!busy}
                 onPress={() => setReason(value)}
-                style={({ pressed }) => ({
+                style={(state) => ({
                   minHeight: 44,
                   borderRadius: 10,
                   paddingHorizontal: 12,
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 10,
-                  backgroundColor: reason === value || pressed ? colors.raised : "transparent",
+                  backgroundColor: reason === value ? colors.raised : hoverFill(state),
                 })}
               >
                 <View
@@ -235,16 +250,12 @@ export function TermsSummary() {
         automatically; what breaks these rules is refused or removed, and players who keep breaking them can't
         post.
       </Body>
-      <Pressable
-        accessibilityRole="link"
-        onPress={() => void openScreen("/terms")}
-        style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}
-      >
+      <AppLink href="/terms" style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Icon name="document" size={18} color={colors.primary} />
         <Text style={{ fontFamily: fonts.medium, fontSize: 16, color: colors.primary }}>
           Read the Terms of use
         </Text>
-      </Pressable>
+      </AppLink>
     </View>
   );
 }

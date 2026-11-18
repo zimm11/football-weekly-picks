@@ -33,10 +33,10 @@ export function SurvivorRecap({ weekId, userId, leagueId, close }: RecapProps) {
         </Label>
       )}
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <StatTile label="Still in" value={recap.left} detail={`of ${recap.total}`} />
+        <StatTile raised label="Still in" value={recap.left} detail={`of ${recap.total}`} />
       </View>
       <Action
-        link
+        href={`/leagues/${leagueId}/standings`}
         onPress={() => {
           close();
           void go(`/leagues/${leagueId}/standings`);

@@ -11,6 +11,7 @@ import {
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { Menu, MenuItem, useAnchor } from "../../components/Popover";
+import { colors } from "../../components/ui";
 import { request } from "../../lib/api";
 import { now as clockNow } from "../../lib/clock";
 import { notifyDone, notifyError } from "../../lib/notify";
@@ -141,7 +142,7 @@ function PoolSettings({ view, year, onSaved }: { view: SurvivorView; year: numbe
         ]}
       />
       <Failure message={error} />
-      <Action disabled={busy || (!!view.settings && !dirty)} onPress={() => void save()}>
+      <Action disabled={!!view.settings && !dirty && !busy} busy={busy} onPress={() => void save()}>
         {busy ? "Saving…" : view.settings ? "Save pool settings" : "Start season"}
       </Action>
     </Card>
@@ -215,7 +216,7 @@ function EnterPick({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
         ]}
       />
       <Failure message={error} />
-      <Action disabled={busy || !choice} onPress={() => void save()}>
+      <Action disabled={!choice && !busy} busy={busy} onPress={() => void save()}>
         {busy ? "Saving…" : `Save pick for ${player?.displayName ?? "player"}`}
       </Action>
     </Card>
@@ -227,6 +228,12 @@ function WeekGames({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
   const withGames = view.weeks.filter((w) => w.games.length > 0);
   const [weekId, setWeekId] = useState(view.current?.weekId ?? withGames.at(-1)?.id ?? "");
   const [scoring, setScoring] = useState<SurvivorGameView | null>(null);
+  // Scores typed into the sheet but not saved, by game: closing the sheet (Escape, a tap outside) keeps them,
+  // so they are there when it opens again, and leaving the screen asks first.
+  const [typed, setTyped] = useState<Record<string, ScoreDraft>>({});
+  const forget = (gameId: string) =>
+    setTyped((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== gameId)));
+  useEditsGuard(Object.keys(typed).length > 0, () => setTyped({}));
   const week = withGames.find((w) => w.id === weekId) ?? withGames.at(-1);
   if (!week) return null;
   async function remove(game: SurvivorGameView) {
@@ -242,7 +249,7 @@ function WeekGames({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
     <Card label="Week's games">
       <Heading>Games</Heading>
       <Label>
-        Scores fill in from the feed and never replace one you type. Remove a game only if it's cancelled.
+        Scores fill in automatically and never replace one you type. Remove a game only if it's cancelled.
       </Label>
       {withGames.length > 1 && (
         <Select
@@ -259,6 +266,7 @@ function WeekGames({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
             game={game}
             timeZone={view.timeZone}
             final={week.status === "final"}
+            typed={typed[game.id]}
             onScore={() => setScoring(game)}
             onRemove={() =>
               confirm(
@@ -277,24 +285,43 @@ function WeekGames({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
           key={scoring.id}
           game={scoring}
           final={week.status === "final"}
+          draft={typed[scoring.id] ?? savedScore(scoring)}
+          onDraft={(draft) => {
+            const saved = savedScore(scoring);
+            if (draft.away === saved.away && draft.home === saved.home) forget(scoring.id);
+            else setTyped((all) => ({ ...all, [scoring.id]: draft }));
+          }}
           close={() => setScoring(null)}
-          onSaved={onSaved}
+          onSaved={() => {
+            forget(scoring.id);
+            onSaved();
+          }}
         />
       )}
     </Card>
   );
 }
 
+/** A score as its two boxes hold it. */
+type ScoreDraft = { away: string; home: string };
+const savedScore = (game: SurvivorGameView): ScoreDraft => ({
+  away: game.awayScore === null ? "" : String(game.awayScore),
+  home: game.homeScore === null ? "" : String(game.homeScore),
+});
+
 function GameRow({
   game,
   timeZone,
   final,
+  typed,
   onScore,
   onRemove,
 }: {
   game: SurvivorGameView;
   timeZone: string;
   final: boolean;
+  /** A score typed for this game and not saved yet. */
+  typed?: ScoreDraft;
   onScore: () => void;
   onRemove: () => void;
 }) {
@@ -310,6 +337,11 @@ function GameRow({
             ? `Final ${game.awayScore}–${game.homeScore}`
             : `${kickoffDay(game.kickoff, timeZone)} · ${kickoffTime(game.kickoff, timeZone)}`}
         </Text>
+        {typed && (
+          <Text style={[s.muted, { color: colors.destructive }]}>
+            {`Not saved: ${typed.away || "–"}–${typed.home || "–"}`}
+          </Text>
+        )}
       </View>
       <IconButton name="more" label={`Options for ${name}`} ref={options.ref} onPress={options.open} />
       <Menu anchor={options.anchor} onClose={options.close} label={`Options for ${name}`} align="end">
@@ -342,25 +374,29 @@ function GameRow({
 function ScoreSheet({
   game,
   final,
+  draft,
+  onDraft,
   close,
   onSaved,
 }: {
   game: SurvivorGameView;
   final: boolean;
+  /** What the boxes hold: the saved score, or what was typed before the sheet was last closed. */
+  draft: ScoreDraft;
+  onDraft: (draft: ScoreDraft) => void;
   close: () => void;
   onSaved: () => void;
 }) {
-  const [away, setAway] = useState(game.awayScore === null ? "" : String(game.awayScore));
-  const [home, setHome] = useState(game.homeScore === null ? "" : String(game.homeScore));
+  const { away, home } = draft;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const valid = (v: string) => /^\d{1,3}$/.test(v);
   const clearing = !final && away === "" && home === "";
-  useEditsGuard(
-    away !== (game.awayScore === null ? "" : String(game.awayScore)) ||
-      home !== (game.homeScore === null ? "" : String(game.homeScore)),
-  );
+  const saved = savedScore(game);
+  const dirty = away !== saved.away || home !== saved.home;
+  const ready = dirty && (clearing || (valid(away) && valid(home)));
   async function save() {
+    if (!ready || busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -371,8 +407,8 @@ function ScoreSheet({
           : { homeScore: Number(home), awayScore: Number(away) },
       });
       notifyDone(`Score saved for ${survivorMatchup(game)}.`);
-      close();
       onSaved();
+      close();
     } catch (err) {
       setError(messageOf(err));
     } finally {
@@ -387,25 +423,41 @@ function ScoreSheet({
           <Input
             label={teamName(game.awayTeam)}
             value={away}
-            onChangeText={setAway}
+            onChangeText={(value) => onDraft({ away: value, home })}
             keyboardType="number-pad"
+            inputMode="numeric"
             maxLength={3}
+            onSubmit={() => void save()}
           />
         </View>
         <View style={s.grow}>
           <Input
             label={teamName(game.homeTeam)}
             value={home}
-            onChangeText={setHome}
+            onChangeText={(value) => onDraft({ away, home: value })}
             keyboardType="number-pad"
+            inputMode="numeric"
             maxLength={3}
+            onSubmit={() => void save()}
           />
         </View>
       </View>
       <Failure message={error} />
-      <Action disabled={busy || !(clearing || (valid(away) && valid(home)))} onPress={() => void save()}>
-        {busy ? "Saving…" : clearing ? "Clear the score" : "Save score"}
+      <Action disabled={!ready && !busy} busy={busy} onPress={() => void save()}>
+        {busy ? "Saving…" : clearing && dirty ? "Clear the score" : "Save score"}
       </Action>
+      {/* Closing the sheet keeps what was typed; this is the way to throw it away. */}
+      {dirty && !busy && (
+        <Action
+          secondary
+          onPress={() => {
+            onDraft(saved);
+            close();
+          }}
+        >
+          Discard changes
+        </Action>
+      )}
     </Sheet>
   );
 }

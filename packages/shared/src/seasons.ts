@@ -83,9 +83,22 @@ export function nextStartWeek(year: number, now: Date): number | null {
   return null;
 }
 
-/** Preparing a future or draft-only season does not displace the latest published season. */
-export function preferredSeasonYear(weeks: { year: number; status: WeekStatus }[], now: Date): number {
+/**
+ * The season a league opens on. Preparing a future or draft-only season does not displace the latest published
+ * season: that is weekly pick'em's rule, where a season begins with its first open week.
+ *
+ * `started` (the league's `startedSeasons`) lists the years whose season exists before any of its weeks does: a
+ * playoff or survivor season is there from Start season (or the league's creation), months before its first
+ * round or week opens. When this NFL season is one of them the league opens on it, not on last year's finished
+ * one. A future year among them changes nothing.
+ */
+export function preferredSeasonYear(
+  weeks: { year: number; status: WeekStatus }[],
+  now: Date,
+  started: readonly number[] = [],
+): number {
   const current = seasonYear(now);
+  if (started.includes(current)) return current;
   const published = weeks.filter((week) => week.year <= current && week.status !== "draft");
   if (published.length) return Math.max(...published.map((week) => week.year));
   const drafts = weeks.filter((week) => week.year <= current);

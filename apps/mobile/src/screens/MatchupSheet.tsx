@@ -9,6 +9,7 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
+import { hoverFill, pressState } from "../components/pressState";
 import { TeamLogo } from "../components/TeamLogo";
 import { colors, fonts, Sheet } from "../components/ui";
 import { request } from "../lib/api";
@@ -65,7 +66,7 @@ export function MatchupSheet({
     >
       {game && (
         <>
-          <Text style={[w.muted, { marginTop: -8 }]}>
+          <Text style={w.muted}>
             {kickoffDay(game.kickoff, timeZone)} · {kickoffTime(game.kickoff, timeZone)}
             {game.spread !== null ? ` · ${favoriteLine(game, game.spread)}` : ""}
           </Text>
@@ -324,7 +325,11 @@ function Matchup({
                 accessibilityRole="link"
                 accessibilityLabel={`${story.headline}. Opens the full story.`}
                 onPress={() => void openNews(story.url)}
-                style={({ pressed }) => [s.news, pressed && { opacity: 0.7 }]}
+                style={(state) => [
+                  s.news,
+                  { backgroundColor: hoverFill(state) },
+                  pressState(state).pressed && { opacity: 0.7 },
+                ]}
               >
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={s.value}>{story.headline}</Text>
@@ -378,6 +383,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingVertical: 8,
+    // The hover fill reaches a little past the text without moving it.
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },

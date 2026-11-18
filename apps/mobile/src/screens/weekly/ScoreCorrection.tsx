@@ -3,7 +3,9 @@ import type { Game, WeekView } from "@picks/shared";
 import { useState } from "react";
 import { View } from "react-native";
 import { request } from "../../lib/api";
+import { onlyDigits } from "../../lib/leagueLogic";
 import { notifyDone, notifyError } from "../../lib/notify";
+import { weekUnit } from "../../lib/weekPresentation";
 import { Action, Card, Heading, Input, Label, s, useEditsGuard } from "../leagueUi";
 
 /**
@@ -22,7 +24,7 @@ export function ScoreCorrection({
   return (
     <Card label="Correct a score">
       <Heading>Correct a score</Heading>
-      <Label>Change a final score and save it. The week stays final.</Label>
+      <Label>Change a final score and save it. The {weekUnit(view)} stays final.</Label>
       {view.games.map((game) => (
         <ScoreRow
           key={`${game.id}:${game.homeScore}:${game.awayScore}`}
@@ -55,7 +57,7 @@ function ScoreRow({
   });
   const valid = /^\d{1,3}$/.test(away) && /^\d{1,3}$/.test(home);
   async function save() {
-    if (busy || !valid) return;
+    if (busy || disabled || !changed || !valid) return;
     setBusy(true);
     try {
       onUpdated(
@@ -78,9 +80,12 @@ function ScoreRow({
           label={`${game.awayTeam} score`}
           accessibilityLabel={`${game.awayTeam} score in ${name}`}
           value={away}
-          onChangeText={setAway}
-          keyboardType="number-pad"
+          onChangeText={(text) => setAway(onlyDigits(text))}
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={3}
           editable={!disabled && !busy}
+          onSubmit={() => void save()}
         />
       </View>
       <View style={[s.grow, { minWidth: 96 }]}>
@@ -88,16 +93,20 @@ function ScoreRow({
           label={`${game.homeTeam} score`}
           accessibilityLabel={`${game.homeTeam} score in ${name}`}
           value={home}
-          onChangeText={setHome}
-          keyboardType="number-pad"
+          onChangeText={(text) => setHome(onlyDigits(text))}
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={3}
           editable={!disabled && !busy}
+          onSubmit={() => void save()}
         />
       </View>
       <Action
         compact
         secondary
         label={`Save the score for ${name}`}
-        disabled={disabled || busy || !changed || !valid}
+        busy={busy}
+        disabled={!busy && (disabled || !changed || !valid)}
         onPress={() => void save()}
       >
         {busy ? "Saving…" : "Save"}

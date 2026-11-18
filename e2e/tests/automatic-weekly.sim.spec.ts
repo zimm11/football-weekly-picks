@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { openNewLeague, signUp } from "./fixtures";
+import { expect, openNewLeague, signUp, test } from "./fixtures";
 import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 // Automatic weekly pick'em, start to recap, with nobody pressing Open or Finalize: the dev harness scripts Week 3

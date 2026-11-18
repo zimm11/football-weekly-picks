@@ -12,9 +12,9 @@ import {
 } from "react";
 import {
   AppState,
-  Modal,
+  Platform,
   Pressable,
-  ScrollView,
+  type PressableStateCallbackType,
   StyleSheet,
   Text,
   TextInput,
@@ -22,12 +22,17 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppLink, type LinkHow } from "../components/AppLink";
+import { BottomSheet } from "../components/BottomSheet";
 import { Icon } from "../components/Icon";
 import { Menu, MenuItem, useAnchor } from "../components/Popover";
+import { atRest, busyProps, hoverFill, pressState } from "../components/pressState";
 import { colors, fonts } from "../components/ui";
 import { WebSelect } from "../components/WebSelect";
+import { statusOf } from "../lib/api";
 import { showConfirm } from "../lib/dialogs";
+import { fieldDefaults } from "../lib/fieldProps";
+import { dropLoadCache, loadCacheGeneration, readLoadCache, writeLoadCache } from "../lib/loadCache";
 import { confirmDiscard, hasUnsavedWork, useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
 
 export { colors };
@@ -106,9 +111,13 @@ export function Label({ children }: { children: ReactNode }) {
 export function Eyebrow({ children }: { children: ReactNode }) {
   return <Text style={[s.muted, { fontFamily: fonts.semibold }]}>{children}</Text>;
 }
-export function Heading({ children }: { children: ReactNode }) {
+/**
+ * A section heading. `level` is its place in the page's outline for screen readers: 2 by default (a section
+ * under the page's title), 3 for a part of a section. It doesn't change how the heading looks.
+ */
+export function Heading({ children, level = 2 }: { children: ReactNode; level?: 1 | 2 | 3 | 4 }) {
   return (
-    <Text accessibilityRole="header" style={s.subtitle}>
+    <Text accessibilityRole="header" aria-level={level} style={s.subtitle}>
       {children}
     </Text>
   );
@@ -153,6 +162,7 @@ export function Pill({
     </View>
   );
 }
+const ignore = () => {};
 export function Action({
   children,
   onPress,
@@ -166,10 +176,19 @@ export function Action({
   compact,
   style,
   link,
+  busy = false,
+  href,
+  how,
 }: {
   children: ReactNode;
-  onPress: () => void;
+  /** Optional with `href`, where it replaces the default navigation. */
+  onPress?: () => void;
   disabled?: boolean;
+  /**
+   * Its own request is running: it looks disabled and ignores presses, but stays a keyboard stop so the
+   * focus isn't dropped to the page. Use it rather than `disabled` for "Saving…".
+   */
+  busy?: boolean;
   secondary?: boolean;
   danger?: boolean;
   label?: string;
@@ -181,24 +200,40 @@ export function Action({
   style?: ViewStyle;
   /** It goes to another screen: announced as a link, as on the web. */
   link?: boolean;
+  /**
+   * An in-app path: the button is a real link (`AppLink`: an `<a href>` on the web, so Enter and new-tab
+   * clicks work), opened through the unsaved-work guard. `how` is push (default), replace or dismissTo.
+   */
+  href?: string;
+  how?: LinkHow;
 }) {
-  return (
-    <Pressable
-      accessibilityRole={link ? "link" : "button"}
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
+  const off = !!disabled || busy;
+  const shared = {
+    accessibilityLabel: label,
+    ...busyProps(disabled, busy, Platform.OS === "web"),
+    style: (state: PressableStateCallbackType) => {
+      const { pressed, hovered } = busy ? atRest : pressState(state);
+      return [
         s.button,
         secondary && s.secondary,
         ghost && { backgroundColor: "transparent" },
-        compact && { alignSelf: "flex-start", paddingHorizontal: 12 },
-        disabled && { opacity: 0.45 },
+        compact && { alignSelf: "flex-start" as const, paddingHorizontal: 12 },
+        // Under the mouse: a filled button lightens, a secondary or ghost one takes the next layer up.
+        hovered &&
+          (ghost
+            ? { backgroundColor: colors.raised }
+            : secondary
+              ? { backgroundColor: colors.raisedHover }
+              : { opacity: 0.9 }),
+        off && { opacity: 0.45 },
+        busy && ({ cursor: "auto" } as const),
         pressed && { opacity: 0.75 },
         style,
-      ]}
-    >
+      ];
+    },
+  };
+  const content = (
+    <>
       {icon && (
         <Icon
           name={icon}
@@ -225,6 +260,17 @@ export function Action({
       >
         {children}
       </Text>
+    </>
+  );
+  if (href !== undefined)
+    return (
+      <AppLink href={href} how={how} onPress={busy ? ignore : onPress} {...shared}>
+        {content}
+      </AppLink>
+    );
+  return (
+    <Pressable accessibilityRole={link ? "link" : "button"} onPress={busy ? ignore : onPress} {...shared}>
+      {content}
     </Pressable>
   );
 }
@@ -250,13 +296,13 @@ export function IconButton({
       disabled={disabled}
       accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={(state) => ({
         minWidth: 44,
         minHeight: 44,
         alignItems: "center",
         justifyContent: "center",
         borderRadius: 100,
-        backgroundColor: pressed ? colors.raised : "transparent",
+        backgroundColor: hoverFill(state),
         opacity: disabled ? 0.4 : 1,
       })}
     >
@@ -269,37 +315,76 @@ export function RowLink({
   onPress,
   label,
   style,
+  href,
+  how,
 }: {
   children: ReactNode;
-  onPress: () => void;
+  /** Optional with `href`, where it replaces the default navigation. */
+  onPress?: () => void;
   label?: string;
   style?: ViewStyle;
+  /**
+   * The in-app path the row opens: the row is then a real link (`AppLink`: an `<a href>` on the web, so
+   * Enter and new-tab clicks work), opened through the unsaved-work guard. `how` is push (default), replace
+   * or dismissTo.
+   */
+  href?: string;
+  how?: LinkHow;
 }) {
-  return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [
-        {
-          backgroundColor: pressed ? colors.raised : colors.card,
-          borderRadius: 16,
-          minHeight: 64,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 12,
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-        },
-        style,
-      ]}
-    >
+  const shared = {
+    accessibilityLabel: label,
+    style: (state: PressableStateCallbackType) => [
+      {
+        backgroundColor: hoverFill(state, colors.card),
+        borderRadius: 16,
+        minHeight: 64,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+      },
+      style,
+    ],
+  };
+  const content = (
+    <>
       {children}
       <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+    </>
+  );
+  if (href !== undefined)
+    return (
+      <AppLink href={href} how={how} onPress={onPress} {...shared}>
+        {content}
+      </AppLink>
+    );
+  return (
+    <Pressable accessibilityRole="link" onPress={onPress} {...shared}>
+      {content}
     </Pressable>
   );
 }
-export function Input({ label, ...props }: TextInputProps & { label: string }) {
+/**
+ * A labelled text field. Beyond `TextInput`'s props:
+ *
+ * - `onSubmit` runs when the player presses Enter (or the keyboard's return key) in a single-line field:
+ *   pass the form's submit, or focus the next field (`enterKeyHint="next"` with `ref` on the next one).
+ *   The return key says "done" unless `enterKeyHint`/`returnKeyType` says otherwise.
+ * - `ref` reaches the `TextInput` (`ref.current?.focus()`).
+ * - A `secureTextEntry` field turns off capitalization, autocorrect and spell-check by itself.
+ */
+export function Input({
+  label,
+  onSubmit,
+  ref,
+  ...props
+}: Omit<TextInputProps, "ref"> & {
+  label: string;
+  onSubmit?: () => void;
+  ref?: Ref<ComponentRef<typeof TextInput>>;
+}) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       <Text
@@ -311,11 +396,22 @@ export function Input({ label, ...props }: TextInputProps & { label: string }) {
         {label}
       </Text>
       <TextInput
+        ref={ref}
         accessibilityLabel={label}
         placeholderTextColor={colors.mutedForeground}
         selectionColor={colors.primary}
+        onSubmitEditing={onSubmit && !props.multiline ? () => onSubmit() : undefined}
+        {...fieldDefaults({ submits: !!onSubmit, ...props }, Platform.OS === "web")}
         {...props}
-        style={[s.input, props.style]}
+        onFocus={(event) => {
+          setFocused(true);
+          props.onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          props.onBlur?.(event);
+        }}
+        style={[s.input, focused && { borderColor: colors.primary }, props.style]}
       />
     </View>
   );
@@ -356,66 +452,23 @@ export function Sheet({
   children: ReactNode;
   visible?: boolean;
   close: () => void;
-  /** False when the sheet ends with its own Close button (the week recap). */
+  /**
+   * False when the sheet ends with its own button named Close (the week recap). The ✕ shows either way; it
+   * is then named "Dismiss", so there is still exactly one "Close" button in the sheet.
+   */
   closeButton?: boolean;
 }) {
-  const insets = useSafeAreaInsets();
-  // On the web, Modal's own element is the dialog; this names it.
-  const dialog = { "aria-label": title } as object;
+  // Most callers mount the sheet only while it is open, so it slides out before telling them it closed.
   return (
-    <Modal transparent visible={visible} animationType="slide" onRequestClose={close} {...dialog}>
-      <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: `${colors.chrome}99` }}>
-        {/* Tapping outside closes, as the web sheet does; the Close button is the accessible way. */}
-        <Pressable
-          accessible={false}
-          importantForAccessibility="no"
-          tabIndex={-1}
-          onPress={close}
-          style={StyleSheet.absoluteFill}
-        />
-        <View
-          accessibilityViewIsModal
-          style={{
-            maxHeight: "88%",
-            width: "100%",
-            maxWidth: 672,
-            alignSelf: "center",
-            borderTopLeftRadius: 22,
-            borderTopRightRadius: 22,
-            backgroundColor: colors.card,
-            paddingBottom: Math.max(16, insets.bottom),
-          }}
-        >
-          <View
-            style={{
-              alignSelf: "center",
-              width: 40,
-              height: 4,
-              backgroundColor: colors.raised,
-              borderRadius: 10,
-              marginTop: 10,
-            }}
-          />
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              paddingLeft: 16,
-              paddingRight: 8,
-              paddingTop: 6,
-            }}
-          >
-            <Text accessibilityRole="header" style={[s.subtitle, { flex: 1 }]}>
-              {title}
-            </Text>
-            {closeButton && <IconButton name="close" label="Close" onPress={close} />}
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 16 }}>
-            {children}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet
+      visible={visible}
+      onClose={close}
+      title={title}
+      closeLabel={closeButton ? "Close" : "Dismiss"}
+      exitFirst
+    >
+      {children}
+    </BottomSheet>
   );
 }
 export function Select<T extends string | number>({
@@ -433,12 +486,16 @@ export function Select<T extends string | number>({
   onChange: (value: T) => void;
   disabled?: boolean;
   compact?: boolean;
-  /** A compact control's width, for labels longer than a year ("2026 playoffs"). */
+  /**
+   * A compact control's least width. It grows to fit the chosen label ("2026 playoffs", "2026 · Not
+   * started"), as far as the row allows, and shortens the label with an ellipsis past that.
+   */
   compactWidth?: number;
 }) {
   const menu = useAnchor();
+  const chosen = choices.find((c) => c.value === value)?.label ?? String(value);
   return (
-    <View style={{ gap: 6, ...(compact ? { flexShrink: 1, minWidth: 0, width: compactWidth } : {}) }}>
+    <View style={{ gap: 6, ...(compact ? { flexShrink: 1, minWidth: 0, maxWidth: "100%" } : {}) }}>
       {!compact && (
         <Text
           style={[
@@ -460,20 +517,26 @@ export function Select<T extends string | number>({
           }}
           disabled={disabled}
           compact={compact}
+          minWidth={compact ? compactWidth : undefined}
         />
       ) : (
         <>
           <Pressable
             ref={menu.ref}
             accessibilityRole="button"
-            accessibilityLabel={`${label}: ${choices.find((c) => c.value === value)?.label ?? value}`}
+            accessibilityLabel={`${label}: ${chosen}`}
             disabled={disabled}
             onPress={menu.open}
-            style={{
+            style={({ pressed }) => ({
               minHeight: 44,
-              backgroundColor: compact ? colors.raised : `${colors.background}99`,
+              minWidth: compact ? compactWidth : undefined,
+              backgroundColor: compact
+                ? pressed
+                  ? colors.raisedHover
+                  : colors.raised
+                : `${colors.background}99`,
               borderWidth: compact ? 0 : 1,
-              borderColor: colors.input,
+              borderColor: pressed ? colors.primary : colors.input,
               borderRadius: compact ? 100 : 10,
               paddingHorizontal: compact ? 16 : 12,
               flexDirection: "row",
@@ -481,7 +544,7 @@ export function Select<T extends string | number>({
               justifyContent: "space-between",
               gap: 8,
               opacity: disabled ? 0.45 : 1,
-            }}
+            })}
           >
             <Text
               numberOfLines={1}
@@ -494,7 +557,7 @@ export function Select<T extends string | number>({
                 },
               ]}
             >
-              {choices.find((c) => c.value === value)?.label ?? value}
+              {chosen}
             </Text>
             <Icon name="chevron-down" size={14} color={colors.mutedForeground} />
           </Pressable>
@@ -523,10 +586,28 @@ export function Select<T extends string | number>({
     </View>
   );
 }
-export function StatTile({ label, value, detail }: { label: string; value: ReactNode; detail?: string }) {
+/** `raised` inside a sheet or a card, where a tile in the card's own fill would disappear. */
+export function StatTile({
+  label,
+  value,
+  detail,
+  raised = false,
+}: {
+  label: string;
+  value: ReactNode;
+  detail?: string;
+  raised?: boolean;
+}) {
   return (
     <View
-      style={{ backgroundColor: colors.card, borderRadius: 16, padding: 12, gap: 4, minWidth: 0, flex: 1 }}
+      style={{
+        backgroundColor: raised ? colors.raised : colors.card,
+        borderRadius: 16,
+        padding: 12,
+        gap: 4,
+        minWidth: 0,
+        flex: 1,
+      }}
     >
       <Text style={[s.muted, { fontSize: 12, lineHeight: 16, fontFamily: fonts.medium }]}>{label}</Text>
       <Text style={{ fontFamily: fonts.displayBold, fontSize: 30, lineHeight: 32, color: colors.foreground }}>
@@ -554,8 +635,20 @@ export function Disclosure({
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
+        // react-native-web reads only the aria-* form.
+        aria-expanded={open}
         onPress={() => setOpen(!open)}
-        style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}
+        // The fill reaches 8px past the text on each side without moving it.
+        style={(state) => ({
+          minHeight: 44,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          marginHorizontal: -8,
+          paddingHorizontal: 8,
+          borderRadius: 10,
+          backgroundColor: hoverFill(state),
+        })}
       >
         <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
         <Text style={[s.text, { fontFamily: fonts.medium }]}>{title}</Text>
@@ -581,23 +674,50 @@ export function useEditsGuard(dirty: boolean, onDiscard?: () => void) {
  * Loads on mount and whenever `key` changes, again each time the screen comes back into focus or the app
  * returns to the foreground, and every `intervalMs` while it shows something. A screen whose load failed
  * (a league that doesn't exist, no connection) waits for **Try again** or the next focus instead of polling.
+ *
+ * Stale while revalidating: the last value loaded under `key` is kept in memory (`lib/loadCache.ts`), so a screen
+ * that mounts again shows it at once and this load only refreshes it. Use the API path as the key when the value
+ * is that path's response ("/leagues/<id>"), so every screen loading it shares one copy.
+ *
+ * Returns `data`, `fresh` (false while `data` is only the remembered copy and this mount's own load hasn't
+ * answered: wait for it before doing something once from the data, like showing a recap or seeding a form),
+ * `error` (the message of the last failed load), `status` (its HTTP status: 404 means the thing
+ * is gone or not the player's to see, so show not-found rather than **Try again**; undefined when there was no
+ * answer), `reload()` (start a refresh), `refresh()` (the same, resolving when that load has settled: for pull to
+ * refresh) and `setData(value)` (show a value the screen already has, e.g. a save's response).
  */
 export function useLeagueLoad<T>(load: () => Promise<T>, key: string, intervalMs = 0) {
-  const [loaded, setLoaded] = useState<{ key: string; value: T }>();
-  const [error, setError] = useState<string>();
+  const [loaded, setLoaded] = useState<{ key: string; value: T; fresh: boolean } | undefined>(() => {
+    const value = readLoadCache<T>(key);
+    return value === undefined ? undefined : { key, value, fresh: false };
+  });
+  const [failure, setFailure] = useState<{ message: string; status?: number }>();
   const [version, setVersion] = useState(0);
   const loadRef = useRef(load);
   loadRef.current = load;
   const writes = useRef(0);
+  // A key this hook hasn't loaded yet (it changed, or the screen just mounted) still shows its cached value.
+  const data = loaded?.key === key ? loaded.value : readLoadCache<T>(key);
   const showing = useRef(false);
-  showing.current = loaded?.key === key;
+  showing.current = data !== undefined;
   // The first focus comes with the mount, which has already started a load.
   const mounted = useRef(false);
+  // Whoever awaits `refresh()`; released when the load in flight settles, or the screen goes away.
+  const waiting = useRef<(() => void)[]>([]);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
+  const refresh = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        waiting.current.push(resolve);
+        setVersion((v) => v + 1);
+      }),
+    [],
+  );
   const setData = useCallback(
     (value: T) => {
       writes.current++;
-      setLoaded({ key, value });
+      writeLoadCache(key, value);
+      setLoaded({ key, value, fresh: true });
     },
     [key],
   );
@@ -605,20 +725,43 @@ export function useLeagueLoad<T>(load: () => Promise<T>, key: string, intervalMs
   useEffect(() => {
     let current = true;
     const stamp = writes.current;
-    setError(undefined);
+    const started = loadCacheGeneration();
+    const settle = () => {
+      if (!current) return;
+      for (const resolve of waiting.current.splice(0)) resolve();
+    };
+    setFailure(undefined);
     loadRef.current().then(
       (value) => {
-        if (current && stamp === writes.current) setLoaded({ key, value });
+        if (current && stamp === writes.current) {
+          writeLoadCache(key, value, started);
+          setLoaded({ key, value, fresh: true });
+        }
+        settle();
       },
       (err: unknown) => {
-        if (current && stamp === writes.current)
-          setError(err instanceof Error ? err.message : "Something went wrong.");
+        if (current && stamp === writes.current) {
+          const status = statusOf(err);
+          if (status === 404) {
+            // Gone, or no longer this player's: nothing stale may show now or the next time.
+            dropLoadCache(key);
+            setLoaded(undefined);
+          }
+          setFailure({ message: err instanceof Error ? err.message : "Something went wrong.", status });
+        }
+        settle();
       },
     );
     return () => {
       current = false;
     };
   }, [key, version]);
+  useEffect(
+    () => () => {
+      for (const resolve of waiting.current.splice(0)) resolve();
+    },
+    [],
+  );
   useFocusEffect(
     useCallback(() => {
       if (mounted.current) reload();
@@ -637,5 +780,14 @@ export function useLeagueLoad<T>(load: () => Promise<T>, key: string, intervalMs
       };
     }, [reload, intervalMs]),
   );
-  return { data: loaded?.key === key ? loaded.value : undefined, error, reload, setData };
+  return {
+    data,
+    // False while `data` is only the remembered copy: wait for it before acting once on what the server says.
+    fresh: loaded?.key === key && loaded.fresh,
+    error: failure?.message,
+    status: failure?.status,
+    reload,
+    refresh,
+    setData,
+  };
 }

@@ -5,11 +5,15 @@ import {
   draftChanged,
   gridCell,
   gridWeeks,
+  nextSurvivorWeek,
   outLine,
   pickHeadline,
   playerStatus,
   recapSummary,
   teamChoice,
+  teamsUsed,
+  usedBy,
+  waitingLine,
   weekShort,
 } from "./survivor";
 
@@ -207,6 +211,147 @@ describe("survivor presentation", () => {
     expect(pickHeadline(v, "cat").title).toBe("Out in Week 11: Bears lost");
     expect(pickHeadline(view({ watching: true }), "dan").title).toBe("You're watching this season");
     expect(pickHeadline(view({ settings: null }), "ann").title).toBe("No pool this season");
+  });
+
+  describe("between weeks", () => {
+    // Week 11 is final and Week 12 isn't open yet: members aren't sent the draft.
+    const between = () => {
+      const v = view({ current: null });
+      return { ...v, weeks: v.weeks.filter((w) => w.status === "final") };
+    };
+
+    it("knows the week the pool plays next", () => {
+      expect(nextSurvivorWeek(view())).toBe(12);
+      expect(nextSurvivorWeek(between())).toBe(12);
+      // An admin is sent the draft too; it changes nothing.
+      const admin = between();
+      admin.weeks.push({
+        id: "w12",
+        number: 12,
+        status: "draft",
+        cancelled: false,
+        out: [],
+        aliveAfter: null,
+        games: [],
+      });
+      expect(nextSurvivorWeek(admin)).toBe(12);
+      // Before the start week has been played.
+      expect(nextSurvivorWeek({ ...between(), weeks: [] })).toBe(11);
+      expect(nextSurvivorWeek({ ...between(), over: true })).toBeNull();
+      expect(nextSurvivorWeek({ ...between(), settings: null })).toBeNull();
+      expect(nextSurvivorWeek({ ...between(), settings: { lives: 1, startWeek: null } })).toBeNull();
+    });
+
+    it("still lists the teams a player has used", () => {
+      // While a week is played, the API's list.
+      expect(teamsUsed(view(), "ann")).toEqual([{ team: "GB", weekNumber: 11 }]);
+      // Between weeks, the same from the player's own picks: not "0 · None yet".
+      expect(teamsUsed(between(), "ann")).toEqual([{ team: "GB", weekNumber: 11 }]);
+      expect(teamsUsed(between(), "bob")).toEqual([]);
+      expect(usedBy(between(), "ann", 12)).toEqual(new Set(["GB"]));
+    });
+
+    it("starts the used teams afresh in the postseason", () => {
+      const weeks = [17, 18, 19].map((number) => ({
+        id: `w${number}`,
+        number,
+        status: "final" as const,
+        cancelled: false,
+        out: [],
+        aliveAfter: 2,
+        games: [],
+      }));
+      const picks = [
+        {
+          userId: "ann",
+          weekId: "w17",
+          gameId: "a",
+          side: "home" as const,
+          team: "KC",
+          outcome: "won" as const,
+        },
+        {
+          userId: "ann",
+          weekId: "w18",
+          gameId: "b",
+          side: "home" as const,
+          team: "BUF",
+          outcome: "won" as const,
+        },
+        {
+          userId: "ann",
+          weekId: "w19",
+          gameId: "c",
+          side: "home" as const,
+          team: "PHI",
+          outcome: "won" as const,
+        },
+      ];
+      const settings = { lives: 1, startWeek: 17 };
+      // Waiting for the Wild Card round: nothing from the regular season counts.
+      const beforeWildCard = view({
+        current: null,
+        settings,
+        weeks: weeks.slice(0, 2),
+        picks: picks.slice(0, 2),
+      });
+      expect(nextSurvivorWeek(beforeWildCard)).toBe(19);
+      expect(teamsUsed(beforeWildCard, "ann")).toEqual([]);
+      // Waiting for the Divisional round: the Wild Card pick does.
+      const beforeDivisional = view({ current: null, settings, weeks, picks });
+      expect(teamsUsed(beforeDivisional, "ann")).toEqual([{ team: "PHI", weekNumber: 19 }]);
+      // Waiting for Week 18: both regular-season picks... one so far, in the order used.
+      const beforeWeek18 = view({
+        current: null,
+        settings,
+        weeks: weeks.slice(0, 1),
+        picks: picks.slice(0, 1),
+      });
+      expect(teamsUsed(beforeWeek18, "ann")).toEqual([{ team: "KC", weekNumber: 17 }]);
+    });
+
+    it("says which week is next and what opens it", () => {
+      expect(waitingLine(between())).toEqual({
+        detail: "Week 12 opens as soon as its games are on the pro football schedule.",
+        standings: false,
+      });
+      expect(waitingLine({ ...between(), weeks: [], picks: [], players: [] }).detail).toBe(
+        "The pool starts with Week 11. It opens as soon as its games are on the pro football schedule.",
+      );
+      const postseason = (finalThrough: number) =>
+        view({
+          current: null,
+          settings: { lives: 1, startWeek: 18 },
+          picks: [],
+          weeks: Array.from({ length: finalThrough - 17 }, (_, i) => ({
+            id: `w${18 + i}`,
+            number: 18 + i,
+            status: "final" as const,
+            cancelled: false,
+            out: [],
+            aliveAfter: 2,
+            games: [],
+          })),
+        });
+      expect(waitingLine(postseason(18)).detail).toBe(
+        "The Wild Card round opens as soon as its games are on the pro football schedule.",
+      );
+      expect(waitingLine(postseason(21)).detail).toBe(
+        "The Super Bowl opens as soon as its games are on the pro football schedule.",
+      );
+      expect(waitingLine({ ...between(), over: true })).toEqual({
+        detail: "The pool is over. See how it finished on Standings.",
+        standings: true,
+      });
+      expect(waitingLine({ ...between(), settings: null }).detail).toBe(
+        "A commissioner can start the pool from the League tab.",
+      );
+      expect(waitingLine({ ...between(), settings: null, role: "admin" }).detail).toBe(
+        "Start the pool from the League tab.",
+      );
+      // Nothing here names the data provider.
+      expect(waitingLine(between()).detail).not.toMatch(/ESPN|feed/i);
+    });
   });
 
   it("recaps a week: in or out, who went out, how many are left", () => {

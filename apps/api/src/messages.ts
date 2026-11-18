@@ -207,7 +207,7 @@ export function messageRoutes({
         // Without `limit` or `before`, the whole board as an array: what tabs opened before pagination ask for.
         if (limit === undefined && before === undefined) return c.json(await listThreads(userId, inLeague));
         const size = limit ?? THREAD_PAGE_SIZE;
-        const [pinned, rest, unreadCount] = await Promise.all([
+        const [pinned, rest, unreadCount, poster] = await Promise.all([
           // Every pinned announcement leads the first page; later pages carry none.
           before ? [] : listThreads(userId, and(inLeague, eq(messageThreads.pinned, true))),
           threadRows(
@@ -224,6 +224,7 @@ export function messageRoutes({
             size + 1,
           ),
           unreadThreads(userId, leagueId, role === "admin"),
+          posterState(db, userId, leagueId),
         ]);
         const page = rest.slice(0, size);
         const last = page.at(-1);
@@ -231,6 +232,7 @@ export function messageRoutes({
           threads: [...pinned, ...page.map(({ position: _, ...thread }) => thread)],
           nextCursor: rest.length > size && last ? threadCursor(last.position, last.id) : null,
           unreadCount,
+          postingBlocked: postingBlocked(poster, now()),
         });
       },
     )
@@ -309,7 +311,7 @@ export function messageRoutes({
       const { leagueId, threadId } = c.req.valid("param");
       const userId = c.var.user.id;
       const t = await thread(leagueId, threadId, userId);
-      const [rows, blocked, poster, appealed] = await Promise.all([
+      const [rows, blocked, poster, appealed, read] = await Promise.all([
         db
           .select({
             post: messagePosts,
@@ -334,6 +336,10 @@ export function messageRoutes({
               eq(contentReports.reporterId, userId),
             ),
           ),
+        db
+          .select({ version: messageReads.version })
+          .from(messageReads)
+          .where(and(eq(messageReads.threadId, threadId), eq(messageReads.userId, userId))),
       ]);
       const byPost = await reactions(threadId, userId, blocked);
       const reader = { userId, isAdmin: t.role === "admin", blocked };
@@ -349,6 +355,7 @@ export function messageRoutes({
         canModerate: t.role === "admin",
         postingBlocked: postingBlocked(poster, now()),
         needsTerms: !poster?.termsAcceptedAt,
+        readVersion: read[0]?.version ?? 0,
         posts: rows.map(({ post, authorName, avatarId, authorDeleted }) => {
           const view = postView(post, reader, authorDeleted);
           const original = post.quotedPostId ? postsById.get(post.quotedPostId) : undefined;

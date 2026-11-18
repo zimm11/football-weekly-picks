@@ -2,16 +2,18 @@
 import { type InvitePreview, LEAGUE_TYPE_INFO, type LeagueSummary } from "@picks/shared";
 import { router } from "expo-router";
 import { useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { NotFound } from "../components/NotFound";
 import { NotificationsPrompt } from "../components/NotificationsPrompt";
 import { colors, fonts } from "../components/ui";
 import { request } from "../lib/api";
+import { usePageTitle } from "../lib/pageTitle";
+import { usePullRefresh } from "../lib/pullRefresh";
 import {
   Action,
   Card,
   Eyebrow,
   Failure,
-  go,
   Heading,
   Pill,
   RowLink,
@@ -22,18 +24,21 @@ import {
 
 export function LeaguesScreen() {
   const leagues = useLeagueLoad(() => request<LeagueSummary[]>("/leagues"), "leagues");
+  const pull = usePullRefresh(leagues.refresh);
+  // On a phone the type and role pills go under the name, so a long name keeps the row's width.
+  const stacked = useWindowDimensions().width < 480;
   if (!leagues.data && !leagues.error) return <Skeleton label="Loading your leagues" />;
   return (
     <ScrollView
       style={s.page}
       contentContainerStyle={s.content}
-      refreshControl={<RefreshControl refreshing={false} onRefresh={leagues.reload} />}
+      refreshControl={<RefreshControl {...pull} tintColor={colors.foreground} />}
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <Text accessibilityRole="header" style={[s.title, { flexShrink: 1 }]}>
           Your leagues
         </Text>
-        <Action link compact icon="plus" onPress={() => go("/leagues/new")}>
+        <Action compact icon="plus" href="/leagues/new">
           New league
         </Action>
       </View>
@@ -48,11 +53,17 @@ export function LeaguesScreen() {
         </Card>
       )}
       <View style={{ gap: 8 }}>
-        {leagues.data?.map((league) => (
-          <RowLink key={league.id} onPress={() => go(`/leagues/${league.id}`)}>
+        {leagues.data?.map((league) => {
+          const pills = (
+            <>
+              <Pill inline>{LEAGUE_TYPE_INFO[league.type]?.name ?? LEAGUE_TYPE_INFO.weekly.name}</Pill>
+              {league.role === "admin" && <Pill inline>Commissioner</Pill>}
+            </>
+          );
+          const name = (
             <Text
               style={{
-                flex: 1,
+                flex: stacked ? undefined : 1,
                 fontFamily: fonts.displayBold,
                 fontSize: 24,
                 lineHeight: 32,
@@ -62,10 +73,23 @@ export function LeaguesScreen() {
             >
               {league.name}
             </Text>
-            <Pill inline>{LEAGUE_TYPE_INFO[league.type]?.name ?? LEAGUE_TYPE_INFO.weekly.name}</Pill>
-            {league.role === "admin" && <Pill inline>Commissioner</Pill>}
-          </RowLink>
-        ))}
+          );
+          return (
+            <RowLink key={league.id} href={`/leagues/${league.id}`}>
+              {stacked ? (
+                <View style={{ flex: 1, gap: 4 }}>
+                  {name}
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{pills}</View>
+                </View>
+              ) : (
+                <>
+                  {name}
+                  {pills}
+                </>
+              )}
+            </RowLink>
+          );
+        })}
       </View>
       {/* Below the leagues, which are what the player came for. Gone once answered or put off. */}
       <NotificationsPrompt />
@@ -78,6 +102,7 @@ export function JoinScreen({ code }: { code: string }) {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   async function join() {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -91,6 +116,21 @@ export function JoinScreen({ code }: { code: string }) {
       setBusy(false);
     }
   }
+  usePageTitle(
+    invite.status === 404
+      ? "Invite link not valid"
+      : invite.data
+        ? `Join ${invite.data.leagueName}`
+        : "Join a league",
+  );
+  // A replaced or deleted invite can't work on a second try: say so, with the way home.
+  if (invite.status === 404)
+    return (
+      <NotFound
+        title="This invite link is no longer valid"
+        detail="Ask the league commissioner for a new one."
+      />
+    );
   if (!invite.data && !invite.error) return <Skeleton label="Loading invite" />;
   return (
     <ScrollView style={s.page} contentContainerStyle={s.content}>
@@ -98,9 +138,9 @@ export function JoinScreen({ code }: { code: string }) {
       <Failure message={invite.error} retry={invite.reload} />
       {invite.data && (
         <Card>
-          <Heading>{invite.data.leagueName}</Heading>
+          <Heading level={1}>{invite.data.leagueName}</Heading>
           {invite.data.alreadyMember ? (
-            <Action link onPress={() => router.replace(`/leagues/${invite.data?.leagueId}` as never)}>
+            <Action href={`/leagues/${invite.data.leagueId}`} how="replace">
               Go to the league
             </Action>
           ) : invite.data.full ? (
@@ -109,7 +149,7 @@ export function JoinScreen({ code }: { code: string }) {
             </Text>
           ) : (
             <Action
-              disabled={busy}
+              busy={busy}
               onPress={() => {
                 void join();
               }}
@@ -126,7 +166,7 @@ export function JoinScreen({ code }: { code: string }) {
 
 function PressableGuide() {
   return (
-    <Action link ghost compact onPress={() => go("/how-to-play")} icon="chevron-right">
+    <Action ghost compact href="/how-to-play" icon="chevron-right">
       New here? Read the rules & app guide
     </Action>
   );

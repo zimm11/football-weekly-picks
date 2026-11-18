@@ -1,7 +1,8 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: SettingsHeading renders its children inside native Text.
 import { type BlockedPlayer, type NotificationSettings, SUPPORT_EMAIL } from "@picks/shared";
 import { useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { AppLink } from "../components/AppLink";
 import { BackLink } from "../components/BackLink";
 import { DeleteAccount } from "../components/DeleteAccount";
 import { DeviceNotifications } from "../components/DeviceNotifications";
@@ -9,6 +10,7 @@ import { useHomeScreenHelp } from "../components/HomeScreenInstall";
 import { Icon } from "../components/Icon";
 import { setBlocked } from "../components/Moderation";
 import { PreferenceToggle } from "../components/PreferenceToggle";
+import { hoverFill } from "../components/pressState";
 import { SettingsHeading } from "../components/SettingsHeading";
 import {
   Body,
@@ -24,10 +26,12 @@ import {
 } from "../components/ui";
 import { getSupabase, request } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { authFailure } from "../lib/authErrors";
 import { appLink } from "../lib/config";
 import { useAction, useFormGuard, useResource } from "../lib/hooks";
-import { openScreen } from "../lib/navigation";
+import { mailtoProps } from "../lib/mail";
 import { notifyDone, notifyError } from "../lib/notify";
+import { Action } from "./leagueUi";
 export function AccountScreen() {
   const auth = useAuth();
   const [email, setEmail] = useState("");
@@ -36,6 +40,22 @@ export function AccountScreen() {
   useFormGuard(!!email.trim(), () => setEmail(""));
   // In an iPhone browser tab the device card already shows the install steps, so this card would repeat them.
   const homeScreen = useHomeScreenHelp();
+  const changeEmail = () => {
+    if (!email.trim()) return;
+    const from = auth.session?.user.email;
+    void emailAction.run(
+      async () => {
+        if (email.trim().toLowerCase() === from?.toLowerCase()) throw new Error("That's already your email.");
+        const { error } = await (await getSupabase()).auth.updateUser(
+          { email: email.trim() },
+          { emailRedirectTo: appLink("/account") },
+        );
+        if (error) throw authFailure(error);
+        setEmail("");
+      },
+      `Confirm the change from both ${from ?? "your current address"} and ${email.trim()}.`,
+    );
+  };
   async function notifications(key: keyof NotificationSettings, value: boolean) {
     await request("/me/notifications", { method: "PUT", body: { [key]: value } });
     await auth.refreshProfile();
@@ -45,9 +65,11 @@ export function AccountScreen() {
       <BackLink />
       <Title>Settings</Title>
       <View style={{ gap: 12 }}>
-        <Title style={{ fontSize: 24, lineHeight: 28 }}>Notifications</Title>
+        <Title level={2} style={{ fontSize: 24, lineHeight: 28 }}>
+          Notifications
+        </Title>
         <Card>
-          <SettingsHeading>By email</SettingsHeading>
+          <SettingsHeading level={3}>By email</SettingsHeading>
           <View style={{ gap: 8 }}>
             <PreferenceToggle
               label="New message threads"
@@ -101,58 +123,30 @@ export function AccountScreen() {
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
+          autoCorrect={false}
           autoComplete="email"
           editable={!emailAction.busy}
+          onSubmit={changeEmail}
         />
         <ErrorMessage message={emailAction.error} />
         <Notice message={emailAction.status} />
         <Button
           title={emailAction.busy ? "Sending…" : "Change email"}
-          disabled={emailAction.busy || !email.trim()}
-          onPress={() =>
-            void emailAction.run(
-              async () => {
-                if (email.trim().toLowerCase() === auth.session?.user.email?.toLowerCase())
-                  throw new Error("That's already your email.");
-                const { error } = await (await getSupabase()).auth.updateUser(
-                  { email: email.trim() },
-                  { emailRedirectTo: appLink("/account") },
-                );
-                if (error) throw error;
-                setEmail("");
-              },
-              `Confirm the change from both ${auth.session?.user.email ?? "your current address"} and ${email.trim()}.`,
-            )
-          }
+          busy={emailAction.busy}
+          disabled={!email.trim()}
+          onPress={changeEmail}
         />
       </Card>
       <BlockedPlayers />
       <Card>
         <SettingsHeading>Help</SettingsHeading>
-        <SettingsLink
-          icon="email"
-          label="Contact support"
-          detail={SUPPORT_EMAIL}
-          onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
-        />
-        <SettingsLink icon="document" label="Terms of use" onPress={() => void openScreen("/terms")} />
-        <SettingsLink icon="lock" label="Privacy policy" onPress={() => void openScreen("/privacy")} />
+        <SettingsLink icon="email" label="Contact support" detail={SUPPORT_EMAIL} mail={SUPPORT_EMAIL} />
+        <SettingsLink icon="document" label="Terms of use" href="/terms" />
+        <SettingsLink icon="lock" label="Privacy policy" href="/privacy" />
       </Card>
       <Card>
         <SettingsHeading>Password</SettingsHeading>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => void openScreen("/reset-password")}
-          style={{
-            minHeight: 44,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Body style={{ fontFamily: fonts.medium }}>Change password</Body>
-          <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
-        </Pressable>
+        <SettingsLink label="Change password" href="/reset-password" />
       </Card>
       <DeleteAccount />
       {homeScreen.sheet}
@@ -160,30 +154,52 @@ export function AccountScreen() {
   );
 }
 
+/** A row in a Settings card: another page (`href`, a real link) or an email to `mail`. */
 function SettingsLink({
   icon,
   label,
   detail,
-  onPress,
+  mail,
+  href,
 }: {
-  icon: "email" | "document" | "lock";
+  icon?: "email" | "document" | "lock";
   label: string;
   detail?: string;
-  onPress: () => void;
+  mail?: string;
+  href?: string;
 }) {
-  return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={detail ? `${label}, ${detail}` : label}
-      onPress={onPress}
-      style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10 }}
-    >
-      <Icon name={icon} size={18} color={colors.mutedForeground} />
+  const shared = {
+    accessibilityLabel: detail ? `${label}, ${detail}` : undefined,
+    style: (state: Parameters<typeof hoverFill>[0]) => ({
+      minHeight: 44,
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 10,
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
+      borderRadius: 10,
+      backgroundColor: hoverFill(state),
+    }),
+  };
+  const content = (
+    <>
+      {icon && <Icon name={icon} size={18} color={colors.mutedForeground} />}
       <View style={{ flex: 1 }}>
         <Body style={{ fontFamily: fonts.medium }}>{label}</Body>
         {detail && <Body muted>{detail}</Body>}
       </View>
       <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+    </>
+  );
+  if (href)
+    return (
+      <AppLink href={href} {...shared}>
+        {content}
+      </AppLink>
+    );
+  return (
+    <Pressable accessibilityRole="link" {...(mail ? mailtoProps(mail) : null)} {...shared}>
+      {content}
     </Pressable>
   );
 }
@@ -205,11 +221,12 @@ function BlockedPlayers() {
           style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 }}
         >
           <Body style={{ flex: 1 }}>{player.displayName}</Body>
-          <Button
-            small
-            variant="outline"
-            title={busy === player.userId ? "Unblocking…" : "Unblock"}
-            disabled={!!busy}
+          <Action
+            secondary
+            compact
+            label={`Unblock ${player.displayName}`}
+            busy={busy === player.userId}
+            disabled={!!busy && busy !== player.userId}
             onPress={() => {
               setBusy(player.userId);
               void setBlocked(player.userId, false)
@@ -220,7 +237,9 @@ function BlockedPlayers() {
                 .catch((err) => notifyError(err instanceof Error ? err.message : "Couldn't unblock."))
                 .finally(() => setBusy(undefined));
             }}
-          />
+          >
+            {busy === player.userId ? "Unblocking…" : "Unblock"}
+          </Action>
         </View>
       ))}
     </Card>

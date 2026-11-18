@@ -24,6 +24,7 @@ import {
   go,
   Heading,
   Label,
+  Pill,
   RowLink,
   Sheet,
   Skeleton,
@@ -64,7 +65,7 @@ export function PlayoffStandings({ league, year, userId, header, reload }: Leagu
   const standings = usePlayoffStandings(league.id, year);
   const view = standings.data;
   return (
-    <LeagueTabScroll header={header} reload={reload}>
+    <LeagueTabScroll header={header} reload={() => Promise.all([standings.refresh(), reload()])}>
       <View style={{ gap: 16 }}>
         <Text accessibilityRole="header" style={s.title}>
           Standings
@@ -110,13 +111,16 @@ export function PlayoffStandings({ league, year, userId, header, reload }: Leagu
                       {entry.rank}
                     </Text>
                     <Avatar avatarId={entry.avatarId} name={entry.displayName} size={28} />
-                    <Text
-                      numberOfLines={2}
-                      style={[s.text, { flex: 1, fontSize: 14, lineHeight: 18, fontFamily: fonts.medium }]}
-                    >
-                      {entry.displayName}
-                      {entry.champion ? " (champion)" : ""}
-                    </Text>
+                    {/* The champion's pill sits under the name, so the name keeps the column's width. */}
+                    <View style={{ flex: 1, gap: 2, alignItems: "flex-start" }}>
+                      <Text
+                        numberOfLines={entry.champion ? 1 : 2}
+                        style={[s.text, { fontSize: 14, lineHeight: 18, fontFamily: fonts.medium }]}
+                      >
+                        {entry.displayName}
+                      </Text>
+                      {entry.champion && <Pill tone="win">Champion</Pill>}
+                    </View>
                   </View>
                 ),
                 values: [
@@ -160,7 +164,7 @@ export function PlayoffResults({ league, header, reload }: LeagueTabProps) {
               <RowLink
                 key={round.id}
                 label={`${weekLabel(round.number)} results`}
-                onPress={() => go(`/weeks/${round.id}`)}
+                href={`/weeks/${round.id}`}
               >
                 <Text style={[s.subtitle, { fontSize: 24, flex: 1 }]}>{weekLabel(round.number)}</Text>
                 <Text style={s.muted}>
@@ -224,10 +228,16 @@ export function PlayoffRecap({
       <Label>{headline}</Label>
       {mine && overall && (
         <View style={{ flexDirection: "row", gap: 8 }}>
-          <StatTile label="This round" value={mine.points} detail={record(mine)} />
-          <StatTile label="Overall" value={ordinal(overall.rank)} detail={`${overall.points} points`} />
+          <StatTile raised label="This round" value={mine.points} detail={record(mine)} />
+          <StatTile
+            raised
+            label="Overall"
+            value={ordinal(overall.rank)}
+            detail={`${overall.points} points`}
+          />
           {overall.status && (
             <StatTile
+              raised
               label="Guillotine"
               value={overall.status.state === "out" ? "Out" : "In"}
               detail={
@@ -241,7 +251,7 @@ export function PlayoffRecap({
         <WeekAwardCards view={view} />
       )}
       <Action
-        link
+        href={`/weeks/${weekId}`}
         onPress={() => {
           close();
           void go(`/weeks/${weekId}`);

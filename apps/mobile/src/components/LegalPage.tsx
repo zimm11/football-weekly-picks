@@ -1,9 +1,11 @@
 import { SUPPORT_EMAIL } from "@picks/shared";
 import type { Href } from "expo-router";
-import { Linking, Pressable, Text, View } from "react-native";
-import { openScreen } from "../lib/navigation";
+import { Pressable, Text, View } from "react-native";
+import { mailtoProps } from "../lib/mail";
+import { AppLink } from "./AppLink";
 import { BackLink } from "./BackLink";
 import { Icon } from "./Icon";
+import { hoverFill } from "./pressState";
 import { Body, Card, colors, Eyebrow, fonts, Screen, styles, Title } from "./ui";
 
 /** A paragraph, or a bulleted list. */
@@ -76,34 +78,51 @@ export function LegalPage({
       </Card>
       <Card>
         <Body>Questions, or something we should know about?</Body>
-        <LegalLink
-          icon="email"
-          label={SUPPORT_EMAIL}
-          onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
-        />
-        <LegalLink icon="document" label={other.label} onPress={() => void openScreen(other.href)} />
+        <LegalLink icon="email" label={SUPPORT_EMAIL} mail={SUPPORT_EMAIL} />
+        <LegalLink icon="document" label={other.label} href={String(other.href)} />
       </Card>
     </Screen>
   );
 }
 
+/** Where to write (an email, `mail`) or the other page (`href`, a real link). */
 function LegalLink({
   icon,
   label,
-  onPress,
+  mail,
+  href,
 }: {
   icon: "email" | "document";
   label: string;
-  onPress: () => void;
+  mail?: string;
+  href?: string;
 }) {
-  return (
-    <Pressable
-      accessibilityRole="link"
-      onPress={onPress}
-      style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}
-    >
+  const style = (state: Parameters<typeof hoverFill>[0]) => ({
+    minHeight: 44,
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    alignSelf: "flex-start" as const,
+    gap: 8,
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: hoverFill(state),
+  });
+  const content = (
+    <>
       <Icon name={icon} size={18} color={colors.primary} />
       <Text style={{ fontFamily: fonts.medium, fontSize: 16, color: colors.primary }}>{label}</Text>
+    </>
+  );
+  if (href)
+    return (
+      <AppLink href={href} style={style}>
+        {content}
+      </AppLink>
+    );
+  return (
+    <Pressable accessibilityRole="link" {...(mail ? mailtoProps(mail) : null)} style={style}>
+      {content}
     </Pressable>
   );
 }

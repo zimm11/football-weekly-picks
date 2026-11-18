@@ -47,4 +47,9 @@ export type ThreadPage = {
   nextCursor: string | null;
   /** Unread threads across the whole board, not just this page. */
   unreadCount: number;
+  /**
+   * Why the signed-in player can't post here right now (a mute, a suspension), or null: the same text a thread
+   * carries, so the board can say so before they write a new thread. Absent from servers older than the field.
+   */
+  postingBlocked?: string | null;
 };

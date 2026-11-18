@@ -2,6 +2,9 @@
 import { type Record3, type Standings, weekLabel, winRate } from "@picks/shared";
 import { type ReactNode, useState } from "react";
 import {
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +15,7 @@ import {
 } from "react-native";
 import { Avatar } from "../components/Avatar";
 import { Icon } from "../components/Icon";
+import { hoverFill } from "../components/pressState";
 import { colors, fonts } from "../components/ui";
 import { Card, Eyebrow, Label, RowLink, StatTile, s } from "./leagueUi";
 
@@ -60,8 +64,59 @@ function Name({ entry }: { entry: Entry }) {
   );
 }
 export type TableRow = { id: string; name: ReactNode; values: ReactNode[]; mine?: boolean };
+/** A stat column's natural width when it doesn't name one. */
+const COLUMN_WIDTH = 66;
 /** A stat column: its natural width, plus an even share of any room left over on wide screens. */
-const column = (width = 66) => ({ flexBasis: width, flexGrow: 1, flexShrink: 0 });
+const column = (width = COLUMN_WIDTH) => ({ flexBasis: width, flexGrow: 1, flexShrink: 0 });
+/** The width the stat columns need side by side, so every row (and the player's highlight) spans all of them. */
+export const columnsWidth = (columns: { width?: number }[]) =>
+  columns.reduce((total, col) => total + (col.width ?? COLUMN_WIDTH), 0);
+
+/**
+ * Whether a sideways-scrolling table has more to its right: true until it is scrolled to the end, false when
+ * everything fits. Drives the fade at the table's right edge, the cue that it scrolls.
+ */
+function useMoreToTheRight() {
+  const [size, setSize] = useState({ viewport: 0, content: 0, x: 0 });
+  return {
+    more: size.content - size.viewport - size.x > 4,
+    scrollProps: {
+      scrollEventThrottle: 32,
+      onLayout: (event: LayoutChangeEvent) => {
+        const viewport = event.nativeEvent.layout.width;
+        setSize((prev) => (prev.viewport === viewport ? prev : { ...prev, viewport }));
+      },
+      onContentSizeChange: (content: number) =>
+        setSize((prev) => (prev.content === content ? prev : { ...prev, content })),
+      onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const x = event.nativeEvent.contentOffset.x;
+        setSize((prev) => (Math.abs(prev.x - x) < 1 ? prev : { ...prev, x }));
+      },
+    },
+  };
+}
+/**
+ * The right edge of a table with more columns past it: the card's own fill, fading in from transparent (a CSS
+ * gradient, which react-native-web and React Native 0.88 both draw). Not read out.
+ */
+function RightFade() {
+  return (
+    <View
+      pointerEvents="none"
+      aria-hidden
+      importantForAccessibility="no-hide-descendants"
+      style={{
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        right: 0,
+        width: 32,
+        zIndex: 2,
+        backgroundImage: `linear-gradient(to right, ${colors.card}00, ${colors.card})`,
+      }}
+    />
+  );
+}
 /** The web build's first column stays put while the rest scroll sideways. */
 const stickyFirst = { position: "sticky", left: 0, zIndex: 1 } as unknown as ViewStyle;
 /** Read by screen readers (and in the page's text) but not drawn. */
@@ -80,6 +135,8 @@ export function StickyTable({
   const all = footer ? [...rows, footer] : rows;
   const { width } = useWindowDimensions();
   const nameWidth = width < 440 ? 145 : 185;
+  const statsWidth = columnsWidth(columns);
+  const { more, scrollProps } = useMoreToTheRight();
   const headerStyle = {
     height: 40,
     justifyContent: "center" as const,
@@ -102,8 +159,13 @@ export function StickyTable({
         aria-label={label}
         style={{ borderRadius: 16, overflow: "hidden", backgroundColor: colors.card }}
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
-          <View style={{ flexGrow: 1 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          contentContainerStyle={{ flexGrow: 1 }}
+          {...scrollProps}
+        >
+          <View style={{ flexGrow: 1, minWidth: nameWidth + statsWidth }}>
             <View role="row" style={{ flexDirection: "row" }}>
               <View
                 role="columnheader"
@@ -152,6 +214,7 @@ export function StickyTable({
             ))}
           </View>
         </ScrollView>
+        {more && <RightFade />}
       </View>
     );
   return (
@@ -175,8 +238,9 @@ export function StickyTable({
         accessibilityLabel={`${label} statistics, scroll horizontally`}
         // Scrolls sideways on a phone; on a wide screen the columns grow to fill the card.
         contentContainerStyle={{ flexGrow: 1 }}
+        {...scrollProps}
       >
-        <View style={{ flexGrow: 1 }}>
+        <View style={{ flexGrow: 1, minWidth: statsWidth }}>
           <View style={{ flexDirection: "row" }}>
             {columns.map((col) => (
               <View key={col.title} style={[headerStyle, column(col.width), { alignItems: "flex-end" }]}>
@@ -203,6 +267,7 @@ export function StickyTable({
           ))}
         </View>
       </ScrollView>
+      {more && <RightFade />}
     </View>
   );
 }
@@ -421,7 +486,13 @@ function PointsChart({ standings, entry }: { standings: Standings; entry: Entry 
                 accessibilityLabel={description(i)}
                 accessibilityState={{ selected: i === selected }}
                 onPress={() => setSelected(i)}
-                style={{ width: 44, height: 148 }}
+                aria-pressed={i === selected}
+                style={(state) => ({
+                  width: 44,
+                  height: 148,
+                  borderRadius: 6,
+                  backgroundColor: hoverFill(state),
+                })}
               >
                 <View style={{ flex: 1, position: "relative" }}>
                   {result && (
@@ -484,11 +555,12 @@ function PointsChart({ standings, entry }: { standings: Standings; entry: Entry 
 export function SeasonResults({
   standings,
   userId,
-  onWeek,
+  weekHref,
 }: {
   standings: Standings;
   userId: string;
-  onWeek: (id: string) => void;
+  /** Where a week's row leads: its results page. */
+  weekHref: (id: string) => string;
 }) {
   const me = standings.entries.find((e) => e.userId === userId);
   return (
@@ -497,7 +569,7 @@ export function SeasonResults({
         const index = standings.weeks.findIndex((w) => w.id === week.id);
         const mine = me?.weekly[index];
         return (
-          <RowLink key={week.id} onPress={() => onWeek(week.id)} label={`${weekLabel(week.number)} results`}>
+          <RowLink key={week.id} href={weekHref(week.id)} label={`${weekLabel(week.number)} results`}>
             <Text style={[s.subtitle, { fontSize: 24 }]}>{weekLabel(week.number)}</Text>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={s.muted}>

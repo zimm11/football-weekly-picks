@@ -1,4 +1,4 @@
-import { expect, openNewLeague, signUp, test } from "./fixtures";
+import { expect, joinLeague, openNewLeague, test } from "./fixtures";
 
 test("members create threads, reply, and guard unsaved messages", async ({ page, signedIn }) => {
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
@@ -28,15 +28,15 @@ test("members create threads, reply, and guard unsaved messages", async ({ page,
   await reactions.first().getByRole("button", { name: "Add reaction" }).click();
   await page.getByRole("menuitemcheckbox", { name: "Like" }).click();
   await expect(
-    reactions.first().getByRole("button", { name: "Like, 1 reactions", exact: true }),
+    reactions.first().getByRole("button", { name: "Like, 1 reaction", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await reactions.last().getByRole("button", { name: "Add reaction" }).click();
   await page.getByRole("menuitemcheckbox", { name: "Laugh" }).click();
   await expect(
-    reactions.last().getByRole("button", { name: "Laugh, 1 reactions", exact: true }),
+    reactions.last().getByRole("button", { name: "Laugh, 1 reaction", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await page.reload();
-  await reactions.first().getByRole("button", { name: "Like, 1 reactions", exact: true }).click();
+  await reactions.first().getByRole("button", { name: "Like, 1 reaction", exact: true }).click();
   await expect(reactions.first().getByRole("button", { name: /Like/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Message board" }).click();
   await expect(page.getByRole("link", { name: /Week discussion/ })).toContainText("1 reply");
@@ -48,13 +48,9 @@ test("new threads and replies show unread indicators until opened", async ({ pag
   await openNewLeague(page);
   await page.getByLabel("League name").fill("Unread league");
   await page.getByRole("button", { name: "Create league" }).click();
-  const invite = await page.getByLabel(/Invite link/).inputValue();
-  const context = await browser.newContext();
+  const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
+  const { context, page: player } = await joinLeague(browser, invite, "Reader");
   try {
-    const player = await context.newPage();
-    await player.goto(invite);
-    await signUp(player, "Reader");
-    await player.getByRole("button", { name: "Join league" }).click();
     await expect(player.getByRole("heading", { name: "Unread league" })).toBeVisible();
     await page.getByRole("link", { name: "Messages", exact: true }).click();
     await page.getByRole("link", { name: "New thread" }).click();
@@ -63,22 +59,23 @@ test("new threads and replies show unread indicators until opened", async ({ pag
     await page.getByRole("button", { name: "Create thread" }).click();
     await expect(page.getByRole("heading", { name: "League news" })).toBeVisible();
     await player.reload();
-    await expect(player.getByRole("img", { name: "1 unread threads" })).toBeVisible();
+    await expect(player.getByRole("img", { name: "1 unread thread" })).toBeVisible();
     await player.getByRole("link", { name: /Messages/ }).click();
     await expect(player.getByRole("link", { name: /League news/ })).toContainText("Unread");
     await player.getByRole("link", { name: /League news/ }).click();
     await expect(player.getByText("Welcome everyone.", { exact: true })).toBeVisible();
-    await expect(player.getByRole("img", { name: "1 unread threads" })).not.toBeVisible();
+    await expect(player.getByRole("img", { name: "1 unread thread" })).not.toBeVisible();
     await player.getByRole("link", { name: "Message board" }).click();
     await page.getByLabel("Reply", { exact: true }).fill("One more update.");
     await page.getByRole("button", { name: "Post reply" }).click();
     await expect(page.getByRole("textbox", { name: "Reply", exact: true })).toHaveValue("");
     await expect(page.getByText("One more update.", { exact: true })).toBeVisible();
     await player.reload();
+    await expect(player.getByRole("img", { name: "1 unread thread" })).toBeVisible();
     await expect(player.getByRole("link", { name: /League news/ })).toContainText("Unread");
     await player.getByRole("link", { name: /League news/ }).click();
     await expect(player.getByText("One more update.", { exact: true })).toBeVisible();
-    await expect(player.getByRole("img", { name: "1 unread threads" })).not.toBeVisible();
+    await expect(player.getByRole("img", { name: "1 unread thread" })).not.toBeVisible();
   } finally {
     await context.close();
   }
@@ -89,7 +86,7 @@ test("admins pin announcements and members quote replies", async ({ page, browse
   await openNewLeague(page);
   await page.getByLabel("League name").fill("Announcement league");
   await page.getByRole("button", { name: "Create league" }).click();
-  const invite = await page.getByLabel(/Invite link/).inputValue();
+  const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
   await page.getByRole("link", { name: "Messages", exact: true }).click();
   await page.getByRole("link", { name: "New thread" }).click();
   await page.getByLabel("Thread title").fill("Weekly reminder");
@@ -109,12 +106,8 @@ test("admins pin announcements and members quote replies", async ({ page, browse
   await expect(threads.first()).toContainText("Pinned announcement");
   await expect(threads.first()).toContainText("Weekly reminder");
 
-  const context = await browser.newContext();
+  const { context, page: player } = await joinLeague(browser, invite, "Reader");
   try {
-    const player = await context.newPage();
-    await player.goto(invite);
-    await signUp(player, "Reader");
-    await player.getByRole("button", { name: "Join league" }).click();
     await expect(player.getByRole("heading", { name: "Announcement league" })).toBeVisible();
     await player.getByRole("link", { name: /Messages/ }).click();
     await player.getByRole("link", { name: /Weekly reminder/ }).click();
@@ -205,6 +198,75 @@ test("admins confirm thread deletion, keep drafts on failure, and return to the 
   await page.reload();
   await expect(page.getByText("No threads yet. Start the conversation.")).toBeVisible();
   await page.goto(threadUrl);
-  await expect(page.getByRole("alert")).toContainText("Thread not found.");
+  await expect(page.getByRole("alert")).toContainText("Thread not found. It may have been deleted.");
+  await expect(page.getByRole("link", { name: "See all threads" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Reply", exact: true })).toHaveCount(0);
+});
+
+test("a thread opens on its first unread reply, replying keeps the reply box, and addresses are links", async ({
+  page,
+  browser,
+  signedIn: _,
+}) => {
+  // Two players, and a thread long enough to scroll.
+  test.slow();
+  await openNewLeague(page);
+  await page.getByLabel("League name").fill("Long thread league");
+  await page.getByRole("button", { name: "Create league" }).click();
+  const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
+  await page.getByRole("link", { name: "Messages", exact: true }).click();
+  await page.getByRole("link", { name: "New thread" }).click();
+  await page.getByLabel("Thread title").fill("Rules discussion");
+  await page.getByLabel("Message", { exact: true }).fill("The full rules are at https://example.com/rules.");
+  await page.getByRole("button", { name: "Create thread", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Rules discussion" })).toBeVisible();
+  // A web address in a message is a link (opening in a new tab), without the full stop after it.
+  await expect(page.getByRole("link", { name: "https://example.com/rules", exact: true })).toHaveAttribute(
+    "href",
+    "https://example.com/rules",
+  );
+
+  const { context, page: player } = await joinLeague(browser, invite, "Reader");
+  try {
+    await player.getByRole("link", { name: "Messages", exact: true }).click();
+    await player.getByRole("link", { name: /Rules discussion/ }).click();
+    const reply = player.getByRole("textbox", { name: "Reply", exact: true });
+    await test.step("each posted reply clears the box and keeps it focused for the next", async () => {
+      for (const n of [1, 2, 3]) {
+        const lines = Array.from({ length: 12 }, (_, i) => `Point ${n}.${i + 1}`).join("\n");
+        await reply.fill(lines);
+        await player.getByRole("button", { name: "Post reply", exact: true }).click();
+        await expect(reply).toHaveValue("");
+        await expect(
+          player.getByRole("region", { name: `Message ${n + 1} by Reader`, exact: true }),
+        ).toBeVisible();
+        await expect(reply).toBeFocused();
+      }
+    });
+
+    await test.step("a tall draft emptied at once leaves the thread on screen", async () => {
+      await reply.fill(Array.from({ length: 30 }, (_, i) => `Draft line ${i + 1}`).join("\n"));
+      await reply.press("ControlOrMeta+a");
+      await reply.press("Backspace");
+      await expect(reply).toHaveValue("");
+      await expect(player.getByRole("heading", { name: "Rules discussion" })).toBeVisible();
+      await expect(player.getByRole("region", { name: "Message 4 by Reader", exact: true })).toBeVisible();
+    });
+
+    // The commissioner answers; the reader comes back to the thread at the first reply they haven't read.
+    await page.reload();
+    await page.getByRole("textbox", { name: "Reply", exact: true }).fill("Agreed on every point.");
+    await page.getByRole("button", { name: "Post reply", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Message 5 by Commish", exact: true })).toBeVisible();
+    await player.getByRole("link", { name: "Message board" }).click();
+    await expect(player.getByRole("link", { name: /Rules discussion/ })).toContainText("Unread");
+    await player.getByRole("link", { name: /Rules discussion/ }).click();
+    await expect(player.getByRole("separator", { name: "New replies" })).toBeInViewport();
+    await expect(player.getByRole("region", { name: "Message 5 by Commish", exact: true })).toBeInViewport();
+    await expect(
+      player.getByRole("region", { name: "Message 1 by Commish", exact: true }),
+    ).not.toBeInViewport();
+  } finally {
+    await context.close();
+  }
 });

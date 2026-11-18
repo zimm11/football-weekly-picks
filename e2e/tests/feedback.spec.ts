@@ -1,8 +1,10 @@
-import { expect, test } from "./fixtures";
+import { expect, signOut, test } from "./fixtures";
 
 test("players send feedback and the operator can resolve and reopen it", async ({ page, signedIn }) => {
   const message = `Feature request from ${signedIn.email}`;
   await page.getByRole("button", { name: signedIn.displayName }).click();
+  // The open account menu has no Operator entry for a player.
+  await expect(page.getByRole("menuitem", { name: "Send feedback" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Operator", exact: true })).toHaveCount(0);
   await page.getByRole("menuitem", { name: "Send feedback" }).click();
   await page.getByRole("combobox", { name: "What kind of feedback?" }).selectOption("feature");
@@ -16,15 +18,23 @@ test("players send feedback and the operator can resolve and reopen it", async (
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
+  // The dashboard isn't there for a player at all: the not-found screen, with the way back to their leagues.
   await page.goto("/operator");
-  await expect(page.getByText("Page not found.", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: signedIn.displayName }).click();
-  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(page.getByRole("alert").getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Your leagues" })).toBeVisible();
+  await signOut(page, signedIn.displayName);
 
   // The local env explicitly grants the seeded operator access. Each test only changes its own report.
   await page.getByLabel("Email").fill("admin@example.com");
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Operator", exact: true })).toBeVisible();
+  // The operator's account menu has the entry a player's lacks, and it opens the dashboard.
+  await page.getByRole("link", { name: "Your leagues" }).click();
+  await expect(page.getByRole("heading", { name: "Your leagues" })).toBeVisible();
+  await page.getByRole("button", { name: "Commish", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Operator", exact: true }).click();
+  await expect(page).toHaveURL(/\/operator$/);
   await expect(page.getByRole("heading", { name: "Operator", exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "App totals" })).toContainText("Accounts");
   await expect(page.getByRole("table", { name: "Activity by week" })).toBeVisible();

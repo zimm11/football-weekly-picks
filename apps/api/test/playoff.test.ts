@@ -338,6 +338,18 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect(
       (await t.call(PAT, "POST", `/leagues/${leagueId}/playoff/rounds`, { year: 2026, number: 20 })).status,
     ).toBe(404);
+    // A round the schedule doesn't list yet is created empty, and the message says "round".
+    t.feed.set("2026:20", []);
+    const empty = await t.call<{ id: string; importError: string | null }>(
+      ADMIN,
+      "POST",
+      `/leagues/${leagueId}/playoff/rounds`,
+      { year: 2026, number: 20 },
+    );
+    expect(empty).toMatchObject({
+      status: 201,
+      body: { importError: "No games are scheduled for that round yet." },
+    });
 
     at("2027-01-16T22:00:00Z");
     expect((await start("traditional")).status).toBe(409);

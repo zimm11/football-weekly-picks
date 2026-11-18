@@ -1,2 +1,6 @@
 import { NotFound } from "../src/components/NotFound";
-export default NotFound;
+import { usePageTitle } from "../src/lib/pageTitle";
+export default function Page() {
+  usePageTitle("Page not found");
+  return <NotFound />;
+}

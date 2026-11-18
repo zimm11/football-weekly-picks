@@ -1,6 +1,6 @@
 import type { Game, WeekView } from "@picks/shared";
 import { describe, expect, it } from "vitest";
-import { favoriteLine, gameDays, pickStatus, weekHasPow, weekUnit } from "./weekPresentation";
+import { favoriteLine, gameDays, pickStatus, sheetEditable, weekHasPow, weekUnit } from "./weekPresentation";
 
 const game = (id: string, kickoff = "2026-11-16T00:00:00Z"): Game => ({
   id,
@@ -111,5 +111,28 @@ describe("native week presentation behavior", () => {
     expect(favoriteLine(game("a"), 3.5)).toBe("Cowboys -3.5");
     expect(favoriteLine(game("a"), -3.5)).toBe("Eagles -3.5");
     expect(favoriteLine(game("a"), 0)).toBe("Pick'em");
+  });
+});
+
+describe("what a pick sheet still lets the player change", () => {
+  const before = new Date("2026-11-15T12:00:00Z");
+  const between = new Date("2026-11-16T12:00:00Z");
+  const after = new Date("2026-11-18T00:00:00Z");
+  it("opens games and the guess until their kickoffs", () => {
+    expect(sheetEditable(view(), before)).toEqual({ games: true, guess: true });
+    expect(sheetEditable(view(), between)).toEqual({ games: true, guess: true });
+    expect(sheetEditable(view(), after)).toEqual({ games: false, guess: false });
+  });
+  it("treats a game with a result as locked whatever the clock says", () => {
+    const scored = view();
+    scored.games = scored.games.map((g) => ({ ...g, homeScore: 20, awayScore: 17 }));
+    expect(sheetEditable(scored, before)).toEqual({ games: false, guess: false });
+  });
+  it("leaves a player the guillotine put out only the guess", () => {
+    const out = { ...view(), playoff: { mayPick: false } } as unknown as WeekView;
+    expect(sheetEditable(out, before)).toEqual({ games: false, guess: true });
+  });
+  it("offers nothing on a week that isn't open", () => {
+    expect(sheetEditable({ ...view(), status: "final" }, before)).toEqual({ games: false, guess: false });
   });
 });

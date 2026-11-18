@@ -5,13 +5,16 @@ import {
   sendFeedbackSchema,
 } from "@picks/shared";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { type ComponentRef, useEffect, useRef, useState } from "react";
+import { Pressable, Text, type TextInput, View } from "react-native";
+import { BackLink } from "../components/BackLink";
 import { Icon } from "../components/Icon";
 import { Menu, MenuItem, useAnchor } from "../components/Popover";
+import { hoverFill } from "../components/pressState";
 import { Body, Button, Card, colors, ErrorMessage, Field, fonts, Screen, Title } from "../components/ui";
 import { WebSelect } from "../components/WebSelect";
 import { request } from "../lib/api";
+import { useDesktopFocus } from "../lib/desktopFocus";
 import { useAction, useFormGuard } from "../lib/hooks";
 import { notifyDone } from "../lib/notify";
 import { confirmDiscard } from "../lib/unsaved";
@@ -34,26 +37,27 @@ export function FeedbackScreen() {
   const params = useLocalSearchParams<{ from?: string }>();
   const parsed = feedbackPageSchema.safeParse(params.from);
   const from = parsed.success ? parsed.data : "/";
+  const field = useRef<ComponentRef<typeof TextInput>>(null);
+  useDesktopFocus(field);
   useFormGuard(!sent && !leaving && !!message.trim(), () => setMessage(""));
+  // Back to the page feedback was opened from: back in history when it is there (the account menu pushed this
+  // screen), else in this screen's place, so leaving never stacks a second copy of that page.
   useEffect(() => {
-    if (sent) {
-      notifyDone("Thanks. Your feedback was sent.");
-      router.replace(from as Href);
-    }
-  }, [sent, router, from]);
-  // Leaves once the guard above has let go, so a confirmed Cancel doesn't ask twice.
-  useEffect(() => {
-    if (leaving) router.replace(from as Href);
-  }, [leaving, router, from]);
+    if (!sent && !leaving) return;
+    if (sent) notifyDone("Thanks. Your feedback was sent.");
+    if (router.canGoBack()) router.back();
+    else router.replace(from as Href);
+  }, [sent, leaving, router, from]);
   return (
     <Screen narrow contentStyle={{ paddingTop: 32 }}>
+      <BackLink />
       <View style={{ gap: 8 }}>
         <Title>Send feedback</Title>
         <Body muted>Found a bug or have an idea? It goes straight to the people who run POW Pick'em.</Body>
       </View>
       <Card>
         <View style={{ gap: 6 }}>
-          <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.foreground }}>
+          <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}>
             What kind of feedback?
           </Text>
           {WebSelect ? (
@@ -71,17 +75,17 @@ export function FeedbackScreen() {
               accessibilityLabel={`What kind of feedback? ${FEEDBACK_KIND_LABELS[kind]}`}
               disabled={action.busy}
               onPress={choose.open}
-              style={{
+              style={(state) => ({
                 minHeight: 44,
                 borderRadius: 10,
                 borderWidth: 1,
                 borderColor: colors.input,
                 padding: 12,
-                backgroundColor: colors.background,
+                backgroundColor: hoverFill(state, colors.background),
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-              }}
+              })}
             >
               <Body>{FEEDBACK_KIND_LABELS[kind]}</Body>
               <Icon name="chevron-down" size={16} color={colors.mutedForeground} />
@@ -89,11 +93,13 @@ export function FeedbackScreen() {
           )}
         </View>
         <Field
+          ref={field}
           label={prompts[kind]}
           value={message}
           onChangeText={setMessage}
           multiline
           maxLength={4000}
+          autoComplete="off"
           style={{ minHeight: 160, textAlignVertical: "top" }}
           editable={!action.busy}
         />
@@ -101,7 +107,8 @@ export function FeedbackScreen() {
         <View style={{ gap: 8 }}>
           <Button
             title={action.busy ? "Sending…" : "Send feedback"}
-            disabled={action.busy || !message.trim()}
+            busy={action.busy}
+            disabled={!message.trim()}
             onPress={() =>
               void action.run(async () => {
                 await request("/feedback", {

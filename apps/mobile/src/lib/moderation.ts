@@ -1,4 +1,11 @@
-import { DELETED_MESSAGE_TEXT, type MessagePost, type PostState } from "@picks/shared";
+import {
+  DELETED_MESSAGE_TEXT,
+  type MessagePost,
+  type PostState,
+  REPORT_REASON_LABELS,
+  type ReportItem,
+  type ReportReason,
+} from "@picks/shared";
 
 /** What a reader can do from a message's ⋯ menu. */
 export type PostAction = "report" | "block" | "unblock" | "remove" | "restore" | "appeal";
@@ -36,4 +43,60 @@ export function postPlaceholder(
   if (state === "blocked" && !revealed) return { text: "Message from a blocked player", canShow: true };
   if (state === "hidden" && !revealed) return { text: "Hidden while it's reviewed", canShow: canModerate };
   return null;
+}
+
+/** What a queue item is about: "Message from Pat", "Pat's name", "League name “Sunday Crew”". */
+function reportAbout(item: ReportItem, lead = true): string {
+  if (item.kind === "post")
+    return `${lead ? "Message" : "message"} from ${item.subject?.displayName ?? "a player"}`;
+  if (item.kind === "display_name")
+    return `${item.subject?.displayName ?? (lead ? "A player" : "a player")}'s name`;
+  return `${lead ? "League" : "league"} name “${item.league?.name ?? ""}”`;
+}
+
+/** What a queue item is about, in a few words. Names keep their capitals wherever they fall. */
+export function reportHeadline(item: ReportItem): string {
+  if (item.source === "appeal") return `Appeal: ${reportAbout(item, false)}`;
+  if (item.source !== "player") return `${reportAbout(item)}, flagged automatically`;
+  return `${reportAbout(item)}: ${REPORT_REASON_LABELS[item.reason as ReportReason] ?? "Reported"}`;
+}
+
+/** Every open report about one message or name, to review and resolve together. */
+export type ReportGroup = {
+  /** The oldest report: its id resolves the whole group (the API closes every report on the same target). */
+  first: ReportItem;
+  items: ReportItem[];
+  headline: string;
+  /** Open reports on the same target that aren't in this list. */
+  otherReports: number;
+};
+
+/**
+ * Groups a queue's items by what they are about, keeping the queue's order (by each group's first report), so
+ * a message three players reported is one card with three reasons rather than three cards. An appeal is
+ * decided on its own, so it never joins the reports about the same message.
+ */
+export function groupReports(items: readonly ReportItem[]): ReportGroup[] {
+  const groups = new Map<string, ReportItem[]>();
+  for (const item of items) {
+    const target =
+      item.kind === "post"
+        ? `post:${item.post?.id ?? item.id}`
+        : item.kind === "display_name"
+          ? `name:${item.subject?.userId ?? item.id}`
+          : `league:${item.league?.id ?? item.id}`;
+    const key = item.source === "appeal" ? `appeal:${item.id}` : target;
+    const group = groups.get(key);
+    if (group) group.push(item);
+    else groups.set(key, [item]);
+  }
+  return [...groups.values()].map((group) => {
+    const first = group[0] as ReportItem;
+    return {
+      first,
+      items: group,
+      headline: group.length === 1 ? reportHeadline(first) : `${reportAbout(first)}: ${group.length} reports`,
+      otherReports: Math.max(0, Math.max(...group.map((item) => item.otherReports)) - (group.length - 1)),
+    };
+  });
 }

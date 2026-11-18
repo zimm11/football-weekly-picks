@@ -15,11 +15,12 @@ import {
   weekLabel,
 } from "@picks/shared";
 import { router } from "expo-router";
-import { useState } from "react";
-import { ScrollView, Text } from "react-native";
+import { type ComponentRef, useRef, useState } from "react";
+import { ScrollView, Text, type TextInput } from "react-native";
 import { BackLink } from "../components/BackLink";
 import { request } from "../lib/api";
 import { now } from "../lib/clock";
+import { useDesktopFocus } from "../lib/desktopFocus";
 import {
   chooseType,
   copyableLeagues,
@@ -30,19 +31,9 @@ import {
   typeChoices,
 } from "../lib/newLeague";
 import { notifyDone } from "../lib/notify";
+import { useScrollRestore } from "../lib/scrollRestore";
 import { ChoiceList } from "./ChoiceList";
-import {
-  Action,
-  Card,
-  Failure,
-  go,
-  Input,
-  Select,
-  Skeleton,
-  s,
-  useEditsGuard,
-  useLeagueLoad,
-} from "./leagueUi";
+import { Action, Card, Failure, Input, Select, Skeleton, s, useEditsGuard, useLeagueLoad } from "./leagueUi";
 
 const MANAGEMENT_CHOICES = {
   auto: {
@@ -63,6 +54,12 @@ const PLAYOFF_FORMATS: { value: PlayoffFormat; label: string }[] = [
 export function NewLeagueScreen() {
   // Only for "Start with members from": the leagues this player could copy members out of.
   const leagues = useLeagueLoad(() => request<LeagueSummary[]>("/leagues"), "leagues");
+  if (!leagues.data && !leagues.error) return <Skeleton label="Loading new league" />;
+  return <NewLeagueForm leagues={leagues.data ?? []} />;
+}
+
+/** The form itself, mounted once the leagues are in, so the name field is there to take the focus. */
+function NewLeagueForm({ leagues }: { leagues: LeagueSummary[] }) {
   const deviceZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [draft, setDraft] = useState<NewLeagueDraft>(() => initialDraft(deviceZone()));
   const [error, setError] = useState<string>();
@@ -75,8 +72,12 @@ export function NewLeagueScreen() {
   );
   const types = typeChoices();
   const ways = managementChoices(draft.type);
-  const sources = copyableLeagues(leagues.data ?? []);
+  const sources = copyableLeagues(leagues);
+  const nameField = useRef<ComponentRef<typeof TextInput>>(null);
+  useDesktopFocus(nameField);
+  const scrollRef = useScrollRestore();
   async function create() {
+    if (busy || created) return;
     const parsed = createLeagueSchema.safeParse(newLeagueBody({ ...draft, timeZone: deviceZone() }));
     if (!parsed.success) return setError(parsed.error.issues[0]?.message);
     setBusy(true);
@@ -95,9 +96,9 @@ export function NewLeagueScreen() {
       setBusy(false);
     }
   }
-  if (!leagues.data && !leagues.error) return <Skeleton label="Loading new league" />;
   return (
     <ScrollView
+      ref={scrollRef}
       style={s.page}
       contentContainerStyle={[s.content, { maxWidth: 560 }]}
       keyboardShouldPersistTaps="handled"
@@ -122,16 +123,19 @@ export function NewLeagueScreen() {
           />
         )}
         {types.length > 0 && (
-          <Action link ghost compact icon="info" onPress={() => go(`/how-to-play?section=${draft.type}`)}>
+          <Action ghost compact icon="info" href={`/how-to-play?section=${draft.type}`}>
             {`How ${LEAGUE_TYPE_INFO[draft.type].name} works`}
           </Action>
         )}
         <Input
+          ref={nameField}
           label="League name"
           value={draft.name}
           onChangeText={(name) => change({ name })}
           maxLength={LEAGUE_NAME_MAX}
+          autoComplete="off"
           editable={!busy}
+          onSubmit={() => void create()}
         />
         {draft.type === "weekly" && ways.length > 1 && (
           <ChoiceList
@@ -192,7 +196,7 @@ export function NewLeagueScreen() {
         )}
         <Failure message={error} />
         <Action
-          disabled={busy || created}
+          busy={busy || created}
           onPress={() => {
             void create();
           }}

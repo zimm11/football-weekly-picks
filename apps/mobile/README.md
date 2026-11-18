@@ -54,7 +54,9 @@ Add these redirects to the Supabase Auth URL allowlist:
 - `pow-pickem://reset-password`
 - `pow-pickem://account`
 
-PKCE callbacks must open on the device that initiated the flow. The app also handles legacy implicit token callbacks. Keep tokens out of logs and screenshots. Sessions and native notification ownership are persisted with Expo SecureStore.
+Also add `pow-pickem://auth/callback**`, so a sign-up from an invite can carry `?next=/join/<code>`.
+
+A link asked for on the website carries a token hash and works in any browser or device; a link asked for in the iPhone app is Auth's own `https` link, which verifies on Supabase and opens the app on that phone (the root README's "Links in sign-in emails" has both, and the checklist for the hosted templates). Older `?code=` (PKCE) links still work, but only on the device that asked for them. The app also handles legacy implicit token callbacks. Keep tokens out of logs and screenshots. Sessions and native notification ownership are persisted with Expo SecureStore.
 
 The configured bundle identifier is `com.powpickem.app`; confirm it before creating store records. Universal links need the corresponding Apple Associated Domains capability and a served `/.well-known/apple-app-site-association` file using the real Apple Team ID and bundle identifier. The app declares `applinks:www.pow-pickem.com`; the server association cannot be completed until that identity is known. Custom-scheme auth callbacks work separately.
 

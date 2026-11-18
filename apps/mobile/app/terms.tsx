@@ -1,5 +1,6 @@
 import { DELETED_PLAYER_NAME, MINIMUM_AGE } from "@picks/shared";
 import { LegalPage, type LegalSection } from "../src/components/LegalPage";
+import { usePageTitle } from "../src/lib/pageTitle";
 
 /*
  * The Terms of use. Works signed out, like How to play; the App Store listing links here. It describes what the
@@ -93,6 +94,7 @@ const sections: LegalSection[] = [
 ];
 
 export default function TermsPage() {
+  usePageTitle("Terms of use");
   return (
     <LegalPage
       title="Terms of use"

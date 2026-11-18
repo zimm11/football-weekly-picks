@@ -9,7 +9,9 @@ export function HowToPlaySquares() {
     <View style={{ gap: 20 }}>
       <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
         <Icon name="grid" size={28} color={colors.primary} />
-        <Title style={{ fontSize: 30, lineHeight: 34 }}>Squares</Title>
+        <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
+          Squares
+        </Title>
       </View>
       <Card>
         <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>A 10 by 10 board on one game</Body>

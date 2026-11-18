@@ -1,7 +1,7 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Heading, Eyebrow and Action render native Text.
 import { BOARD_PHASE_LABEL, type BoardSquare, type BoardView, teamName } from "@picks/shared";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
 import { colors, fonts } from "../../components/ui";
@@ -19,19 +19,8 @@ import {
   withPending,
 } from "../../lib/squaresBoard";
 import { kickoffDay, kickoffTime } from "../../lib/weekPresentation";
-import {
-  Action,
-  Card,
-  Eyebrow,
-  Failure,
-  go,
-  Heading,
-  Label,
-  Pill,
-  Sheet,
-  s,
-  useLeagueLoad,
-} from "../leagueUi";
+import { Action, Card, Eyebrow, Failure, Heading, Label, Pill, Sheet, s, useLeagueLoad } from "../leagueUi";
+import { rememberBoardLeague } from "./boardChoice";
 import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
 
 /** Loads one board, refetching until it is final: every 30 s while open, every minute once locked. */
@@ -42,6 +31,11 @@ export function useBoard(boardId: string) {
   useEffect(() => {
     if (phase) setEvery(phase === "final" ? 0 : phase === "open" ? 30_000 : 60_000);
   }, [phase]);
+  // Which league the board is in, so a link to it that has gone stale still has a way back there.
+  const leagueId = board.data?.leagueId;
+  useEffect(() => {
+    if (leagueId) rememberBoardLeague(boardId, leagueId);
+  }, [boardId, leagueId]);
   return board;
 }
 
@@ -63,7 +57,7 @@ export function useSquareChanges(boardId: string, setData: (view: BoardView) => 
         );
         setData(next);
         // The first claimed square is a good moment to suggest the home screen (shown once, in a browser).
-        if (change.claim && !guestName) offerHomeScreen();
+        if (change.claim && !guestName) offerHomeScreen("square");
       } catch (err) {
         notifyError(messageOf(err));
         reload();
@@ -83,6 +77,7 @@ export function BoardPanel({
   displayName,
   avatarId,
   header,
+  standalone,
 }: {
   boardId: string;
   /** The board as `useBoard` loads it. */
@@ -92,6 +87,8 @@ export function BoardPanel({
   avatarId?: number | null;
   /** Shown above the board once it has loaded (a standalone screen's league header). */
   header?: (view: BoardView) => ReactNode;
+  /** On `/boards/:id` rather than in the Board tab: Manage board takes this screen's place in history. */
+  standalone?: boolean;
 }) {
   const changes = useSquareChanges(boardId, board.setData, board.reload);
   const [sheet, setSheet] = useState<{ row: number; col: number } | null>(null);
@@ -122,7 +119,7 @@ export function BoardPanel({
   return (
     <View style={{ gap: 20 }}>
       {header?.(view)}
-      <BoardHeading view={view} admin={view.role === "admin"} />
+      <BoardHeading view={view} admin={view.role === "admin"} standalone={standalone} />
       <Failure message={board.error} retry={board.reload} />
       <SquaresGrid view={view} squares={squares} userId={userId} onPress={tap} />
       {room.open && (
@@ -155,40 +152,97 @@ export function BoardPanel({
   );
 }
 
-export function BoardHeading({ view, admin, manage }: { view: BoardView; admin: boolean; manage?: boolean }) {
+/**
+ * The board's heading: its phase, the game and the kickoff, and for an admin the way to the other board screen.
+ * On a phone it is two short rows (phase and kickoff, then the game on one line) so the grid starts higher up.
+ * `standalone`: on `/boards/:id` or its manage screen, where the link swaps one for the other in place, so going
+ * back and forth between them doesn't pile up history.
+ */
+export function BoardHeading({
+  view,
+  admin,
+  manage,
+  standalone = !!manage,
+}: {
+  view: BoardView;
+  admin: boolean;
+  manage?: boolean;
+  standalone?: boolean;
+}) {
+  const { width } = useWindowDimensions();
+  const phone = width < 560;
+  const title = manage ? "Manage board" : `${teamName(view.awayTeam)} at ${teamName(view.homeTeam)}`;
+  const when = `${manage ? `${view.awayTeam} at ${view.homeTeam} · ` : ""}${kickoffDay(view.kickoff, view.timeZone)}, ${kickoffTime(view.kickoff, view.timeZone)}`;
+  const pills = (
+    <>
+      <Pill
+        inline={phone}
+        tone={view.phase === "open" ? "primary" : view.phase === "final" ? "win" : "muted"}
+      >
+        {BOARD_PHASE_LABEL[view.phase]}
+      </Pill>
+      {view.live && (
+        <Pill inline={phone} tone="win">
+          {`Now ${view.awayTeam} ${view.live.awayScore} · ${view.homeTeam} ${view.live.homeScore}`}
+        </Pill>
+      )}
+    </>
+  );
+  const link =
+    admin &&
+    (manage ? (
+      <Action secondary compact href={`/boards/${view.id}`} how="replace">
+        View board
+      </Action>
+    ) : (
+      <Action secondary compact href={`/boards/${view.id}/manage`} how={standalone ? "replace" : "push"}>
+        Manage board
+      </Action>
+    ));
+  if (phone) {
+    return (
+      <View style={{ gap: 6 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            {pills}
+            <Text style={[s.muted, { flexShrink: 1 }]}>{when}</Text>
+          </View>
+          {link}
+        </View>
+        {/* One line: the type steps down for a long pair of names instead of wrapping. */}
+        <Text
+          accessibilityRole="header"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+          style={[s.title, boardTitleSize(title, width)]}
+        >
+          {title}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
       <View style={{ gap: 6, flex: 1, minWidth: 220 }}>
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Pill tone={view.phase === "open" ? "primary" : view.phase === "final" ? "win" : "muted"}>
-            {BOARD_PHASE_LABEL[view.phase]}
-          </Pill>
-          {view.live && (
-            <Pill tone="win">
-              {`Now ${view.awayTeam} ${view.live.awayScore} · ${view.homeTeam} ${view.live.homeScore}`}
-            </Pill>
-          )}
-        </View>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{pills}</View>
         <Text accessibilityRole="header" style={s.title}>
-          {manage ? "Manage board" : `${teamName(view.awayTeam)} at ${teamName(view.homeTeam)}`}
+          {title}
         </Text>
-        <Label>
-          {manage ? `${view.awayTeam} at ${view.homeTeam} · ` : ""}
-          {kickoffDay(view.kickoff, view.timeZone)}, {kickoffTime(view.kickoff, view.timeZone)}
-        </Label>
+        <Label>{when}</Label>
       </View>
-      {admin &&
-        (manage ? (
-          <Action link secondary compact onPress={() => void go(`/boards/${view.id}`)}>
-            View board
-          </Action>
-        ) : (
-          <Action link secondary compact onPress={() => void go(`/boards/${view.id}/manage`)}>
-            Manage board
-          </Action>
-        ))}
+      {link}
     </View>
   );
+}
+
+/**
+ * The title's size on a phone, so "BUCCANEERS AT COMMANDERS" stays on one line at 320px: the condensed capitals
+ * run about 0.5 of the font size each, in the width left inside the page's 16px gutters.
+ */
+function boardTitleSize(title: string, width: number) {
+  const fontSize = Math.max(20, Math.min(32, Math.floor((width - 32) / (title.length * 0.5))));
+  return { fontSize, lineHeight: fontSize + 2 };
 }
 
 /** Under the grid: your squares against your limit, the four quarter results, and who holds squares. */
@@ -203,6 +257,7 @@ export function BoardDetails({
   mine: number;
   userId: string;
 }) {
+  const stacked = useWindowDimensions().width < 560;
   return (
     <>
       <Card label="Your squares">
@@ -232,26 +287,41 @@ export function BoardDetails({
               paddingTop: 8,
             }}
           >
-            <Text style={[s.text, { fontFamily: fonts.semibold, width: 80 }]}>{label}</Text>
-            {result ? (
-              <>
-                <Text style={[s.muted, { width: 110 }]}>
+            {/* On a phone the score sits under the quarter's name, so the winner's name has room on one line. */}
+            <View
+              style={
+                stacked
+                  ? { width: 112, gap: 2 }
+                  : { flexDirection: "row", alignItems: "center", gap: 12, width: 216 }
+              }
+            >
+              <Text
+                style={[s.text, { fontFamily: fonts.semibold }, stacked ? { lineHeight: 20 } : { width: 84 }]}
+              >
+                {label}
+              </Text>
+              {result && (
+                <Text numberOfLines={1} style={[s.muted, !stacked && { flex: 1 }]}>
                   {view.awayTeam} {result.awayScore} · {view.homeTeam} {result.homeScore}
                 </Text>
-                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  {result.winner ? (
-                    <>
-                      <Icon name="check-circle" size={18} color={colors.win} />
-                      <Text style={[s.text, { flexShrink: 1 }]}>
-                        {result.winner.userId === userId ? "You" : result.winner.name}
-                        {result.winner.guest ? " (guest)" : ""} won
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={s.muted}>{result.square ? "No winner: an empty square" : "Not drawn"}</Text>
-                  )}
-                </View>
-              </>
+              )}
+            </View>
+            {result ? (
+              <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                {result.winner ? (
+                  <>
+                    <Icon name="check-circle" size={18} color={colors.win} />
+                    <Text numberOfLines={2} style={[s.text, { flexShrink: 1 }]}>
+                      {result.winner.userId === userId ? "You" : result.winner.name}
+                      {result.winner.guest ? " (guest)" : ""} won
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={[s.muted, { flexShrink: 1 }]}>
+                    {result.square ? "No winner: an empty square" : "Not drawn"}
+                  </Text>
+                )}
+              </View>
             ) : (
               <Text style={s.muted}>To come</Text>
             )}
@@ -298,6 +368,8 @@ export function SquareSheet({
   children?: ReactNode;
 }) {
   const wins = winsOf(view.quarters, row, col);
+  // A quarter that landed on a square nobody holds is no win: it says so, without the winner's check.
+  const emptyHit = !square && wins.length > 0;
   return (
     <Sheet title={square ? `${square.name}'s square` : "Open square"} close={close}>
       {square ? (
@@ -316,10 +388,10 @@ export function SquareSheet({
         </Text>
       </View>
       <View style={{ gap: 4 }}>
-        <Eyebrow>Won</Eyebrow>
+        <Eyebrow>{emptyHit ? "No winner" : "Won"}</Eyebrow>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          {wins.length > 0 && <Icon name="check-circle" size={18} color={colors.win} />}
-          <Text style={s.text}>{winsText(wins)}</Text>
+          {wins.length > 0 && !emptyHit && <Icon name="check-circle" size={18} color={colors.win} />}
+          <Text style={[s.text, { flexShrink: 1 }]}>{winsText(wins, !!square)}</Text>
         </View>
       </View>
       {children}

@@ -13,7 +13,9 @@ function Heading({ title, icon }: { title: string; icon: IconName }) {
   return (
     <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
       <Icon name={icon} size={28} color={colors.primary} />
-      <Title style={{ fontSize: 30, lineHeight: 34 }}>{title}</Title>
+      <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
+        {title}
+      </Title>
     </View>
   );
 }
@@ -23,7 +25,7 @@ function Item({ title, children }: { title: string; children: string }) {
     <View style={{ gap: 4 }}>
       <Text
         accessibilityRole="header"
-        aria-level={4}
+        aria-level={3}
         style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
       >
         {title}

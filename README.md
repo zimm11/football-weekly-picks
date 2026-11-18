@@ -388,7 +388,8 @@ account can be in at most 25 leagues; removed and departed members don't count t
 ### Accounts and passwords
 
 **Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
-password. Locally, that email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
+password; it works in any browser, not only the one that asked (see "Links in sign-in emails"). Locally, that
+email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
 use **Change password** or **Name and picture** from the account menu in the header; **Name and picture**
 (`/change-name`) changes the display name and lets you choose one of 100 profile logos or return to your initials. **Settings**
 (`/account`) holds notifications (by email and on this device: new threads, pick reminders, and results and
@@ -773,7 +774,8 @@ from `noreply@pow-pickem.com`:
 
 - **Sign-in emails** (sign-up confirmation, password reset, email-change confirmation, and notices after a
   password or email change) are sent by Supabase Auth over Cloudflare's SMTP relay. Branded templates live in
-  `supabase/templates/` and are wired up in `supabase/config.toml`.
+  `supabase/templates/` and are wired up in `supabase/config.toml`. See "Links in sign-in emails" below for
+  what their links look like.
 - **Notification emails** (a new message thread; a pick reminder at 7pm league time the evening before a game
   day, to players with games still to pick; results and updates, the `league_event` kind) are sent by the Worker through its `send_email` binding (`EMAIL`
   in `wrangler.jsonc`; no API key). They are queued in the `email_outbox` table, so each is sent once
@@ -827,6 +829,46 @@ One-time setup:
    queues and sends nothing (the cron runs and returns at once). Changing it later breaks the unsubscribe
    links in emails already sent. `APP_URL` is a var in `wrangler.jsonc`; `EMAIL_FROM`, `EMAIL_DAILY_LIMIT` and
    `EMAIL_MONTHLY_LIMIT` can be overridden the same way, if the plan changes.
+
+### Links in sign-in emails
+
+The confirmation, password-reset and email-change templates (`confirmation.html`, `recovery.html`,
+`email_change.html`) build their link themselves instead of using Auth's `{{ .ConfirmationURL }}`:
+
+- **Asked for on the website:** `{{ .RedirectTo }}#token_hash={{ .TokenHash }}&type=<signup|recovery|email_change>`.
+  `RedirectTo` is the page that asked (`https://www.pow-pickem.com/reset-password`, `/auth/callback`, possibly
+  with `?next=/join/<code>` so a player who signed up from an invite lands on it, or `/account`). The app
+  reads the fragment on that page and verifies it with `supabase.auth.verifyOtp({ token_hash, type })`
+  (`lib/auth.tsx`, `authCallback` in `lib/links.ts`), so the link works in **any** browser or device: the
+  phone when the reset was asked for on a laptop, or Safari when it was asked for in the home-screen app.
+  The token rides in the fragment, which never reaches the Worker or Cloudflare's logs, and the app takes it
+  out of the address bar once it has been used.
+- **Asked for in the iPhone app** (`RedirectTo` starts with `pow-pickem:`): Auth's own `{{ .ConfirmationURL }}`,
+  an `https` link that verifies on Supabase and then opens the app on that phone, as before. (An email app
+  won't follow a `pow-pickem://` link written straight into the email.)
+
+The older links, `?code=…` after Auth's `/verify` page (what the hosted templates send until they are updated),
+still work in the browser that asked for them. Opened elsewhere they now say so in plain words ("Open this link
+in the same browser you asked for it in…"); a sign-up or an email change opened elsewhere is already confirmed
+by then, so the app says that and asks the player to sign in. Every outcome is announced in a banner, or, for a
+signed-out player whose link failed, on the sign-in form at the top of the page, and the code, token or error
+is removed from the address bar.
+
+**Updating the hosted project** (the templates aren't deployed from this repo; do this once):
+
+1. Supabase dashboard → Authentication → **Emails**: for **Confirm signup**, **Reset password** and **Change
+   email address**, paste the HTML of `supabase/templates/confirmation.html`, `recovery.html` and
+   `email_change.html` (subjects unchanged, from `supabase/config.toml`). Save each one.
+2. Authentication → **URL Configuration**: keep the three `https://www.pow-pickem.com/…` redirect URLs and the
+   three `pow-pickem://…` ones (`apps/mobile/README.md`), and add `pow-pickem://auth/callback**`, so a sign-up
+   from an invite in the iPhone app can carry `?next=/join/<code>` (without it Auth falls back to the Site URL
+   and the player lands on Your leagues instead of the invite).
+3. Check it: on the website, ask for a password reset, open the email on another device, and choose a new
+   password there. Then sign up a real address from an invite link and confirm it on another device: it should
+   land on the invite.
+
+Emails already sent keep their old `?code=` links and keep working as before (in the browser that asked) until
+they expire, so the switch needs no coordination with a deploy.
 
 ### Push notifications
 

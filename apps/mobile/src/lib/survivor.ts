@@ -2,7 +2,9 @@ import {
   type Game,
   hasResult,
   isPostseasonWeek,
+  LAST_WEEK,
   type POSTSEASON_ROUNDS,
+  REGULAR_SEASON_WEEKS,
   type Side,
   type SurvivorGameView,
   type SurvivorOutcome,
@@ -202,18 +204,91 @@ export function recapSummary(view: SurvivorView, weekId: string, userId: string)
 }
 
 /**
- * The teams `userId` has used before `weekNumber`, from the picks the screen can see (earlier weeks are all
- * revealed). The postseason counts only its own weeks, as the rules do.
+ * The teams `userId` has used before `weekNumber`, each with its week, in the order they were used: from the
+ * picks the screen can see (earlier weeks are all revealed, and a player's own always are). The postseason counts
+ * only its own weeks, as the rules do.
  */
-export function usedBy(view: SurvivorView, userId: string, weekNumber: number): Set<string> {
-  const from = isPostseasonWeek(weekNumber) ? 19 : 1;
+function usedBefore(view: SurvivorView, userId: string, weekNumber: number) {
+  const from = isPostseasonWeek(weekNumber) ? REGULAR_SEASON_WEEKS + 1 : 1;
   const numberOf = new Map(view.weeks.map((w) => [w.id, w.number]));
-  return new Set(
-    view.picks
-      .filter((p) => {
-        const n = numberOf.get(p.weekId) ?? 0;
-        return p.userId === userId && n >= from && n < weekNumber;
-      })
-      .map((p) => p.team),
-  );
+  return view.picks
+    .flatMap((p) => {
+      const n = numberOf.get(p.weekId) ?? 0;
+      return p.userId === userId && n >= from && n < weekNumber ? [{ team: p.team, weekNumber: n }] : [];
+    })
+    .sort((a, b) => a.weekNumber - b.weekNumber);
+}
+
+/** The teams `userId` has used before `weekNumber` (see `usedBefore`). */
+export function usedBy(view: SurvivorView, userId: string, weekNumber: number): Set<string> {
+  return new Set(usedBefore(view, userId, weekNumber).map((u) => u.team));
+}
+
+/**
+ * The week the pool plays next: the one being played, else the week after the last final one (the start week
+ * before any is). Null when there is no pool, it is over, or its start week isn't known. Worked out from the
+ * weeks every player is sent, the way the rules count them: final weeks in order from the start week.
+ */
+export function nextSurvivorWeek(
+  view: Pick<SurvivorView, "settings" | "over" | "current" | "weeks">,
+): number | null {
+  if (!view.settings || view.over) return null;
+  if (view.current) return view.current.number;
+  const start = view.settings.startWeek;
+  if (start === null) return null;
+  const final = new Set(view.weeks.filter((w) => w.status === "final").map((w) => w.number));
+  let next = start;
+  while (final.has(next)) next++;
+  return next <= LAST_WEEK ? next : null;
+}
+
+/**
+ * The teams the signed-in player can't pick again, for the "Teams used" tile: the API's list while a week is
+ * being played, and between weeks the same list worked out from their own picks, so the tile doesn't read
+ * "0 · None yet" while the pool waits for the next slate.
+ */
+export function teamsUsed(view: SurvivorView, userId: string): { team: string; weekNumber: number }[] {
+  if (view.current) return view.current.used;
+  return usedBefore(view, userId, nextSurvivorWeek(view) ?? LAST_WEEK + 1);
+}
+
+/** A week inside a sentence: "Week 11", "the Wild Card round", "the Super Bowl". */
+const weekInSentence = (number: number) =>
+  !isPostseasonWeek(number)
+    ? weekLabel(number)
+    : number === LAST_WEEK
+      ? `the ${weekLabel(number)}`
+      : `the ${weekLabel(number)} round`;
+
+const capitalized = (text: string) => `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`;
+
+/**
+ * What the Pick tab says while no week is being played: which week comes next and what opens it, so the wait
+ * isn't a dead end. `standings` asks for a link to Standings (the pool is over).
+ */
+export function waitingLine(view: SurvivorView): { detail: string; standings: boolean } {
+  if (!view.settings) {
+    return {
+      detail:
+        view.role === "admin"
+          ? "Start the pool from the League tab."
+          : "A commissioner can start the pool from the League tab.",
+      standings: false,
+    };
+  }
+  if (view.over) return { detail: "The pool is over. See how it finished on Standings.", standings: true };
+  const next = nextSurvivorWeek(view);
+  if (next === null) {
+    return {
+      detail: "The next week opens as soon as its games are on the pro football schedule.",
+      standings: false,
+    };
+  }
+  const opens = "as soon as its games are on the pro football schedule";
+  // Before the first week is played, say where the pool begins.
+  const begun = view.weeks.some((w) => w.status === "final");
+  if (!begun && next === view.settings.startWeek) {
+    return { detail: `The pool starts with ${weekInSentence(next)}. It opens ${opens}.`, standings: false };
+  }
+  return { detail: `${capitalized(weekInSentence(next))} opens ${opens}.`, standings: false };
 }

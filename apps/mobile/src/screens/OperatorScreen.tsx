@@ -8,12 +8,14 @@ import {
   type OperatorOverview,
 } from "@picks/shared";
 import { useState } from "react";
-import { Linking, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Linking, Platform, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { BackLink } from "../components/BackLink";
+import { NotFound } from "../components/NotFound";
 import { colors, fonts } from "../components/ui";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { notifyDone, notifyError } from "../lib/notify";
+import { usePageTitle } from "../lib/pageTitle";
 import {
   Action,
   Card,
@@ -37,11 +39,9 @@ const growth = (value: GrowthCount) => `+${value.last7Days} in 7 days · +${valu
 /** All counts and feedback come from operator-only API endpoints. */
 export function OperatorScreen() {
   const { me } = useAuth();
-  return me?.isOperator ? (
-    <OperatorDashboard />
-  ) : (
-    <Text style={[s.text, { padding: 20 }]}>Page not found.</Text>
-  );
+  usePageTitle(me?.isOperator ? "Operator" : "Page not found");
+  // Anyone else gets the same not-found screen as an address that doesn't exist, with its way back.
+  return me?.isOperator ? <OperatorDashboard /> : <NotFound />;
 }
 function OperatorDashboard() {
   const overview = useLeagueLoad(() => request<OperatorOverview>("/operator/overview"), "overview"),
@@ -169,7 +169,7 @@ function OperatorDashboard() {
           </View>
           <View style={{ gap: 12 }}>
             <Heading>Feedback</Heading>
-            <Label>{data.openFeedback} open reports · newest first</Label>
+            <Label>{data.openFeedback} open · newest first</Label>
             {open.length ? (
               <View role="list" aria-label="Open feedback" style={{ gap: 12 }}>
                 {open.map((item) => (
@@ -186,7 +186,7 @@ function OperatorDashboard() {
               <Card>
                 <Text style={s.text}>
                   {feedback.data.nextCursor
-                    ? "No open feedback in the reports loaded so far."
+                    ? "No open feedback in what's loaded so far."
                     : "No open feedback."}
                 </Text>
               </Card>
@@ -319,11 +319,15 @@ function FeedbackCard({
         {item.author?.email && (
           <Text
             accessibilityRole="link"
-            onPress={() =>
-              void Linking.openURL(`mailto:${item.author?.email}`).catch(() =>
-                notifyError("Couldn't open your email app."),
-              )
-            }
+            // A real mailto link in a browser (the browser follows it); the mail app on iPhone.
+            {...(Platform.OS === "web"
+              ? ({ href: `mailto:${item.author.email}` } as object)
+              : {
+                  onPress: () =>
+                    void Linking.openURL(`mailto:${item.author?.email}`).catch(() =>
+                      notifyError("Couldn't open your email app."),
+                    ),
+                })}
             style={{ color: colors.primary }}
           >
             {" "}

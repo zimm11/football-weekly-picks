@@ -14,17 +14,40 @@ import {
   zonedParts,
 } from "@picks/shared";
 import { type ComponentRef, useEffect, useRef, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  type TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { Avatar } from "../components/Avatar";
+import { DateTimeField } from "../components/DateTimeField";
+import { NotFound } from "../components/NotFound";
 import { Menu, MenuItem, useAnchor } from "../components/Popover";
+import { hoverFill } from "../components/pressState";
 import { TeamLogo } from "../components/TeamLogo";
 import { fonts } from "../components/ui";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { now } from "../lib/clock";
-import { type GameDraft, gameChanges, parseLeagueKickoff } from "../lib/leagueLogic";
+import {
+  type GameDraft,
+  gameChanges,
+  onlyDigits,
+  parseLeagueKickoff,
+  parseSpread,
+  SPREAD_PROBLEM,
+} from "../lib/leagueLogic";
 import { announceMessagesChanged } from "../lib/messageUnread";
+import { useReducedMotion } from "../lib/motion";
 import { notifyDone, notifyError } from "../lib/notify";
+import { usePageTitle } from "../lib/pageTitle";
+import { usePullRefresh } from "../lib/pullRefresh";
+import { useScrollRestore } from "../lib/scrollRestore";
 import { rememberSeason } from "../lib/seasonSelection";
 import { confirmDiscard } from "../lib/unsaved";
 import { weekUnit } from "../lib/weekPresentation";
@@ -37,7 +60,6 @@ import {
   confirm,
   Eyebrow,
   Failure,
-  go,
   Heading,
   IconButton,
   Input,
@@ -52,9 +74,36 @@ import {
 import { WeekResults } from "./WeekResults";
 import { ScoreCorrection } from "./weekly/ScoreCorrection";
 
+/**
+ * A spread field's keyboard. iPhone's number pads have no minus key, so the app asks for numbers and
+ * punctuation; a browser has no such keyboard (`inputmode` can't ask for it), so it says plainly "text".
+ * Either way nothing is capitalized, corrected or spell-checked.
+ */
+const spreadKeyboard = {
+  ...(Platform.OS === "web"
+    ? { inputMode: "text" as const }
+    : { keyboardType: "numbers-and-punctuation" as const }),
+  autoCorrect: false,
+  autoCapitalize: "none" as const,
+  spellCheck: false,
+  autoComplete: "off" as const,
+};
+/** A whole-number field (points, scores): the number keyboard, and nothing suggested. */
+const digitsKeyboard = { inputMode: "numeric" as const, autoComplete: "off" as const, autoCorrect: false };
+
 export function ManageWeekScreen({ weekId }: { weekId: string }) {
   const { me } = useAuth();
   const week = useLeagueLoad(() => request<WeekView>(`/weeks/${weekId}`), weekId);
+  const pull = usePullRefresh(week.refresh);
+  const reduceMotion = useReducedMotion();
+  const gone = !week.data && week.status === 404;
+  usePageTitle(
+    week.data
+      ? `Manage ${weekLabel(week.data.number)} · ${week.data.leagueName}`
+      : gone
+        ? "Week not found"
+        : undefined,
+  );
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
   const [announcement, setAnnouncement] = useState<{ title: string; body: string }>();
@@ -62,7 +111,16 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
   const [drafts, setDrafts] = useState<Record<string, GameDraft>>({});
   const { width } = useWindowDimensions();
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scrollRef = useScrollRestore(scroll);
+  const results = useRef<ComponentRef<typeof View>>(null);
   const [resultsY, setResultsY] = useState(0);
+  /** Scrolls to the results, measured now: on the web a View's onLayout doesn't hear that it moved down. */
+  function showResults() {
+    const node = results.current as unknown as { scrollIntoView?: (options: object) => void } | null;
+    if (Platform.OS === "web" && node?.scrollIntoView)
+      node.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    else scroll.current?.scrollTo({ y: resultsY, animated: !reduceMotion });
+  }
   const changed = Object.entries(drafts);
   useEffect(() => {
     if (week.data) rememberSeason(week.data.leagueId, week.data.year);
@@ -145,6 +203,13 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
     }
   }
   if (!week.data && !week.error) return <Skeleton label="Loading week management" />;
+  if (gone)
+    return (
+      <NotFound
+        title="Week not found"
+        detail="It may have been deleted, or you’re no longer in its league."
+      />
+    );
   if (!week.data)
     return (
       <View style={s.content}>
@@ -157,9 +222,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
       <View style={s.content}>
         <Heading>{weekUnit(view) === "round" ? "Round management" : "Week management"}</Heading>
         <Text style={s.text}>Only league commissioners can manage a {weekUnit(view)}.</Text>
-        <Action link onPress={() => go(`/weeks/${weekId}`)}>
-          Go to the {weekUnit(view)}
-        </Action>
+        <Action href={`/weeks/${weekId}`}>Go to the {weekUnit(view)}</Action>
       </View>
     );
   const missing = view.games.filter((game) => game.homeScore === null || game.awayScore === null).length;
@@ -169,11 +232,14 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
   return (
     <View style={s.page}>
       <ScrollView
-        ref={scroll}
+        ref={scrollRef}
         style={s.page}
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={false} onRefresh={week.reload} />}
+        // A focused field stays above the iPhone keyboard, and dragging the page puts the keyboard away.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+        refreshControl={<RefreshControl {...pull} tintColor={colors.foreground} />}
       >
         <LeagueHeader leagueId={view.leagueId} leagueName={view.leagueName} />
         {width >= 768 && <LeagueTabBar wide leagueId={view.leagueId} active="league" />}
@@ -182,7 +248,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
             view={view}
             initial={announcement}
             close={() => setAnnouncement(undefined)}
-            showResults={() => scroll.current?.scrollTo({ y: resultsY, animated: true })}
+            showResults={showResults}
           />
         )}
         <View
@@ -215,7 +281,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
             </Text>
           </View>
           {view.status !== "draft" && (
-            <Action link compact secondary onPress={() => go(`/weeks/${weekId}`)}>
+            <Action compact secondary href={`/weeks/${weekId}`}>
               {view.status === "open" ? "Make your own picks" : `See the ${unit} as players do`}
             </Action>
           )}
@@ -234,7 +300,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                       : "Players can't see this week yet. On Tuesday at 9 AM Eastern its games and that morning's lines fill in automatically and it opens for picks, all at once. Fill it in now only if you'd rather set it up by hand."}
               </Label>
               <Action
-                disabled={!!busy || !view.games.length}
+                busy={busy === "open"}
+                disabled={(!!busy && busy !== "open") || !view.games.length}
                 onPress={() => {
                   void act("open", `/weeks/${weekId}/open`);
                 }}
@@ -243,7 +310,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               </Action>
               <Action
                 secondary
-                disabled={!!busy}
+                busy={busy === "import"}
+                disabled={!!busy && busy !== "import"}
                 onPress={() => {
                   const run = () => {
                     void act("import", `/weeks/${weekId}/import`);
@@ -284,7 +352,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   : "Auto-filling results updates scores only; spreads stay as they were when the week opened."}
               </Label>
               <Action
-                disabled={!!busy || missing > 0 || view.games.length === 0}
+                busy={busy === "finalize"}
+                disabled={(!!busy && busy !== "finalize") || missing > 0 || view.games.length === 0}
                 onPress={() =>
                   confirm(
                     `Finalize the ${unit}?`,
@@ -302,7 +371,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               </Action>
               <Action
                 secondary
-                disabled={!!busy}
+                busy={busy === "results"}
+                disabled={!!busy && busy !== "results"}
                 onPress={() =>
                   confirm(
                     "Auto-fill results?",
@@ -332,7 +402,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           {view.status === "final" && !automatic && (
             <Action
               secondary
-              disabled={!!busy}
+              busy={busy === "reopen"}
+              disabled={!!busy && busy !== "reopen"}
               onPress={() =>
                 confirm(
                   "Reopen this week?",
@@ -412,7 +483,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           <ScoreCorrection view={view} onUpdated={week.setData} disabled={!!busy} />
         )}
         {view.status === "final" && view.results ? (
-          <View onLayout={(event) => setResultsY(event.nativeEvent.layout.y)}>
+          <View ref={results} onLayout={(event) => setResultsY(event.nativeEvent.layout.y)}>
             <WeekResults view={view} userId={me?.id} />
           </View>
         ) : (
@@ -432,10 +503,19 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   onUpdated={week.setData}
                   onPending={(pending) => setBusy(pending ? `game:${game.id}` : undefined)}
                   onDraftChange={(draft) => draftChanged(game.id, draft)}
+                  onSubmit={() => void saveAll()}
+                  // Only the Super Bowl has a tiebreaker in a playoff league; the rounds before it have none.
+                  tiebreakerChoice={!playoff || !!view.tiebreakerGameId}
                 />
               ))}
             </View>
-            {view.games.length === 0 && <Label>No games yet. Import the schedule or add games below.</Label>}
+            {view.games.length === 0 && (
+              <Label>
+                {view.status === "draft"
+                  ? "No games yet. Use Auto-fill games and spreads above, or add games below."
+                  : "No games yet. Add games below."}
+              </Label>
+            )}
             <AddGame
               key={`add:${editorVersion}`}
               weekId={weekId}
@@ -448,31 +528,41 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
         )}
       </ScrollView>
       {changed.length > 0 && view.status !== "final" && (
-        <View
-          style={{
-            backgroundColor: colors.chrome,
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            gap: 8,
-          }}
-        >
-          <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-            <Action disabled={!!busy || !!problem} onPress={() => void saveAll()}>
-              {busy === "save" ? "Saving…" : "Save changes"}
-            </Action>
-            <Pill tone="warning">
-              {changed.length} {changed.length === 1 ? "game" : "games"} changed
-            </Pill>
+        <View style={{ backgroundColor: colors.chrome, borderTopWidth: 1, borderTopColor: colors.border }}>
+          {/* Lined up with the page's content column, as the pick sheet's save bar is. */}
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 896,
+              alignSelf: "center",
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              gap: 8,
+            }}
+          >
+            <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+              <Action
+                busy={busy === "save"}
+                disabled={(!!busy && busy !== "save") || !!problem}
+                onPress={() => void saveAll()}
+              >
+                {busy === "save" ? "Saving…" : "Save changes"}
+              </Action>
+              <Pill tone="warning">
+                {changed.length} {changed.length === 1 ? "game" : "games"} changed
+              </Pill>
+            </View>
+            {problem && <Failure message={problem} />}
           </View>
-          {problem && <Failure message={problem} />}
         </View>
       )}
       {width < 768 && <LeagueTabBar leagueId={view.leagueId} active="league" />}
     </View>
   );
 }
+
+/** The league time zone's short name for a field label: "Eastern", or the zone's own name. */
+const zoneLabel = (timeZone: string) => timeZones.find((zone) => zone.value === timeZone)?.label ?? timeZone;
 
 /** Web's table header: text-xs, font-medium, muted. */
 const th = { fontSize: 12, lineHeight: 16, fontFamily: fonts.medium };
@@ -492,9 +582,15 @@ function GameEditor({
   onUpdated,
   onPending,
   onDraftChange,
+  onSubmit,
+  tiebreakerChoice,
 }: {
   game: Game;
   onDraftChange: (draft: GameDraft | null) => void;
+  /** Enter in one of the row's fields: save the page's changes. */
+  onSubmit: () => void;
+  /** Whether the week has a tiebreaker game to choose. */
+  tiebreakerChoice: boolean;
   view: WeekView;
   disabled: boolean;
   onUpdated: (value: WeekView) => void;
@@ -516,7 +612,9 @@ function GameEditor({
     edits[field]?.base === base(field) ? (edits[field]?.value ?? base(field)) : base(field);
   const setField = (field: GameField, value: string) => {
     setNotice(undefined);
-    setEdits((previous) => ({ ...previous, [field]: { value, base: base(field) } }));
+    // Points and scores are whole numbers: letters are dropped as they're typed or pasted.
+    const kept = field === "spread" || field === "kickoff" ? value : onlyDigits(value);
+    setEdits((previous) => ({ ...previous, [field]: { value: kept, base: base(field) } }));
   };
   const draftUpdate = gameChanges(
     game,
@@ -583,6 +681,15 @@ function GameEditor({
             timeZoneName: "short",
           }).format(new Date(game.kickoff))}
         </Label>
+        <DateTimeField
+          label={`Kickoff (${zoneLabel(view.timeZone)} time)`}
+          // Not "Kickoff (… time)": that names Add a game's field.
+          accessibilityLabel={`Kickoff for ${name}`}
+          value={shown("kickoff")}
+          onChangeText={(value) => setField("kickoff", value)}
+          editable={!disabled && !busy}
+          onSubmit={onSubmit}
+        />
         <View style={s.row}>
           <View style={s.grow}>
             <Input
@@ -590,8 +697,9 @@ function GameEditor({
               accessibilityLabel={`Home spread for ${name}`}
               value={shown("spread")}
               onChangeText={(value) => setField("spread", value)}
-              keyboardType="numbers-and-punctuation"
+              {...spreadKeyboard}
               editable={!disabled && !busy}
+              onSubmit={onSubmit}
             />
           </View>
           <View style={s.grow}>
@@ -600,8 +708,10 @@ function GameEditor({
               accessibilityLabel={`Points for ${name}`}
               value={shown("points")}
               onChangeText={(value) => setField("points", value)}
-              keyboardType="number-pad"
+              {...digitsKeyboard}
+              maxLength={2}
               editable={!disabled && !busy}
+              onSubmit={onSubmit}
             />
           </View>
         </View>
@@ -613,8 +723,10 @@ function GameEditor({
                 accessibilityLabel={`${game.awayTeam} score in ${name}`}
                 value={shown("awayScore")}
                 onChangeText={(value) => setField("awayScore", value)}
-                keyboardType="number-pad"
+                {...digitsKeyboard}
+                maxLength={3}
                 editable={!disabled && !busy}
+                onSubmit={onSubmit}
               />
             </View>
             <View style={s.grow}>
@@ -623,8 +735,10 @@ function GameEditor({
                 accessibilityLabel={`${game.homeTeam} score in ${name}`}
                 value={shown("homeScore")}
                 onChangeText={(value) => setField("homeScore", value)}
-                keyboardType="number-pad"
+                {...digitsKeyboard}
+                maxLength={3}
                 editable={!disabled && !busy}
+                onSubmit={onSubmit}
               />
             </View>
           </View>
@@ -649,33 +763,46 @@ function GameEditor({
             {notice}
           </Text>
         )}
-        <View style={[s.row, { justifyContent: "space-between" }]}>
-          <Pressable
-            accessibilityRole="radio"
-            accessibilityLabel={`Use ${name} as the tiebreaker game`}
-            accessibilityState={{ checked: view.tiebreakerGameId === game.id, disabled: disabled || busy }}
-            aria-checked={view.tiebreakerGameId === game.id}
-            disabled={disabled || busy}
-            onPress={() => void update(`/weeks/${view.id}`, "PATCH", { tiebreakerGameId: game.id })}
-            style={{ minHeight: 44, flexDirection: "row", gap: 10, alignItems: "center" }}
-          >
-            <View
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: 10,
-                borderWidth: 2,
-                borderColor: view.tiebreakerGameId === game.id ? colors.primary : colors.mutedForeground,
+        <View style={[s.row, { justifyContent: tiebreakerChoice ? "space-between" : "flex-end" }]}>
+          {tiebreakerChoice && (
+            <Pressable
+              accessibilityRole="radio"
+              accessibilityLabel={`Use ${name} as the tiebreaker game`}
+              accessibilityState={{ checked: view.tiebreakerGameId === game.id, disabled: disabled || busy }}
+              aria-checked={view.tiebreakerGameId === game.id}
+              disabled={disabled || busy}
+              onPress={() => void update(`/weeks/${view.id}`, "PATCH", { tiebreakerGameId: game.id })}
+              style={(state) => ({
+                minHeight: 44,
+                flexDirection: "row",
+                gap: 10,
                 alignItems: "center",
-                justifyContent: "center",
-              }}
+                marginHorizontal: -8,
+                paddingHorizontal: 8,
+                borderRadius: 10,
+                backgroundColor: disabled || busy ? "transparent" : hoverFill(state),
+              })}
             >
-              {view.tiebreakerGameId === game.id && (
-                <View style={{ width: 10, height: 10, borderRadius: 10, backgroundColor: colors.primary }} />
-              )}
-            </View>
-            <Text style={[s.text, { fontSize: 14 }]}>Tiebreaker game</Text>
-          </Pressable>
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  borderWidth: 2,
+                  borderColor: view.tiebreakerGameId === game.id ? colors.primary : colors.mutedForeground,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {view.tiebreakerGameId === game.id && (
+                  <View
+                    style={{ width: 10, height: 10, borderRadius: 10, backgroundColor: colors.primary }}
+                  />
+                )}
+              </View>
+              <Text style={[s.text, { fontSize: 14 }]}>Tiebreaker game</Text>
+            </Pressable>
+          )}
           <IconButton
             name="more"
             label={`Options for ${name}`}
@@ -728,6 +855,7 @@ function AddGame({
   const [spread, setSpread] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const spreadField = useRef<ComponentRef<typeof TextInput>>(null);
   useEditsGuard(!!(homeTeam || awayTeam || kickoff || spread) && !busy, () => {
     setHome("");
     setAway("");
@@ -737,13 +865,21 @@ function AddGame({
   async function add() {
     if (disabled || busy) return;
     const date = parseLeagueKickoff(kickoff, timeZone);
-    if (!date) return setError("Enter a valid kickoff as YYYY-MM-DD HH:mm.");
+    if (!date)
+      return setError(
+        Platform.OS === "web"
+          ? "Enter the kickoff's date and time."
+          : "Enter a valid kickoff as YYYY-MM-DD HH:mm.",
+      );
     if (!spread.trim()) return setError("Enter the home spread.");
+    const line = parseSpread(spread);
+    // Checked before the schema, whose own words for "abc" are about NaN.
+    if (line === null) return setError(SPREAD_PROBLEM);
     const parsed = createGameSchema.safeParse({
       homeTeam,
       awayTeam,
       kickoff: date.toISOString(),
-      spread: Number(spread),
+      spread: line,
     });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message);
     setBusy(true);
@@ -789,26 +925,28 @@ function AddGame({
           />
         </View>
       </View>
-      <Input
-        // "Kickoff (Eastern time)": typed in the league's time zone.
-        label={`Kickoff (${timeZones.find((zone) => zone.value === timeZone)?.label ?? timeZone} time)`}
-        placeholder="YYYY-MM-DD HH:mm"
+      <DateTimeField
+        // "Kickoff (Eastern time)": entered in the league's time zone.
+        label={`Kickoff (${zoneLabel(timeZone)} time)`}
         value={kickoff}
         onChangeText={setKickoff}
-        autoCapitalize="none"
         editable={!disabled && !busy}
+        onSubmit={() => spreadField.current?.focus()}
       />
       <Input
+        ref={spreadField}
         label="Home spread"
         value={spread}
         onChangeText={setSpread}
-        keyboardType="numbers-and-punctuation"
+        {...spreadKeyboard}
         editable={!disabled && !busy}
+        onSubmit={() => void add()}
       />
       <Failure message={error} />
       <Action
         secondary
-        disabled={disabled || busy}
+        busy={busy}
+        disabled={disabled && !busy}
         onPress={() => {
           void add();
         }}
@@ -919,7 +1057,8 @@ function Announcement({
       />
       <Failure message={error} />
       <Action
-        disabled={busy || !title.trim() || !body.trim()}
+        busy={busy}
+        disabled={!busy && (!title.trim() || !body.trim())}
         onPress={() => {
           void post();
         }}

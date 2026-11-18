@@ -1,12 +1,14 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Action and Heading render native Text.
 import { type LeagueDetail, MAX_WEEK, nextWeekNumber, WEEK_PHASE_LABEL, weekLabel } from "@picks/shared";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AppLink, openPath } from "../../components/AppLink";
 import { PreferenceToggle } from "../../components/PreferenceToggle";
+import { hoverFill } from "../../components/pressState";
 import { request } from "../../lib/api";
 import { notifyDone, notifyError } from "../../lib/notify";
 import { confirmDiscard } from "../../lib/unsaved";
-import { Action, Card, colors, go, Heading, Label, Pill, Select, s } from "../leagueUi";
+import { Action, Card, colors, Heading, Label, Pill, Select, s } from "../leagueUi";
 
 /** Hands-on weekly pick'em's admin tool on the League tab: create a week (importing its slate) or manage one. */
 export function WeekSetupCard({
@@ -18,11 +20,17 @@ export function WeekSetupCard({
   year: number;
   reload: () => void;
 }) {
-  const [number, setNumber] = useState(
+  const suggested =
     nextWeekNumber(league.weeks, MAX_WEEK) ??
-      league.weeks.find((w) => w.status !== "final")?.number ??
-      MAX_WEEK,
-  );
+    league.weeks.find((w) => w.status !== "final")?.number ??
+    MAX_WEEK;
+  // The admin's choice holds while the weeks stay the same. A remembered league can show for a moment before
+  // its refresh: when the fresh weeks differ, the suggestion follows them (a week just created isn't offered
+  // again).
+  const weeksKey = league.weeks.map((w) => w.number).join(",");
+  const [choice, setChoice] = useState<{ number: number; weeks: string }>();
+  const number = choice?.weeks === weeksKey ? choice.number : suggested;
+  const setNumber = (value: number) => setChoice({ number: value, weeks: weeksKey });
   const [importGames, setImportGames] = useState(true),
     [busy, setBusy] = useState<string>();
   const base = `/leagues/${league.id}`,
@@ -75,13 +83,14 @@ export function WeekSetupCard({
         })}
       />
       {existing ? (
-        <Action link disabled={!!busy} onPress={() => go(`/weeks/${existing.id}/manage`)}>
+        <Action disabled={!!busy} href={`/weeks/${existing.id}/manage`}>
           Manage week
         </Action>
       ) : (
         <>
           <Action
-            disabled={!!busy}
+            busy={busy === "create"}
+            disabled={!!busy && busy !== "create"}
             onPress={() =>
               void run(
                 "create",
@@ -92,7 +101,7 @@ export function WeekSetupCard({
                     body: { year, number, importGames },
                   });
                   if (created.importError) notifyError(created.importError);
-                  void go(`/weeks/${created.id}/manage`);
+                  void openPath(`/weeks/${created.id}/manage`);
                 },
                 "Week created.",
               )
@@ -113,28 +122,30 @@ export function WeekSetupCard({
         {[...league.weeks]
           .sort((a, b) => b.number - a.number)
           .map((week) => (
-            <Pressable
+            <AppLink
               key={week.id}
-              accessibilityRole="link"
+              href={`/weeks/${week.id}/manage`}
               accessibilityLabel={`Manage ${weekLabel(week.number)}`}
               disabled={!!busy}
-              onPress={() => void go(`/weeks/${week.id}/manage`)}
-              style={({ pressed }) => ({
+              // The fill reaches the card's edges without moving the text.
+              style={(state) => ({
                 minHeight: 56,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 12,
+                marginHorizontal: -16,
+                paddingHorizontal: 16,
                 borderTopWidth: 1,
                 borderTopColor: colors.border,
-                backgroundColor: pressed ? colors.raised : "transparent",
+                backgroundColor: hoverFill(state),
               })}
             >
               <Text style={[s.subtitle, { fontSize: 20 }]}>{weekLabel(week.number)}</Text>
               <Pill inline tone={week.status === "open" ? "primary" : "muted"}>
                 {WEEK_PHASE_LABEL[week.phase]}
               </Pill>
-            </Pressable>
+            </AppLink>
           ))}
       </View>
     </Card>

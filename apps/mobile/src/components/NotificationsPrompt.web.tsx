@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { notificationPermission, pushSupport } from "../lib/notifications.web";
 import { shouldOfferNotifications } from "../lib/notificationsPrompt";
-import { go, IconButton } from "../screens/leagueUi";
+import { IconButton } from "../screens/leagueUi";
+import { AppLink } from "./AppLink";
 import { Icon } from "./Icon";
+import { hoverFill } from "./pressState";
 import { colors, fonts } from "./ui";
 
 /** Set once a player answers the prompt ("Not now"), so Your leagues never asks on this browser again. */
@@ -52,20 +54,19 @@ export function NotificationsPrompt() {
       >
         Get pick reminders
       </Text>
-      <Pressable
-        accessibilityRole="link"
-        onPress={() => void go("/account")}
-        style={({ pressed }) => ({
+      <AppLink
+        href="/account"
+        style={(state) => ({
           minHeight: 44,
           paddingHorizontal: 16,
           borderRadius: 10,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: pressed ? colors.secondary : colors.raised,
+          backgroundColor: hoverFill(state, colors.raised, colors.raisedHover),
         })}
       >
         <Text style={{ fontFamily: fonts.semibold, fontSize: 16, color: colors.foreground }}>Turn on</Text>
-      </Pressable>
+      </AppLink>
       <IconButton
         name="close"
         label="Not now"

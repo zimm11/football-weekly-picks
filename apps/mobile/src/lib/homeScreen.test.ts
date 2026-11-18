@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
-const { claimHomeScreenOffer, detectPlatform } = await import("./homeScreen");
+const { claimHomeScreenOffer, detectPlatform, homeScreenOfferLead, offerHomeScreen, onHomeScreenOffer } =
+  await import("./homeScreen");
 const { shouldOfferNotifications } = await import("./notificationsPrompt");
 
 describe("detectPlatform", () => {
@@ -12,6 +13,35 @@ describe("detectPlatform", () => {
     expect(detectPlatform(nav("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"))).toBe("other");
     expect(detectPlatform(nav("Mozilla/5.0 (Linux; Android 15; Pixel 9)"))).toBe("android");
     expect(detectPlatform(undefined)).toBe("other");
+  });
+});
+
+describe("the home-screen offer", () => {
+  it("opens with what the player just did", () => {
+    // The pick sheet's wording is what the E2E tests read: keep it as it is.
+    expect(homeScreenOfferLead()).toBe(
+      "Picks saved. Put POW Pick'em on your home screen so next week is one tap away.",
+    );
+    expect(homeScreenOfferLead("picks")).toBe(homeScreenOfferLead());
+    expect(homeScreenOfferLead("pick")).toBe(
+      "Pick saved. Put POW Pick'em on your home screen so next week is one tap away.",
+    );
+    // A square isn't a weekly thing.
+    expect(homeScreenOfferLead("square")).toBe(
+      "Square claimed. Put POW Pick'em on your home screen so the board is one tap away.",
+    );
+    expect(homeScreenOfferLead("square")).not.toMatch(/next week|Picks? saved/);
+  });
+
+  it("tells its listener why it is offering", () => {
+    const seen: string[] = [];
+    const stop = onHomeScreenOffer((reason) => seen.push(reason));
+    offerHomeScreen();
+    offerHomeScreen("pick");
+    offerHomeScreen("square");
+    stop();
+    offerHomeScreen("square");
+    expect(seen).toEqual(["picks", "pick", "square"]);
   });
 });
 

@@ -8,7 +8,6 @@ import {
   type ReportQueue,
   type ReportReason,
 } from "@picks/shared";
-import { router } from "expo-router";
 import { type ComponentRef, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { type Anchor, Menu, MenuItem } from "../components/Popover";
@@ -16,22 +15,10 @@ import { colors, fonts } from "../components/ui";
 import { request } from "../lib/api";
 import { now } from "../lib/clock";
 import { showConfirm } from "../lib/dialogs";
-import { messageTime } from "../lib/messagePresentation";
+import { counted, messageTime } from "../lib/messagePresentation";
+import { groupReports, type ReportGroup } from "../lib/moderation";
 import { notifyDone, notifyError } from "../lib/notify";
 import { Action, Eyebrow, Failure, IconButton, Label, Pill, s, useLeagueLoad } from "./leagueUi";
-
-/** What a queue item is about, in a few words. */
-export function reportHeadline(item: ReportItem): string {
-  const about =
-    item.kind === "post"
-      ? `Message from ${item.subject?.displayName ?? "a player"}`
-      : item.kind === "display_name"
-        ? `${item.subject?.displayName ?? "A player"}'s name`
-        : `League name “${item.league?.name ?? ""}”`;
-  if (item.source === "appeal") return `Appeal: ${about.toLowerCase()}`;
-  if (item.source !== "player") return `${about}, flagged automatically`;
-  return `${about}: ${REPORT_REASON_LABELS[item.reason as ReportReason] ?? "Reported"}`;
-}
 
 type Resolve = { action: "remove" | "dismiss" | "restore"; mute?: MuteDuration };
 
@@ -50,7 +37,7 @@ export function ReportsQueue({
 }) {
   const queue = useLeagueLoad(() => request<ReportQueue | OperatorReportQueue>(path), path);
   const [busy, setBusy] = useState<string>();
-  const [menu, setMenu] = useState<{ item: ReportItem; anchor: Anchor }>();
+  const [menu, setMenu] = useState<{ group: ReportGroup; anchor: Anchor }>();
   const buttons = useRef(new Map<string, ComponentRef<typeof View>>());
 
   async function run(key: string, task: () => Promise<unknown>, done: string) {
@@ -67,7 +54,40 @@ export function ReportsQueue({
       setBusy(undefined);
     }
   }
-  function resolve(item: ReportItem, body: Resolve) {
+  /**
+   * Resolves every report in a card (the API closes all the open reports about the same message or name).
+   * Removing or resetting asks first: it counts against the author, and a reset can't be undone from here.
+   */
+  async function resolve(item: ReportItem, body: Resolve) {
+    if (body.action === "remove") {
+      const name = item.subject?.displayName ?? "the player";
+      const muted = body.mute
+        ? ` ${item.subject?.displayName ?? "The player"} also can't post ${operator ? "anywhere" : "in this league"} for ${MUTE_DURATION_LABELS[body.mute]}.`
+        : "";
+      const ask =
+        item.kind === "post"
+          ? {
+              title: `Remove ${name}'s message?`,
+              message: `${
+                item.post?.position === 1
+                  ? "This is the thread's first message, so the whole thread leaves the board."
+                  : "Everyone sees “Message removed” in its place."
+              } It counts against the author, who can ask for a review.${muted}`,
+              confirmLabel: body.mute ? "Remove and mute" : "Remove message",
+            }
+          : item.kind === "display_name"
+            ? {
+                title: `Reset ${name}'s name?`,
+                message: `Their display name becomes “Player” until they choose another.${muted}`,
+                confirmLabel: body.mute ? "Reset and mute" : "Reset name",
+              }
+            : {
+                title: `Reset the name “${item.league?.name ?? "this league"}”?`,
+                message: "The league is renamed “League” until a commissioner gives it another name.",
+                confirmLabel: "Reset name",
+              };
+      if (!(await showConfirm({ ...ask, destructive: true }))) return;
+    }
     const done =
       body.action === "remove"
         ? item.kind === "post"
@@ -111,121 +131,138 @@ export function ReportsQueue({
         <View style={{ height: 18, width: "85%", borderRadius: 6, backgroundColor: colors.raised }} />
       </View>
     );
-  const items = queue.data.items;
+  const groups = groupReports(queue.data.items);
   const repeat = "repeatOffenders" in queue.data ? queue.data.repeatOffenders : [];
   return (
     <View style={{ gap: 12 }}>
-      {items.length === 0 && <Label>No reports waiting. Nice.</Label>}
-      {items.map((item) => (
-        <View
-          key={item.id}
-          role="region"
-          aria-label={reportHeadline(item)}
-          style={{ gap: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}
-        >
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[s.text, { fontFamily: fonts.semibold }]}>{reportHeadline(item)}</Text>
-              <Label>
-                {[
-                  operator && item.league?.name,
-                  messageTime(item.createdAt, now()),
-                  item.source === "player" ? `reported by ${item.reporterName}` : null,
-                  item.otherReports > 0
-                    ? `${item.otherReports} other ${item.otherReports === 1 ? "report" : "reports"}`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Label>
-            </View>
-            <IconButton
-              ref={(node) => {
-                if (node) buttons.current.set(item.id, node);
-                else buttons.current.delete(item.id);
-              }}
-              name="more"
-              label={`More actions for ${reportHeadline(item)}`}
-              disabled={!!busy}
-              onPress={() =>
-                buttons.current
-                  .get(item.id)
-                  ?.measureInWindow((x, y, width, height) =>
-                    setMenu({ item, anchor: { x, y, width, height } }),
-                  )
-              }
-            />
-          </View>
-          {item.post && (
-            <View style={{ gap: 6, padding: 12, borderRadius: 10, backgroundColor: colors.raised }}>
-              <Label>In “{item.post.threadTitle}”</Label>
-              <Text selectable style={s.text}>
-                {item.post.body || "(text cleared)"}
-              </Text>
-              <View style={{ flexDirection: "row", gap: 6 }}>
-                {item.post.hidden && <Pill>Hidden</Pill>}
-                {item.post.removed && <Pill tone="warning">Removed</Pill>}
+      {groups.length === 0 && <Label>No reports waiting. Nice.</Label>}
+      {groups.map((group) => {
+        const { first: item, headline } = group;
+        const several = group.items.length > 1;
+        return (
+          <View
+            key={item.id}
+            role="region"
+            aria-label={headline}
+            style={{ gap: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}
+          >
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={[s.text, { fontFamily: fonts.semibold }]}>{headline}</Text>
+                <Label>
+                  {[
+                    operator && item.league?.name,
+                    !several && messageTime(item.createdAt, now()),
+                    !several && item.source === "player" ? `reported by ${item.reporterName}` : null,
+                    group.otherReports > 0 ? `${counted(group.otherReports, "other report")}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Label>
               </View>
-            </View>
-          )}
-          {item.note && <Label>“{item.note}”</Label>}
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {item.source === "appeal" ? (
-              <>
-                <Action compact disabled={!!busy} onPress={() => resolve(item, { action: "restore" })}>
-                  {busy === item.id ? "Saving…" : "Restore message"}
-                </Action>
-                <Action
-                  compact
-                  secondary
-                  disabled={!!busy}
-                  onPress={() => resolve(item, { action: "dismiss" })}
-                >
-                  Keep removed
-                </Action>
-              </>
-            ) : (
-              <>
-                <Action
-                  compact
-                  secondary
-                  danger
-                  disabled={!!busy}
-                  onPress={() => resolve(item, { action: "remove" })}
-                >
-                  {busy === item.id ? "Saving…" : item.kind === "post" ? "Remove" : "Reset name"}
-                </Action>
-                <Action
-                  compact
-                  secondary
-                  disabled={!!busy}
-                  onPress={() => resolve(item, { action: "dismiss" })}
-                >
-                  Dismiss
-                </Action>
-              </>
-            )}
-            {item.post && (
-              <Action
-                compact
-                ghost
-                link
-                disabled={!!busy || !item.league}
+              <IconButton
+                ref={(node) => {
+                  if (node) buttons.current.set(item.id, node);
+                  else buttons.current.delete(item.id);
+                }}
+                name="more"
+                label={`More actions for ${headline}`}
+                disabled={!!busy}
                 onPress={() =>
-                  item.league &&
-                  item.post &&
-                  router.push({
-                    pathname: "/leagues/[id]/messages/[threadId]",
-                    params: { id: item.league.id, threadId: item.post.threadId },
-                  })
+                  buttons.current
+                    .get(item.id)
+                    ?.measureInWindow((x, y, width, height) =>
+                      setMenu({ group, anchor: { x, y, width, height } }),
+                    )
                 }
-              >
-                Open thread
-              </Action>
+              />
+            </View>
+            {item.post && (
+              <View style={{ gap: 6, padding: 12, borderRadius: 10, backgroundColor: colors.raised }}>
+                <Label>In “{item.post.threadTitle}”</Label>
+                <Text selectable style={s.text}>
+                  {item.post.body || "(text cleared)"}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {item.post.hidden && <Pill>Hidden</Pill>}
+                  {item.post.removed && <Pill tone="warning">Removed</Pill>}
+                </View>
+              </View>
             )}
+            {several ? (
+              // One line per report: why, who, when, and what they added.
+              <View role="list" aria-label="Reports" style={{ gap: 6 }}>
+                {group.items.map((report) => (
+                  <View key={report.id} role="listitem" style={{ gap: 2 }}>
+                    <Label>
+                      {[
+                        report.source === "player"
+                          ? (REPORT_REASON_LABELS[report.reason as ReportReason] ?? "Reported")
+                          : "Flagged automatically",
+                        report.source === "player" ? `reported by ${report.reporterName}` : null,
+                        messageTime(report.createdAt, now()),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Label>
+                    {report.note && <Label>“{report.note}”</Label>}
+                  </View>
+                ))}
+              </View>
+            ) : (
+              item.note && <Label>“{item.note}”</Label>
+            )}
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              {item.source === "appeal" ? (
+                <>
+                  <Action compact disabled={!!busy} onPress={() => void resolve(item, { action: "restore" })}>
+                    {busy === item.id ? "Saving…" : "Restore message"}
+                  </Action>
+                  <Action
+                    compact
+                    secondary
+                    disabled={!!busy}
+                    onPress={() => void resolve(item, { action: "dismiss" })}
+                  >
+                    Keep removed
+                  </Action>
+                </>
+              ) : (
+                <>
+                  <Action
+                    compact
+                    secondary
+                    danger
+                    disabled={!!busy}
+                    onPress={() => void resolve(item, { action: "remove" })}
+                  >
+                    {busy === item.id ? "Saving…" : item.kind === "post" ? "Remove" : "Reset name"}
+                  </Action>
+                  <Action
+                    compact
+                    secondary
+                    disabled={!!busy}
+                    onPress={() => void resolve(item, { action: "dismiss" })}
+                  >
+                    Dismiss
+                  </Action>
+                </>
+              )}
+              {/* Only where the thread would open: the operator isn't in every league, and a removed thread is gone. */}
+              {item.post && item.league && item.canOpen !== false && (
+                <Action
+                  compact
+                  ghost
+                  disabled={!!busy}
+                  href={`/leagues/${encodeURIComponent(item.league.id)}/messages/${encodeURIComponent(item.post.threadId)}?post=${encodeURIComponent(item.post.id)}`}
+                >
+                  Open thread
+                </Action>
+              )}
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
       {operator && repeat.length > 0 && (
         <View style={{ gap: 8 }}>
           <Eyebrow>Players with 3 or more removals in 30 days</Eyebrow>
@@ -235,7 +272,7 @@ export function ReportsQueue({
               style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, flexWrap: "wrap" }}
             >
               <Text style={[s.text, { flex: 1 }]}>
-                {player.displayName} · {player.removals} removals
+                {player.displayName} · {counted(player.removals, "removal")}
                 {player.suspended ? " · posting off" : player.mutedUntil ? " · muted" : ""}
               </Text>
               <Action
@@ -254,30 +291,30 @@ export function ReportsQueue({
       <Menu
         anchor={menu?.anchor}
         onClose={() => setMenu(undefined)}
-        label={menu ? `More actions for ${reportHeadline(menu.item)}` : "More actions"}
+        label={menu ? `More actions for ${menu.group.headline}` : "More actions"}
         align="end"
       >
-        {menu?.item.source !== "appeal" &&
+        {menu?.group.first.source !== "appeal" &&
           (["24h", "7d"] as const).map((duration) => (
             <MenuItem
               key={duration}
               icon="mute"
-              label={`${menu?.item.kind === "post" ? "Remove" : "Reset"} and mute ${MUTE_DURATION_LABELS[duration]}`}
-              disabled={!menu?.item.subject}
+              label={`${menu?.group.first.kind === "post" ? "Remove" : "Reset"} and mute ${MUTE_DURATION_LABELS[duration]}`}
+              disabled={!menu?.group.first.subject}
               onPress={() => {
-                const item = menu?.item;
+                const item = menu?.group.first;
                 setMenu(undefined);
-                if (item) resolve(item, { action: "remove", mute: duration });
+                if (item) void resolve(item, { action: "remove", mute: duration });
               }}
             />
           ))}
-        {operator && menu?.item.subject && (
+        {operator && menu?.group.first.subject && (
           <MenuItem
             icon="block"
             destructive
-            label={`Suspend posting for ${menu.item.subject.displayName}`}
+            label={`Suspend posting for ${menu.group.first.subject.displayName}`}
             onPress={() => {
-              const subject = menu?.item.subject;
+              const subject = menu?.group.first.subject;
               setMenu(undefined);
               if (subject) void suspend(subject.userId, subject.displayName, true);
             }}

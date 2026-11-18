@@ -331,6 +331,41 @@ describe.skipIf(!process.env.DATABASE_URL)("league types with a database (requir
     expect(playoffSeason?.settings).toEqual({ format: "traditional" });
   });
 
+  it("tells the app which seasons a playoff or survivor league has started, before any week exists", async () => {
+    // A playoff season has no round until January, and members aren't sent a pool's draft start week: the
+    // started years are how the app knows to open on this season rather than last year's finished one.
+    const playoff = await create(STRANGER, { name: "Started bracket", type: "playoff" });
+    const path = `/leagues/${playoff.body.id}`;
+    const fresh = (await call<LeagueDetail>(STRANGER, "GET", path)).body;
+    expect(fresh.weeks).toEqual([]);
+    expect(fresh.startedSeasons).toEqual([2026]);
+    // Start season adds next year's, newest first.
+    expect(
+      (await call(STRANGER, "POST", `${path}/seasons`, { year: 2027, settings: { format: "guillotine" } }))
+        .status,
+    ).toBe(201);
+    expect((await call<LeagueDetail>(STRANGER, "GET", path)).body.startedSeasons).toEqual([2027, 2026]);
+
+    const pool = await create(STRANGER, { name: "Started pool", type: "survivor", settings: { lives: 1 } });
+    expect(
+      (await call<LeagueDetail>(STRANGER, "GET", `/leagues/${pool.body.id}`)).body.startedSeasons,
+    ).toEqual([2026]);
+
+    // Weekly pick'em's season begins with its first open week, and squares has no seasons: nothing to tell.
+    const weekly = await create(STRANGER, { name: "Weekly auto", management: "auto" });
+    expect(
+      (await call(STRANGER, "POST", `/leagues/${weekly.body.id}/seasons`, { year: 2026, startWeek: 14 }))
+        .status,
+    ).toBe(201);
+    expect(
+      (await call<LeagueDetail>(STRANGER, "GET", `/leagues/${weekly.body.id}`)).body.startedSeasons,
+    ).toEqual([]);
+    const squares = await create(STRANGER, { name: "Squares", type: "squares" });
+    expect(
+      (await call<LeagueDetail>(STRANGER, "GET", `/leagues/${squares.body.id}`)).body.startedSeasons,
+    ).toEqual([]);
+  });
+
   it("switches a weekly league between Automatic and Hands-on", async () => {
     const mine = await create(STRANGER, { name: "Switchable" });
     const path = `/leagues/${mine.body.id}`;

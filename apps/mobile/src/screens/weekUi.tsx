@@ -1,6 +1,17 @@
 import type { ReactNode } from "react";
-import { Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import {
+  Platform,
+  Pressable,
+  type PressableStateCallbackType,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
+import { AppLink, type LinkHow } from "../components/AppLink";
 import { Icon } from "../components/Icon";
+import { atRest, busyProps, pressState } from "../components/pressState";
 import { colors, fonts } from "../components/ui";
 
 export type WeekTone = "primary" | "win" | "pow" | "loss" | "outline";
@@ -46,6 +57,7 @@ export function WeekBadge({
     </View>
   );
 }
+const ignore = () => {};
 export function WeekAction({
   label,
   onPress,
@@ -54,36 +66,66 @@ export function WeekAction({
   compact = false,
   style,
   link = false,
+  busy = false,
+  href,
+  how,
 }: {
   label: string;
-  onPress: () => void;
+  /** Optional with `href`, where it replaces the default navigation. */
+  onPress?: () => void;
   disabled?: boolean;
+  /**
+   * Its own request is running: it looks disabled and ignores presses, but stays a keyboard stop so the
+   * focus isn't dropped to the page. Use it rather than `disabled` for "Saving…".
+   */
+  busy?: boolean;
   secondary?: boolean;
   compact?: boolean;
   style?: StyleProp<ViewStyle>;
   /** It goes to another screen: announced as a link, as on the web. */
   link?: boolean;
+  /**
+   * An in-app path: the button is a real link (`AppLink`: an `<a href>` on the web, so Enter and new-tab
+   * clicks work), opened through the unsaved-work guard. `how` is push (default), replace or dismissTo.
+   */
+  href?: string;
+  how?: LinkHow;
 }) {
-  return (
-    <Pressable
-      accessibilityRole={link ? "link" : "button"}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
+  const off = disabled || busy;
+  const shared = {
+    ...busyProps(disabled, busy, Platform.OS === "web"),
+    style: (state: PressableStateCallbackType) => {
+      const { pressed, hovered } = busy ? atRest : pressState(state);
+      return [
         w.action,
         secondary && w.secondary,
         compact && w.compact,
         compact &&
           secondary && { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border },
+        // Under the mouse: a filled button lightens, a secondary one takes the next layer up.
+        hovered &&
+          (secondary ? { backgroundColor: compact ? colors.raised : colors.raisedHover } : { opacity: 0.9 }),
         style,
-        disabled && { opacity: 0.5 },
+        off && { opacity: 0.5 },
+        busy && ({ cursor: "auto" } as const),
         pressed && { opacity: 0.8 },
-      ]}
-    >
-      <Text style={[w.actionText, secondary && { color: colors.foreground }, compact && { fontSize: 14 }]}>
-        {label}
-      </Text>
+      ];
+    },
+  };
+  const content = (
+    <Text style={[w.actionText, secondary && { color: colors.foreground }, compact && { fontSize: 14 }]}>
+      {label}
+    </Text>
+  );
+  if (href !== undefined)
+    return (
+      <AppLink href={href} how={how} onPress={busy ? ignore : onPress} {...shared}>
+        {content}
+      </AppLink>
+    );
+  return (
+    <Pressable accessibilityRole={link ? "link" : "button"} onPress={busy ? ignore : onPress} {...shared}>
+      {content}
     </Pressable>
   );
 }

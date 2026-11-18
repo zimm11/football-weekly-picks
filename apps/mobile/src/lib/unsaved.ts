@@ -1,7 +1,7 @@
 import { useIsFocused, usePreventRemove } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { guardBrowserHistory } from "./browserGuard";
-import { showConfirm } from "./dialogs";
+import { showConfirm } from "./confirm";
 
 const drafts = new Map<symbol, () => void>();
 /** The wording for leaving a screen with unsaved work by any route. */

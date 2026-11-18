@@ -93,7 +93,9 @@ export function squarePlace(
 
 /**
  * A cell's accessible name: whose it is, its numbers, and anything it has won or would win now. "Pat's square,
- * Chiefs 4, Eagles 1, won Q1", "Your square, row 3, column 5", "Open square, Chiefs 0, Eagles 7".
+ * Chiefs 4, Eagles 1, won Q1", "Your square, row 3, column 5", "Open square, Chiefs 0, Eagles 7". A quarter that
+ * landed on a square nobody holds has no winner, and says so: "Open square, Chiefs 0, Eagles 7, hit Halftime,
+ * nobody's square".
  */
 export function cellLabel(input: {
   view: Pick<BoardView, "homeTeam" | "awayTeam" | "homeDigits" | "awayDigits">;
@@ -111,13 +113,83 @@ export function cellLabel(input: {
       ? "Your square"
       : `${square.name}'s square${square.guest ? " (guest)" : ""}`;
   const parts = [whose, squarePlace(view, row, col)];
-  if (wins.length) parts.push(`won ${joinPeriods(wins)}`);
+  if (wins.length)
+    parts.push(square ? `won ${joinPeriods(wins)}` : `hit ${joinPeriods(wins)}, nobody's square`);
   if (current) parts.push("would win if the quarter ended now");
   return parts.join(", ");
 }
 
-/** What a square has won, for its sheet: "Won Q1 and Final", or "Nothing yet". */
-export const winsText = (wins: SquarePeriod[]) => (wins.length ? `Won ${joinPeriods(wins)}` : "Nothing yet");
+/**
+ * What a square has won, for its sheet: "Won Q1 and Final", or "Nothing yet". A quarter that landed on a square
+ * nobody holds (`held` false) is no win: "Hit Halftime: nobody's square, so no winner".
+ */
+export const winsText = (wins: SquarePeriod[], held = true) =>
+  !wins.length
+    ? "Nothing yet"
+    : held
+      ? `Won ${joinPeriods(wins)}`
+      : `Hit ${joinPeriods(wins)}: nobody's square, so no winner`;
+
+/** The gap between cells, in every size of grid. */
+export const GRID_GAP = 2;
+
+/**
+ * The grid's measurements for the width the page gives it (`contentWidth`, inside the page's `gutter` on each
+ * side), so all ten columns always show: no sideways scrolling.
+ * - Under 560px of screen the card runs edge to edge (`bleed`), with 6px of padding and a 24px column for the
+ *   away team's numbers: 33px cells on a 393px phone, 26px at 320px. Cells may be under the 44px tap size there,
+ *   because the whole board has to be in view.
+ * - From 560px the card sits inside the gutter and its cells are 44px or more, growing to 56px.
+ */
+export function gridLayout(contentWidth: number, gutter = 16) {
+  const bleed = contentWidth + 2 * gutter < 560;
+  const padding = bleed ? 6 : 12;
+  const axis = bleed ? 24 : 32;
+  const inner = (bleed ? contentWidth + 2 * gutter : contentWidth) - 2 * padding;
+  const cell = Math.max(16, Math.min(56, Math.floor((inner - axis - BOARD_SIZE * GRID_GAP) / BOARD_SIZE)));
+  return {
+    bleed,
+    padding,
+    /** The width of the column of row numbers. */
+    axis,
+    cell,
+    /** The grid itself: the number column, ten cells and the gaps between them. */
+    width: axis + BOARD_SIZE * (cell + GRID_GAP),
+    /** Room for a holder's mark and a quarter's label, one above the other; a smaller cell shows one of them. */
+    twoLines: cell >= 32,
+    /** Type sizes that stay readable as the cell shrinks. */
+    digitSize: Math.max(13, Math.min(22, Math.round(cell * 0.5))),
+    initialsSize: cell >= 52 ? 15 : cell >= 44 ? 13 : cell >= 30 ? 12 : 11,
+    labelSize: cell >= 52 ? 12 : cell >= 44 ? 11 : cell >= 30 ? 10 : 9,
+    /** A profile picture alone in its cell, and with a quarter's label under it. */
+    avatarSize: Math.max(14, Math.min(30, cell - 10)),
+    avatarSizeLabelled: Math.max(14, Math.min(26, cell - 18)),
+  };
+}
+
+/**
+ * Where an arrow key moves the keyboard focus on the grid: one square over, stopping at the edges; Home and End
+ * go to the ends of the row. Undefined for any other key, or when there is nowhere to go.
+ */
+export function gridMove(key: string, row: number, col: number): { row: number; col: number } | undefined {
+  const last = BOARD_SIZE - 1;
+  const next =
+    key === "ArrowUp"
+      ? { row: row - 1, col }
+      : key === "ArrowDown"
+        ? { row: row + 1, col }
+        : key === "ArrowLeft"
+          ? { row, col: col - 1 }
+          : key === "ArrowRight"
+            ? { row, col: col + 1 }
+            : key === "Home"
+              ? { row, col: 0 }
+              : key === "End"
+                ? { row, col: last }
+                : undefined;
+  if (!next || next.row < 0 || next.row > last || next.col < 0 || next.col > last) return undefined;
+  return next.row === row && next.col === col ? undefined : next;
+}
 
 /**
  * The NFL week being played at `now`, by the calendar: the first whose games aren't over yet (until the morning

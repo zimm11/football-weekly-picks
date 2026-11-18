@@ -2,12 +2,14 @@
 import { type AccountDeletionPreview, deleteAccountSchema, SUPPORT_EMAIL } from "@picks/shared";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { messageOf, request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { notifyDone } from "../lib/notify";
 import { confirmDiscard } from "../lib/unsaved";
+import { AppLink, openPath } from "./AppLink";
 import { Icon } from "./Icon";
+import { hoverFill } from "./pressState";
 import { SettingsHeading } from "./SettingsHeading";
 import { Body, Button, Card, colors, ErrorMessage, Field, fonts, Sheet } from "./ui";
 
@@ -57,8 +59,9 @@ export function DeleteAccount() {
       return setError(messageOf(err));
     }
     setOpen(false);
-    await auth.signOut({ accountDeleted: true }).catch(() => undefined);
+    // Home first, so the sign-in form never stands in for Settings on the way out.
     router.replace("/");
+    await auth.signOut({ accountDeleted: true }).catch(() => undefined);
     notifyDone("Your account was deleted.");
   }
 
@@ -104,21 +107,30 @@ export function DeleteAccount() {
                   {preview.soleAdmin.length === 1 ? "it keeps" : "they keep"} a commissioner.
                 </Body>
                 {preview.soleAdmin.map((league) => (
-                  <Pressable
+                  <AppLink
                     key={league.id}
-                    accessibilityRole="link"
+                    href={`/leagues/${league.id}/league`}
                     accessibilityLabel={`Open ${league.name}'s League tab`}
                     onPress={() => {
                       close();
-                      router.push({ pathname: "/leagues/[id]/league", params: { id: league.id } });
+                      void openPath(`/leagues/${league.id}/league`);
                     }}
-                    style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}
+                    style={(state) => ({
+                      minHeight: 44,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      marginHorizontal: -8,
+                      paddingHorizontal: 8,
+                      borderRadius: 10,
+                      backgroundColor: hoverFill(state),
+                    })}
                   >
                     <Text style={{ flex: 1, fontFamily: fonts.medium, fontSize: 16, color: colors.primary }}>
                       {league.name}
                     </Text>
                     <Icon name="chevron-right" size={18} color={colors.primary} />
-                  </Pressable>
+                  </AppLink>
                 ))}
               </View>
             ) : (
@@ -129,13 +141,19 @@ export function DeleteAccount() {
                   onChangeText={setPassword}
                   secureTextEntry
                   autoComplete="current-password"
+                  textContentType="password"
                   editable={!busy}
+                  enterKeyHint="go"
+                  onSubmit={() => {
+                    if (password && !busy) void remove();
+                  }}
                 />
                 <ErrorMessage message={error} />
                 <Button
                   title={busy === "deleting" ? "Deleting…" : "Delete my account"}
                   variant="destructive"
-                  disabled={!!busy || !password}
+                  busy={busy === "deleting"}
+                  disabled={busy === "loading" || !password}
                   onPress={() => void remove()}
                 />
               </>

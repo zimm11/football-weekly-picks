@@ -18,7 +18,7 @@
 -- Messages support emoji reactions, commissioner-only pinned announcements and quoted replies within a thread.
 -- Commissioners can permanently delete a thread and its replies, reactions, read markers and queued notifications after confirmation.
 -- Reactions and pin changes do not create unread indicators; quote previews can be removed without losing a draft.
--- Profiles show initials until a player chooses one of the 100 logos in Settings → Profile picture.
+-- Profiles show initials until a player chooses one of the 100 logos in Name and picture → Profile picture.
 -- Settings (account menu) holds notifications by email and per device, plus home-screen install help; on a phone
 -- the first save of picks offers the install help once. None of it shows in the home-screen app.
 -- Device notifications are opt-in: new threads, 7pm league-time reminders for missing picks, and results and

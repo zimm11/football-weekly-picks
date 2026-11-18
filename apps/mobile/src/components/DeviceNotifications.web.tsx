@@ -107,7 +107,7 @@ export function DeviceNotifications() {
   if (error || !state)
     return (
       <Card>
-        <SettingsHeading>On this device</SettingsHeading>
+        <SettingsHeading level={3}>On this device</SettingsHeading>
         {error ? (
           <ErrorMessage
             message={error}
@@ -191,7 +191,7 @@ function PushNotificationSettings({
   const small = { fontSize: 14, lineHeight: 20 };
   return (
     <Card>
-      <SettingsHeading>On this device</SettingsHeading>
+      <SettingsHeading level={3}>On this device</SettingsHeading>
       <Body muted>
         New threads, missing-pick reminders, and results and updates as notifications. They can show league
         names and thread titles on your lock screen.
@@ -203,7 +203,7 @@ function PushNotificationSettings({
             notifications. Requires iOS or iPadOS 16.4 or later.
           </Body>
           {/* Only iPhone and iPad browser tabs reach this state, so only their steps apply. */}
-          <HomeScreenInstructions platform="ios" />
+          <HomeScreenInstructions platform="ios" inSettings />
         </>
       ) : support === "unsupported" ? (
         <Body muted>
