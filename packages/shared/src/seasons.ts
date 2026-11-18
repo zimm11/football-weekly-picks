@@ -118,6 +118,28 @@ export function nextWeekNumber(weeks: { number: number }[], maxWeek: number): nu
   return null;
 }
 
+/**
+ * The week Set up a week suggests in `year`: `nextWeekNumber`, except in this NFL season before any of its weeks
+ * exists, where it is the coming week by the calendar (`nextStartWeek`; the last week once that one has begun),
+ * so a league started in November isn't offered a September slate.
+ */
+export function suggestedWeekNumber(
+  weeks: { number: number }[],
+  year: number,
+  now: Date,
+  maxWeek: number,
+): number | null {
+  if (weeks.length === 0 && year === seasonYear(now)) return nextStartWeek(year, now) ?? maxWeek;
+  return nextWeekNumber(weeks, maxWeek);
+}
+
+/**
+ * Whether a regular-season week's games have all been played by the calendar estimate: it is the Tuesday morning
+ * after the week's Thursday (4½ days on, after Monday night's game).
+ */
+export const weekPlayedByCalendar = (year: number, number: number, now: Date) =>
+  estimatedWeekStart(year, number).getTime() + 4.5 * 86_400_000 <= now.getTime();
+
 /** Counts only the requesting player's opportunities; no other player's choices enter the response. */
 export function weekPickAvailability(
   games: (PhaseGame & { id: string })[],

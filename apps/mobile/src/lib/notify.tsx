@@ -12,9 +12,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { hoverFill } from "../components/pressState";
-import { colors, fonts } from "../components/theme";
+import { colors, elevation, fonts } from "../components/theme";
+import { now } from "./clock";
 import { haptics } from "./haptics";
-import { useReducedMotion } from "./motion";
+import { duration, easing, nativeDriver, pop, useReducedMotion } from "./motion";
 
 type Notice = { message: string; kind: "status" | "alert" };
 
@@ -33,16 +34,49 @@ function subscribe(subscriber: () => void) {
     subscribers.delete(subscriber);
   };
 }
+/** How long a notice stays: long enough to read a confirmation, longer for a problem the player must act on. */
+const SHOWN_MS = { status: 4000, alert: 10_000 } as const;
+// An alert waits while the player is reading it (the pointer over the banner) or about to dismiss it (its
+// Dismiss button has the focus); it gets what was left of its time back afterwards.
+const held = { hover: false, focus: false };
+let remaining = 0;
+let deadline = 0;
+const clockMs = () => now().getTime();
+function start(ms: number) {
+  if (timer) clearTimeout(timer);
+  remaining = ms;
+  deadline = clockMs() + ms;
+  timer = setTimeout(dismiss, ms);
+}
+function holding() {
+  return current?.kind === "alert" && (held.hover || held.focus);
+}
+function hold(reason: keyof typeof held, on: boolean) {
+  const was = holding();
+  held[reason] = on;
+  const is = holding();
+  if (is && !was && timer) {
+    clearTimeout(timer);
+    timer = undefined;
+    remaining = Math.max(0, deadline - clockMs());
+  } else if (!is && was && current) start(remaining);
+}
 function dismiss() {
   if (timer) clearTimeout(timer);
   timer = undefined;
   current = undefined;
+  // The banner it was read on goes; the next one starts unheld.
+  held.hover = false;
+  held.focus = false;
   changed();
 }
 function raise(notice: Notice) {
-  if (timer) clearTimeout(timer);
   current = notice;
-  timer = setTimeout(dismiss, 6000);
+  if (holding()) {
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    remaining = SHOWN_MS.alert;
+  } else start(SHOWN_MS[notice.kind]);
   changed();
   // The iPhone has no live regions: VoiceOver is told directly.
   if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(notice.message);
@@ -87,6 +121,9 @@ export function NotificationBanner({ above }: { above?: number }) {
   // What is drawn: the notice, kept while it fades out.
   const [shown, setShown] = useState(notice);
   const progress = useRef(new Animated.Value(0)).current;
+  // A notice that replaces one still showing pops a little, so two saves in a row read as two.
+  const scale = useRef(new Animated.Value(1)).current;
+  const showing = useRef<Notice | undefined>(undefined);
   const reduced = useReducedMotion();
   const insets = useSafeAreaInsets();
   const path = usePathname();
@@ -104,6 +141,8 @@ export function NotificationBanner({ above }: { above?: number }) {
       : // Over a sheet: just above it, or at the top of the screen when the sheet is nearly as tall.
         Math.min(above + 12, height - insets.top - 72);
   useEffect(() => {
+    const replaced = !!notice && !!showing.current && showing.current !== notice;
+    showing.current = notice;
     progress.stopAnimation();
     if (notice) setShown(notice);
     if (reduced) {
@@ -111,14 +150,19 @@ export function NotificationBanner({ above }: { above?: number }) {
       if (!notice) setShown(undefined);
       return;
     }
+    if (replaced) {
+      scale.setValue(0.97);
+      Animated.spring(scale, { toValue: 1, ...pop, useNativeDriver: nativeDriver }).start();
+    }
     Animated.timing(progress, {
       toValue: notice ? 1 : 0,
-      duration: notice ? 180 : 140,
-      useNativeDriver: Platform.OS !== "web",
+      duration: notice ? duration.base : duration.fast,
+      easing: notice ? easing.out : easing.in,
+      useNativeDriver: nativeDriver,
     }).start(({ finished }) => {
       if (finished && !notice) setShown(undefined);
     });
-  }, [notice, reduced, progress]);
+  }, [notice, reduced, progress, scale]);
   const alert = shown?.kind === "alert";
   return (
     // The full-width row places the banner, since an absolutely positioned view ignores alignSelf.
@@ -135,6 +179,10 @@ export function NotificationBanner({ above }: { above?: number }) {
     >
       <Animated.View
         pointerEvents={notice ? "auto" : "none"}
+        // A mouse over the banner holds an alert (in a browser; a finger on iPhone doesn't hover).
+        {...(Platform.OS === "web"
+          ? { onPointerEnter: () => hold("hover", true), onPointerLeave: () => hold("hover", false) }
+          : null)}
         style={{
           width: "100%",
           maxWidth: wide ? 380 : 420,
@@ -146,9 +194,12 @@ export function NotificationBanner({ above }: { above?: number }) {
           flexDirection: "row",
           alignItems: "center",
           gap: 10,
-          boxShadow: "0 4px 20px #00000055",
+          boxShadow: elevation.float,
           opacity: progress,
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+          transform: [
+            { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
+            { scale },
+          ],
         }}
       >
         {shown && (
@@ -178,6 +229,8 @@ export function NotificationBanner({ above }: { above?: number }) {
             accessibilityLabel="Dismiss notification"
             accessibilityRole="button"
             onPress={dismiss}
+            onFocus={() => hold("focus", true)}
+            onBlur={() => hold("focus", false)}
             style={(state) => ({
               minWidth: 44,
               minHeight: 44,

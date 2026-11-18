@@ -1,14 +1,24 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Action and Heading render native Text.
-import { type LeagueDetail, MAX_WEEK, nextWeekNumber, WEEK_PHASE_LABEL, weekLabel } from "@picks/shared";
+import {
+  type LeagueDetail,
+  MAX_WEEK,
+  nextWeekNumber,
+  suggestedWeekNumber,
+  WEEK_PHASE_LABEL,
+  weekLabel,
+  weekPlayedByCalendar,
+} from "@picks/shared";
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { AppLink, openPath } from "../../components/AppLink";
 import { PreferenceToggle } from "../../components/PreferenceToggle";
 import { hoverFill } from "../../components/pressState";
+import { corner, layout, radius, space, type } from "../../components/theme";
 import { request } from "../../lib/api";
+import { now } from "../../lib/clock";
 import { notifyDone, notifyError } from "../../lib/notify";
 import { confirmDiscard } from "../../lib/unsaved";
-import { Action, Card, colors, Heading, Label, Pill, Select, s } from "../leagueUi";
+import { Action, Card, CardTitle, colors, Label, Pill, Select } from "../leagueUi";
 
 /** Hands-on weekly pick'em's admin tool on the League tab: create a week (importing its slate) or manage one. */
 export function WeekSetupCard({
@@ -20,8 +30,10 @@ export function WeekSetupCard({
   year: number;
   reload: () => void;
 }) {
+  const at = now();
+  // In this season before any week exists, the coming week rather than Week 1's long-gone slate.
   const suggested =
-    nextWeekNumber(league.weeks, MAX_WEEK) ??
+    suggestedWeekNumber(league.weeks, year, at, MAX_WEEK) ??
     league.weeks.find((w) => w.status !== "final")?.number ??
     MAX_WEEK;
   // The admin's choice holds while the weeks stay the same. A remembered league can show for a moment before
@@ -54,13 +66,13 @@ export function WeekSetupCard({
   return (
     <Card label="Weeks">
       <View style={{ gap: 4 }}>
-        <Heading>{year} season weeks</Heading>
+        <CardTitle>{year} season weeks</CardTitle>
         <Label>
           {league.weeks.length} of {MAX_WEEK} weeks prepared · {finalCount} final. Regular season only.
         </Label>
       </View>
       {next === null && (
-        <View style={{ backgroundColor: colors.primaryTint, borderRadius: 12, padding: 12 }}>
+        <View style={{ backgroundColor: colors.primaryTint, ...corner(radius.lg), padding: space.lg }}>
           <Label>
             {finalCount === MAX_WEEK
               ? "Season complete. All 18 weeks are final. Choose New season in the season selector when you're ready."
@@ -78,7 +90,13 @@ export function WeekSetupCard({
             w = league.weeks.find((item) => item.number === n);
           return {
             value: n,
-            label: `${weekLabel(n)} · ${w ? WEEK_PHASE_LABEL[w.phase] : "Not created"}`,
+            label: `${weekLabel(n)} · ${
+              w
+                ? WEEK_PHASE_LABEL[w.phase]
+                : weekPlayedByCalendar(year, n, at)
+                  ? "Already played"
+                  : "Not created"
+            }`,
           };
         })}
       />
@@ -118,36 +136,38 @@ export function WeekSetupCard({
           />
         </>
       )}
-      <View>
-        {[...league.weeks]
-          .sort((a, b) => b.number - a.number)
-          .map((week) => (
-            <AppLink
-              key={week.id}
-              href={`/weeks/${week.id}/manage`}
-              accessibilityLabel={`Manage ${weekLabel(week.number)}`}
-              disabled={!!busy}
-              // The fill reaches the card's edges without moving the text.
-              style={(state) => ({
-                minHeight: 56,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                marginHorizontal: -16,
-                paddingHorizontal: 16,
-                borderTopWidth: 1,
-                borderTopColor: colors.border,
-                backgroundColor: hoverFill(state),
-              })}
-            >
-              <Text style={[s.subtitle, { fontSize: 20 }]}>{weekLabel(week.number)}</Text>
-              <Pill inline tone={week.status === "open" ? "primary" : "muted"}>
-                {WEEK_PHASE_LABEL[week.phase]}
-              </Pill>
-            </AppLink>
-          ))}
-      </View>
+      {league.weeks.length > 0 && (
+        <View>
+          {[...league.weeks]
+            .sort((a, b) => b.number - a.number)
+            .map((week) => (
+              <AppLink
+                key={week.id}
+                href={`/weeks/${week.id}/manage`}
+                accessibilityLabel={`Manage ${weekLabel(week.number)}`}
+                disabled={!!busy}
+                // The fill reaches the card's edges without moving the text.
+                style={(state) => ({
+                  minHeight: 56,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  marginHorizontal: -layout.cardPad,
+                  paddingHorizontal: layout.cardPad,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border,
+                  backgroundColor: hoverFill(state),
+                })}
+              >
+                <Text style={[type.subheading, { color: colors.foreground }]}>{weekLabel(week.number)}</Text>
+                <Pill inline tone={week.status === "open" ? "primary" : "muted"}>
+                  {WEEK_PHASE_LABEL[week.phase]}
+                </Pill>
+              </AppLink>
+            ))}
+        </View>
+      )}
     </Card>
   );
 }

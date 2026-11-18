@@ -1,44 +1,19 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: Item renders its text inside Body, a native Text.
+// biome-ignore-all lint/correctness/noReactNativeRawText: the Guide parts (GuideTitle, GuideNote, GuideItem) render their children inside native Text.
 import { PLAYOFF_POW_BONUS, ROUND_POINTS } from "@picks/shared";
-import { Text, View } from "react-native";
-import { Icon, type IconName } from "../../components/Icon";
-import { Body, Card, colors, fonts, Title } from "../../components/ui";
+import { View } from "react-native";
+import { GuideHeading as Heading, GuideItem as Item } from "../../components/Guide";
+import { space } from "../../components/theme";
+import { Body, Card } from "../../components/ui";
 
 /*
  * How to play: how a weekly league is run (Automatic or Hands-on) and Playoff pick'em. Rendered from
  * app/how-to-play.tsx in one line; the "playoff" section key points at the Playoff pick'em part.
  */
 
-function Heading({ title, icon }: { title: string; icon: IconName }) {
-  return (
-    <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-      <Icon name={icon} size={28} color={colors.primary} />
-      <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
-        {title}
-      </Title>
-    </View>
-  );
-}
-
-function Item({ title, children }: { title: string; children: string }) {
-  return (
-    <View style={{ gap: 4 }}>
-      <Text
-        accessibilityRole="header"
-        aria-level={3}
-        style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
-      >
-        {title}
-      </Text>
-      <Body muted>{children}</Body>
-    </View>
-  );
-}
-
 /** Weekly pick'em: how a league is run, Automatic or Hands-on. */
 export function HowToPlayManagement() {
   return (
-    <View style={{ gap: 20 }}>
+    <View style={{ gap: space.xl }}>
       <Heading title="Automatic or hands-on" icon="refresh" />
       <Card>
         <Item title="Automatic (the default)">
@@ -69,7 +44,7 @@ export function HowToPlayManagement() {
 /** Playoff pick'em: rounds, the two formats and the champion. */
 export function HowToPlayPlayoff() {
   return (
-    <View style={{ gap: 20 }}>
+    <View style={{ gap: space.xl }}>
       <Heading title="Playoff pick'em" icon="trophy" />
       <Body muted>
         The weekly game over the four playoff rounds, with one champion after the Super Bowl. Pick every game

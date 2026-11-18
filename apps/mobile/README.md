@@ -2,7 +2,7 @@
 
 Expo Router + React Native client for the Hono API. The same app is the website: `pnpm --filter @picks/mobile build:web` exports it to `dist-web`, which the Cloudflare Worker serves as its static assets (`pnpm build` does this), and in a browser it calls the API on its own origin. Native builds call `https://www.pow-pickem.com` by default. No database credentials or Supabase service-role keys belong in the app.
 
-Web-only code lives in `*.web.ts(x)` files beside their native versions (Metro picks the right one per platform). `public/` holds the website's `_headers` (security headers and caching), `manifest.json` and icons, the push service worker `push-sw.js`, and the page template `index.html` with `boot.css`; Expo copies it to the root of the web build. `metro.config.cjs` keeps only Zod's English locale in the web bundle.
+Web-only code lives in `*.web.ts(x)` files beside their native versions (Metro picks the right one per platform). `public/` holds the website's `_headers` (security headers and caching), `manifest.json` and icons, the push service worker `push-sw.js`, and the page template `index.html` with `boot.css` and `boot-mark.png` (the mark the empty page shows before the scripts load); Expo copies it to the root of the web build. `metro.config.cjs` keeps only Zod's English locale in the web bundle.
 
 ## Run locally
 
@@ -38,7 +38,7 @@ The launcher reads database credentials from this checkout's local Supabase only
 - League creation, invite joining/sharing, five league tabs and shared season selection.
 - Picks, explicit POW, tiebreaker, save-time reconciliation of changes that lock or disappear, live refresh and app resume.
 - Final results, awards, standings, player season statistics and weekly recap.
-- Matchup stats/news/market sheets, loaded on demand.
+- The matchup sheet for each game (team stats, recent form, injuries, news and each team's chance to win), loaded on demand. No sportsbook or prediction-market prices.
 - Message board pagination, unread state, threads, replies, quotes, reactions, pin/unpin/delete permissions.
 - League membership/commissioner tools and week setup, import/edit games, manual results, open/finalize/reopen and announcement posting.
 - Email notification preferences, native device notifications, feedback, operator dashboard and signed-out unsubscribe confirmation.
@@ -72,7 +72,7 @@ Native and web devices use the same reminder/queue eligibility rules. Native del
 
 ## Haptics
 
-On iPhone the app taps back through `expo-haptics` (`src/lib/haptics.ts`; the website's `haptics.web.ts` does nothing): a selection tap when you choose a team on the pick sheet or the survivor pick, claim or release a square, or add or remove a reaction; a firmer tap when the POW goes on or off; and success, warning or error when picks are saved, a change didn't make it, or the banner reports an outcome (`notifyDone`/`notifyError`). It is a native module: Expo Go already has it, but a development client or TestFlight build made before it was added must be rebuilt to feel anything (an older build just stays still; nothing breaks). It needs no config plugin and no permission.
+On iPhone the app taps back through `expo-haptics` (`src/lib/haptics.ts`; the website's `haptics.web.ts` does nothing): a selection tap when you choose a team on the pick sheet or the survivor pick, claim or release a square, add or remove a reaction, tick a setting, or choose from a list of cards or a picker; a firmer tap when the POW goes on or off; a warning when a destructive question is asked; success when the recap opens on a week you won; and success, warning or error when picks are saved, a change didn't make it, or the banner reports an outcome (`notifyDone`/`notifyError`). It is a native module: Expo Go already has it, but a development client or TestFlight build made before it was added must be rebuilt to feel anything (an older build just stays still; nothing breaks). It needs no config plugin and no permission.
 
 ## Verify and release
 

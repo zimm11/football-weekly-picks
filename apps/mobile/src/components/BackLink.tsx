@@ -1,7 +1,9 @@
 import { router } from "expo-router";
 import { Text, View } from "react-native";
+import { webTransition } from "../lib/motion";
 import { AppLink, openPath } from "./AppLink";
 import { Icon } from "./Icon";
+import { pressState } from "./pressState";
 import { colors, fonts } from "./theme";
 
 /**
@@ -24,12 +26,22 @@ export function BackLink({ fallbackLabel = "Your leagues" }: { fallbackLabel?: s
           gap: 4,
           alignItems: "center",
           opacity: pressed ? 0.7 : 1,
+          ...webTransition(["opacity"]),
         })}
       >
-        <Icon name="arrow-left" size={14} color={colors.mutedForeground} />
-        <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}>
-          {back ? "Back" : fallbackLabel}
-        </Text>
+        {(state) => {
+          const ink = pressState(state).hovered ? colors.foreground : colors.mutedForeground;
+          return (
+            <>
+              <Icon name="arrow-left" size={14} color={ink} />
+              <Text
+                style={{ fontFamily: fonts.medium, fontSize: 14, color: ink, ...webTransition(["color"]) }}
+              >
+                {back ? "Back" : fallbackLabel}
+              </Text>
+            </>
+          );
+        }}
       </AppLink>
     </View>
   );

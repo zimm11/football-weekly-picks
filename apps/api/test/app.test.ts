@@ -332,6 +332,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       leagueName: "Test League",
       alreadyMember: false,
       full: false,
+      type: "weekly",
+      memberCount: 1,
     });
     expect((await call(PLAYER, "POST", `/invites/${inviteCode}/join`)).body).toEqual({ leagueId });
     // Joining twice is harmless.
@@ -863,13 +865,15 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       role: "admin",
       inviteCode,
     });
-    expect((await call<{ role: string }[]>(PLAYER, "GET", "/leagues")).body).toContainEqual({
-      id: leagueId,
-      name: "Test League",
-      role: "admin",
-      type: "weekly",
-      management: "manual",
-    });
+    expect((await call<{ role: string }[]>(PLAYER, "GET", "/leagues")).body).toContainEqual(
+      expect.objectContaining({
+        id: leagueId,
+        name: "Test League",
+        role: "admin",
+        type: "weekly",
+        management: "manual",
+      }),
+    );
 
     expect((await call(PLAYER, "PATCH", creatorPath, { role: "member" })).status).toBe(200);
     expect((await call(ADMIN, "PATCH", path, { role: "member" })).status).toBe(403);

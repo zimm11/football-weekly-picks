@@ -18,7 +18,9 @@ import { Disclosure } from "../screens/leagueUi";
 import { HomeScreenInstructions } from "./HomeScreenInstall";
 import { PreferenceToggle } from "./PreferenceToggle";
 import { SettingsHeading } from "./SettingsHeading";
-import { Body, Button, Card, colors, ErrorMessage, Notice, styles } from "./ui";
+import { SkeletonBlock } from "./SkeletonBlock";
+import { radius, space, type } from "./theme";
+import { Body, Button, Card, ErrorMessage, Notice } from "./ui";
 
 type State = {
   config: PushSettings;
@@ -117,9 +119,9 @@ export function DeviceNotifications() {
             }}
           />
         ) : (
-          <View role="status" aria-label="Loading notifications on this device" style={{ gap: 12 }}>
-            <View style={[styles.skeleton, { width: "80%" }]} />
-            <View style={[styles.skeleton, { height: 44, borderRadius: 10 }]} />
+          <View role="status" aria-label="Loading notifications on this device" style={{ gap: space.lg }}>
+            <SkeletonBlock width="80%" height={20} />
+            <SkeletonBlock height={44} radius={radius.md} />
           </View>
         )}
       </Card>
@@ -188,7 +190,7 @@ function PushNotificationSettings({
       .catch((err) => setError(err instanceof Error ? err.message : "Couldn't update notifications."))
       .finally(() => setBusy(undefined));
   }
-  const small = { fontSize: 14, lineHeight: 20 };
+  const small = type.small;
   return (
     <Card>
       <SettingsHeading level={3}>On this device</SettingsHeading>
@@ -225,7 +227,7 @@ function PushNotificationSettings({
           </View>
           {denied && (
             <Disclosure title="How to turn them back on">
-              <View style={{ gap: 8 }}>
+              <View style={{ gap: space.md }}>
                 <Body muted style={small}>
                   <Body style={small}>iPhone or iPad:</Body> Settings → Notifications → POW Pick'em → Allow
                   Notifications.
@@ -246,7 +248,7 @@ function PushNotificationSettings({
             </Disclosure>
           )}
           {enabled && (
-            <View style={{ gap: 12 }}>
+            <View style={{ gap: space.md }}>
               <PreferenceToggle
                 label="New league threads"
                 checked={draft.newThreads}
@@ -287,7 +289,7 @@ function PushNotificationSettings({
         </>
       )}
       <Notice kind="alert" message={error} />
-      <Body muted style={[small, { color: colors.mutedForeground }]}>
+      <Body muted style={small}>
         Settings apply to this device. Signing out turns notifications off here. Repeat setup on any other
         device where you want them.
       </Body>

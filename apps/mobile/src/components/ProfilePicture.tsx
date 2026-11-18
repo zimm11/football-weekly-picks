@@ -1,6 +1,6 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Body and SettingsHeading render native Text.
-import { useState } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { type ComponentRef, useEffect, useRef, useState } from "react";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { messageOf } from "../lib/api";
 import { notifyDone } from "../lib/notify";
 import { logoById, logoCollections } from "../lib/profileLogos";
@@ -8,14 +8,16 @@ import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { hoverFill, pressFade } from "./pressState";
 import { SettingsHeading } from "./SettingsHeading";
+import { radius, space, type } from "./theme";
 import { Body, Button, Card, colors, ErrorMessage, fonts, Sheet } from "./ui";
 
+/** The bottom sheet's side padding (BottomSheet's content), which the collections row runs through to the edges. */
+const SHEET_PAD = space["2xl"];
+
 export function ProfilePicture({
-  name,
   avatarId,
   onSave,
 }: {
-  name: string;
   avatarId: number | null;
   onSave: (id: number | null) => Promise<void>;
 }) {
@@ -26,6 +28,16 @@ export function ProfilePicture({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const { width } = useWindowDimensions();
+  // Four across on a phone, five on a wider bottom sheet, six in the centered dialog (from 768px).
+  const columns = width < 520 ? 4 : width < 768 ? 5 : 6;
+  const chips = useRef<ComponentRef<typeof ScrollView>>(null);
+  const [chipAt, setChipAt] = useState<Record<string, number>>({});
+  const chosenAt = chipAt[collection];
+  // The chosen collection's chip in view when the sheet opens on it (Wildcards sits past a phone's edge).
+  useEffect(() => {
+    if (open && chosenAt !== undefined)
+      chips.current?.scrollTo({ x: Math.max(0, chosenAt - SHEET_PAD), animated: false });
+  }, [open, chosenAt]);
 
   async function choose(id: number | null) {
     if (busy) return;
@@ -48,23 +60,25 @@ export function ProfilePicture({
 
   return (
     <Card>
-      <SettingsHeading>Profile picture</SettingsHeading>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-        <Avatar name={name} avatarId={avatarId} size={60} />
-        <View style={{ flex: 1 }}>
-          <Body style={{ fontFamily: fonts.semibold }}>{name}</Body>
-          <Body muted>{current?.name ?? "Your initials"}</Body>
+      {/* The button drops under the title where both don't fit on one line (a 320px phone). */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.lg }}>
+        <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 160, gap: space.xxs }}>
+          <SettingsHeading>Profile picture</SettingsHeading>
+          <Body muted style={type.small}>
+            {current?.name ?? "Your initials"}
+          </Body>
         </View>
+        <Button
+          title="Change picture"
+          variant="outline"
+          fit
+          onPress={() => {
+            setCollection(current?.collection ?? "Gridiron");
+            setError(undefined);
+            setOpen(true);
+          }}
+        />
       </View>
-      <Button
-        title="Change picture"
-        variant="outline"
-        onPress={() => {
-          setCollection(current?.collection ?? "Gridiron");
-          setError(undefined);
-          setOpen(true);
-        }}
-      />
       <Sheet
         visible={open}
         title="Choose a profile picture"
@@ -74,7 +88,14 @@ export function ProfilePicture({
       >
         {busy && <Body muted>Saving picture…</Body>}
         <ErrorMessage message={error} />
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {/* One row of collections, scrolling sideways when it doesn't fit, edge to edge of the sheet. */}
+        <ScrollView
+          ref={chips}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0, marginHorizontal: -SHEET_PAD }}
+          contentContainerStyle={{ paddingHorizontal: SHEET_PAD, gap: space.sm }}
+        >
           {logoCollections.map(({ name: group }) => {
             const active = collection === group;
             return (
@@ -84,29 +105,36 @@ export function ProfilePicture({
                 aria-pressed={active}
                 accessibilityState={{ selected: active }}
                 onPress={() => setCollection(group)}
+                onLayout={(event) => {
+                  const x = event.nativeEvent.layout.x;
+                  setChipAt((old) => (old[group] === x ? old : { ...old, [group]: x }));
+                }}
                 style={(state) => ({
-                  minHeight: 44,
+                  height: 40,
                   justifyContent: "center",
-                  paddingHorizontal: 14,
-                  borderRadius: 22,
+                  paddingHorizontal: space.lg + space.xxs,
+                  borderRadius: radius.full,
                   backgroundColor: active
                     ? colors.primary
                     : hoverFill(state, colors.raised, colors.raisedHover),
                 })}
               >
                 <Text
-                  style={{
-                    fontFamily: fonts.semibold,
-                    color: active ? colors.primaryForeground : colors.foreground,
-                  }}
+                  style={[
+                    type.small,
+                    {
+                      fontFamily: fonts.semibold,
+                      color: active ? colors.primaryForeground : colors.foreground,
+                    },
+                  ]}
                 >
                   {group}
                 </Text>
               </Pressable>
             );
           })}
-        </View>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: 8 }}>
+        </ScrollView>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: space.lg }}>
           {visibleLogos?.map((logo) => {
             const selected = avatarId === logo.id;
             return (
@@ -119,10 +147,10 @@ export function ProfilePicture({
                 disabled={busy}
                 onPress={() => void choose(logo.id)}
                 style={(state) => ({
-                  width: width < 520 ? "25%" : "20%",
+                  width: `${100 / columns}%`,
                   alignItems: "center",
-                  gap: 4,
-                  paddingHorizontal: 2,
+                  gap: space.xs,
+                  paddingHorizontal: space.xxs,
                   ...pressFade(state),
                 })}
               >
@@ -150,13 +178,18 @@ export function ProfilePicture({
                     </View>
                   )}
                 </View>
+                {/* Two lines are kept for every name, so the grid's rows line up. */}
                 <Text
-                  style={{
-                    fontFamily: fonts.medium,
-                    fontSize: 13,
-                    textAlign: "center",
-                    color: colors.foreground,
-                  }}
+                  numberOfLines={2}
+                  style={[
+                    type.caption,
+                    {
+                      minHeight: type.caption.lineHeight * 2,
+                      fontFamily: fonts.medium,
+                      textAlign: "center",
+                      color: colors.foreground,
+                    },
+                  ]}
                 >
                   {logo.name}
                 </Text>

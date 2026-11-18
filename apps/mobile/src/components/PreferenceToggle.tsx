@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { haptics } from "../lib/haptics";
+import { webTransition } from "../lib/motion";
 import { Icon } from "./Icon";
-import { pressState } from "./pressState";
+import { disabledOpacity, pressState } from "./pressState";
+import { type } from "./theme";
 import { colors, fonts } from "./ui";
 export function PreferenceToggle({
   label,
@@ -27,6 +30,7 @@ export function PreferenceToggle({
   }, [checked, disabled]);
   const shown = pending ?? checked;
   function toggle() {
+    haptics.select();
     setPending(!shown);
     onChange(!shown);
   }
@@ -52,36 +56,38 @@ export function PreferenceToggle({
         alignItems: "flex-start",
         gap: 12,
         paddingVertical: 4,
-        opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+        opacity: disabled ? disabledOpacity : pressed ? 0.7 : 1,
       })}
     >
       {(state) => (
         <>
           <View
-            style={{
-              width: 20,
-              height: 20,
-              marginTop: 1,
-              borderRadius: 4,
-              backgroundColor: shown
-                ? colors.primary
-                : pressState(state).hovered
-                  ? colors.raised
-                  : colors.background,
-              borderColor: shown || pressState(state).hovered ? colors.primary : colors.input,
-              borderWidth: 1,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            style={[
+              webTransition(["background-color", "border-color"]),
+              {
+                width: 20,
+                height: 20,
+                marginTop: 2,
+                borderRadius: 4,
+                backgroundColor: shown
+                  ? colors.primary
+                  : pressState(state).hovered
+                    ? colors.raised
+                    : colors.background,
+                borderColor: shown || pressState(state).hovered ? colors.primary : colors.input,
+                borderWidth: 1,
+                alignItems: "center",
+                justifyContent: "center",
+              },
+            ]}
           >
-            {shown && <Icon name="check" size={14} color={colors.primaryForeground} />}
+            {shown && <Icon name="check" size={14} weight="bold" color={colors.primaryForeground} />}
           </View>
           <View style={{ flex: 1, gap: 3 }}>
             <Text
               style={{
+                ...(small ? type.small : type.body),
                 fontFamily: small ? fonts.body : fonts.medium,
-                fontSize: small ? 14 : 16,
-                lineHeight: small ? 20 : undefined,
                 color: colors.foreground,
               }}
             >
@@ -90,9 +96,7 @@ export function PreferenceToggle({
             {description && (
               <Text
                 style={{
-                  fontFamily: fonts.body,
-                  fontSize: 14,
-                  lineHeight: 20,
+                  ...type.small,
                   color: colors.mutedForeground,
                 }}
               >

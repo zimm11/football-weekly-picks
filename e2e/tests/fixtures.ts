@@ -14,7 +14,12 @@ export async function signUp(page: Page, displayName: string) {
   const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Create account" }).click();
+  // The form opens on Sign in where the visitor likely has an account (a page that needs one, /login), and on
+  // Create account on the home page and an invite. Its switch keeps what was typed.
+  if (await page.getByText("New here?", { exact: true }).isVisible()) {
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
+  }
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
   await page.getByLabel("Display name").fill(displayName);
   // The first name step confirms the player's age and agrees to the Terms of use, which posting needs.
   await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();

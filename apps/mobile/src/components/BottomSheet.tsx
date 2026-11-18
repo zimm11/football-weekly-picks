@@ -1,7 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Animated,
-  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,14 +10,39 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useReducedMotion } from "../lib/motion";
+import { duration, easing, nativeDriver, useReducedMotion } from "../lib/motion";
 import { NotificationBanner } from "../lib/notify";
 import { useOverlayBack } from "../lib/overlayBack";
 import { Icon } from "./Icon";
 import { hoverFill } from "./pressState";
-import { colors, fonts } from "./theme";
+import { colors, corner, elevation, layout, radius, space, type } from "./theme";
+
+/**
+ * For a container the code focuses (a sheet's panel, a menu), never a control: no outline of the browser's own.
+ * Web only; the controls inside keep the app's `:focus-visible` ring (`public/boot.css`).
+ */
+export const noFocusOutline = (Platform.OS === "web" ? { outlineStyle: "none" } : {}) as ViewStyle;
+
+/** From this width a sheet is a centered dialog, as the league's tabs move to the top (`LeagueTabBar`). */
+const WIDE = 768;
+
+/**
+ * Whether the keyboard focus is showing where the player is now: they opened the sheet from the keyboard. A
+ * sheet opened with a finger, the mouse or by itself (the results recap) puts the focus on its panel, which
+ * draws no ring, rather than on the ✕, where the browser could draw one nobody asked for.
+ */
+function keyboardFocused() {
+  if (Platform.OS !== "web" || typeof document === "undefined") return false;
+  try {
+    const active = document.activeElement;
+    return !!active && active !== document.body && active.matches(":focus-visible");
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The area around a sheet or a menu: a tap or click on it closes. It is never a keyboard stop or something a
@@ -42,10 +66,12 @@ export function Backdrop({ onPress }: { onPress: () => void }) {
  * The app's one bottom sheet: `Sheet` in `components/ui.tsx`, `Sheet` in `screens/leagueUi.tsx` and the
  * home-screen help are thin wrappers over it. Use one of those in a screen; use this for a new kind of sheet.
  *
- * The dim backdrop fades in place while the panel slides up (no movement when the player asked for reduced
- * motion), and both run back before the sheet goes. It closes with the ✕, a tap outside, Escape, the phone's
+ * On a phone the dim backdrop fades in place while the panel slides up; from 768px wide it is a centered
+ * dialog that fades and grows a little into place instead. No movement when the player asked for reduced
+ * motion, and both run back before the sheet goes. It closes with the ✕, a tap outside, Escape, the phone's
  * back button or the browser's Back (`useOverlayBack`); in a browser the dialog is named by `title`, the
- * keyboard focus stays inside it and returns to the control that opened it. On iPhone the panel rides above the keyboard. A banner raised with
+ * keyboard focus stays inside it and returns to the control that opened it (opened from the keyboard, the focus
+ * starts on the ✕; otherwise on the panel, so no ring shows). On iPhone the panel rides above the keyboard. A banner raised with
  * `notifyDone`/`notifyError` while it is open shows over the sheet.
  */
 export function BottomSheet({
@@ -78,13 +104,19 @@ export function BottomSheet({
   children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const wide = windowWidth >= WIDE;
   const reduced = useReducedMotion();
   const id = useId();
   const progress = useRef(new Animated.Value(0)).current;
   // The Modal stays mounted through the exit, after `visible` has turned false.
   const [mounted, setMounted] = useState(visible);
-  if (visible && !mounted) setMounted(true);
+  // Read as the sheet opens, before its focus trap moves the focus in.
+  const [fromKeyboard, setFromKeyboard] = useState(() => visible && keyboardFocused());
+  if (visible && !mounted) {
+    setMounted(true);
+    setFromKeyboard(keyboardFocused());
+  }
   // How far the panel travels: its own height, once it has been laid out.
   const [distance, setDistance] = useState<number>();
   const closing = useRef(false);
@@ -102,16 +134,17 @@ export function BottomSheet({
         done?.();
         return;
       }
+      // A panel that travels takes longer than a dialog appearing in place; leaving is a step shorter.
       Animated.timing(progress, {
         toValue,
-        duration: toValue ? 260 : 200,
-        easing: toValue ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-        useNativeDriver: Platform.OS !== "web",
+        duration: wide ? (toValue ? duration.base : duration.fast) : toValue ? duration.slow : duration.base,
+        easing: toValue ? easing.out : easing.in,
+        useNativeDriver: nativeDriver,
       }).start(({ finished }) => {
         if (finished) done?.();
       });
     },
-    [progress, reduced],
+    [progress, reduced, wide],
   );
   useEffect(() => {
     if (!mounted) return;
@@ -173,7 +206,11 @@ export function BottomSheet({
     <Modal visible transparent animationType="none" onRequestClose={close} {...dialog}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1, justifyContent: "flex-end" }}
+        style={
+          wide
+            ? { flex: 1, justifyContent: "center", alignItems: "center", padding: layout.pageX }
+            : { flex: 1, justifyContent: "flex-end" }
+        }
       >
         <Animated.View
           pointerEvents="none"
@@ -182,74 +219,73 @@ export function BottomSheet({
         <Backdrop onPress={close} />
         <Animated.View
           accessibilityViewIsModal
+          // On the web, focusable from code only (never a Tab stop): where the focus starts unless the sheet was
+          // opened from the keyboard (the Modal's focus trap focuses the first element that takes it).
+          {...(Platform.OS === "web" && !fromKeyboard ? ({ tabIndex: -1 } as object) : null)}
           onLayout={(event) => setDistance(event.nativeEvent.layout.height)}
-          style={{
-            maxHeight: "90%",
-            width: "100%",
-            maxWidth: 672,
-            alignSelf: "center",
-            backgroundColor: colors.card,
-            borderTopLeftRadius: 22,
-            borderTopRightRadius: 22,
-            borderCurve: "continuous",
-            paddingBottom: Math.max(insets.bottom, 16),
-            transform: [
-              {
-                translateY: progress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [distance ?? windowHeight, 0],
-                }),
-              },
-            ],
-          }}
-        >
-          <View
-            style={{
-              width: 40,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: colors.mutedForeground,
-              opacity: 0.4,
+          style={[
+            // The panel is never drawn with a focus outline: a sheet the app opens by itself (the recap), before
+            // any pointer use, has the browser treat that focus as visible. The ✕ and the content keep theirs.
+            noFocusOutline,
+            {
+              width: "100%",
+              maxWidth: 672,
               alignSelf: "center",
-              marginTop: 10,
-            }}
-          />
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+            wide
+              ? {
+                  maxHeight: windowHeight * 0.85,
+                  ...corner(radius.sheet),
+                  borderWidth: 1,
+                  paddingBottom: space.xl,
+                  boxShadow: elevation.dialog,
+                  opacity: progress,
+                  transform: [
+                    { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                  ],
+                }
+              : {
+                  maxHeight: "90%",
+                  borderTopLeftRadius: radius.sheet,
+                  borderTopRightRadius: radius.sheet,
+                  borderCurve: "continuous",
+                  borderTopWidth: 1,
+                  paddingBottom: Math.max(insets.bottom, space.xl),
+                  boxShadow: elevation.sheet,
+                  transform: [
+                    {
+                      translateY: progress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [distance ?? windowHeight, 0],
+                      }),
+                    },
+                  ],
+                },
+          ]}
+        >
           <View
             style={{
               flexDirection: "row",
               alignItems: "flex-start",
-              gap: 8,
-              paddingLeft: 20,
-              paddingRight: 8,
-              paddingTop: 6,
-              paddingBottom: 4,
+              gap: space.md,
+              paddingLeft: space["2xl"],
+              paddingRight: space.md,
+              paddingTop: space.lg,
+              paddingBottom: space.xs,
             }}
           >
-            <View style={{ flex: 1, gap: 6, paddingVertical: 8 }}>
+            <View style={{ flex: 1, gap: space.sm, paddingVertical: space.md }}>
               <Text
                 accessibilityRole="header"
                 aria-level={2}
-                style={{
-                  fontFamily: fonts.displayBold,
-                  fontSize: 24,
-                  lineHeight: 28,
-                  letterSpacing: 0.6,
-                  color: colors.foreground,
-                  textTransform: "uppercase",
-                }}
+                style={{ ...type.heading, color: colors.foreground }}
               >
                 {title}
               </Text>
               {description && (
-                <Text
-                  id={`${id}-description`}
-                  style={{
-                    fontFamily: fonts.body,
-                    fontSize: 14,
-                    lineHeight: 20,
-                    color: colors.mutedForeground,
-                  }}
-                >
+                <Text id={`${id}-description`} style={{ ...type.small, color: colors.mutedForeground }}>
                   {description}
                 </Text>
               )}
@@ -279,7 +315,8 @@ export function BottomSheet({
           </ScrollView>
           {footer && <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>{footer}</View>}
         </Animated.View>
-        <NotificationBanner above={distance ?? 0} />
+        {/* A dialog leaves the bottom of the window clear: the banner keeps its corner there. */}
+        <NotificationBanner above={wide ? 0 : (distance ?? 0)} />
       </KeyboardAvoidingView>
     </Modal>
   );

@@ -11,18 +11,22 @@ import {
   weekAwards,
   weekSummary,
 } from "@picks/shared";
-import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { type ReactNode, useState } from "react";
+import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Avatar } from "../components/Avatar";
 import { Icon } from "../components/Icon";
 import { TeamLogo } from "../components/TeamLogo";
+import { tabular } from "../components/theme";
 import { colors, fonts } from "../components/ui";
 import { matchup } from "../lib/pickDraft";
-import { formatRecord, ordinal } from "../lib/weekPresentation";
-import { WeekBadge, WeekCaption, WeekStat, w } from "./weekUi";
+import { sharedName, statColumns, tileRows } from "../lib/resultsPresentation";
+import { formatRecord, ordinal, rowsOf } from "../lib/weekPresentation";
+import { StatTile } from "./leagueUi";
+import { WeekBadge, WeekCaption, w } from "./weekUi";
 
 type Results = NonNullable<WeekView["results"]>;
 export function WeekResults({ view, userId }: { view: WeekView; userId?: string }) {
+  const { width } = useWindowDimensions();
   if (view.status !== "final" || !view.results) return null;
   const results = view.results;
   const me = results.entries.find((entry) => entry.userId === userId);
@@ -36,63 +40,58 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
   const playoff = view.leagueType === "playoff";
   // A playoff round before the Super Bowl has no tiebreaker game, so nothing to guess or show.
   const hasTiebreaker = !playoff || !!view.tiebreakerGameId;
+  const players = results.entries.length;
+  // The top score's owner: the week's winner (ties broken), or in a playoff round everyone on the top score.
+  const topNames = playoff
+    ? results.entries.filter((entry) => entry.points === topPoints).map((entry) => entry.displayName)
+    : winners.map((entry) => entry.displayName);
+  const tiles: { label: string; value: ReactNode; detail?: string }[] = [
+    ...(me
+      ? [
+          { label: "Your finish", value: ordinal(me.rank), detail: `of ${players}` },
+          { label: "Your points", value: me.points, detail: formatRecord(me) },
+          {
+            label: "Your POW",
+            value: me.powGameId ? (me.powWon ? "Won" : powPush ? "Push" : "Lost") : "None",
+            detail: myPow ? matchup(myPow) : undefined,
+          },
+        ]
+      : []),
+    {
+      label: playoff ? "Top score" : "Winning score",
+      value: topPoints ?? "—",
+      detail: sharedName(topNames),
+    },
+    {
+      label: "League average",
+      value: averagePoints === null ? "—" : String(Math.round(averagePoints * 10) / 10),
+      detail: `${powHits} of ${players} POWs`,
+    },
+    ...(hasTiebreaker
+      ? [
+          {
+            label: "Tiebreaker total",
+            value: actual ?? "—",
+            detail: me?.tiebreakerGuess != null ? `You: ${me.tiebreakerGuess}` : undefined,
+          },
+        ]
+      : []),
+  ];
   return (
     <View style={{ gap: 16 }}>
-      <View role="region" aria-label="Week summary" style={s.stats}>
-        {me && (
-          <WeekStat
-            label="Your finish"
-            value={ordinal(me.rank)}
-            detail={me.isWinner ? "You won the week" : `of ${results.entries.length} players`}
-            style={s.stat}
-          />
-        )}
-        {me && (
-          <WeekStat
-            label="Your points"
-            value={me.points}
-            detail={`${formatRecord(me)} against the spread`}
-            style={s.stat}
-          />
-        )}
-        {me && (
-          <WeekStat
-            label="Your POW"
-            value={me.powGameId ? (me.powWon ? "Won" : powPush ? "Push" : "Lost") : "None"}
-            detail={myPow ? matchup(myPow) : undefined}
-            style={s.stat}
-          />
-        )}
-        <WeekStat
-          label={playoff ? "Top score" : "Winning score"}
-          value={topPoints ?? "—"}
-          detail={winners.length > 1 ? `Shared by ${winners.length}` : undefined}
-          style={s.stat}
-        />
-        <WeekStat
-          label="League average"
-          value={averagePoints === null ? "—" : String(Math.round(averagePoints * 10) / 10)}
-          detail={`${powHits} of ${results.entries.length} POWs hit`}
-          style={s.stat}
-        />
-        {hasTiebreaker && (
-          <WeekStat
-            label="Tiebreaker total"
-            value={actual ?? "—"}
-            detail={me?.tiebreakerGuess != null ? `You guessed ${me.tiebreakerGuess}` : undefined}
-            style={s.stat}
-          />
-        )}
+      <View role="region" aria-label="Week summary" style={{ gap: 8 }}>
+        {tileRows(tiles, statColumns(width)).map((row) => (
+          <View key={row.items[0]?.label} style={s.statRow}>
+            {row.items.map((tile) => (
+              <StatTile key={tile.label} compact {...tile} />
+            ))}
+            {Array.from({ length: row.pad }, (_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: empty slots, all alike.
+              <View key={`pad-${i}`} style={{ flex: 1 }} />
+            ))}
+          </View>
+        ))}
       </View>
-      {winners.length > 0 && (
-        <View style={w.row}>
-          <Icon name="trophy" size={24} color={colors.primary} filled />
-          <Text style={s.winner}>
-            {winners.length === 1 ? "Winner" : "Winners"}:{" "}
-            {winners.map((entry) => entry.displayName).join(", ")}
-          </Text>
-        </View>
-      )}
       {/* One row per player, laid out as cards. */}
       <View role="table" aria-label="Week results" style={{ gap: 12 }}>
         {results.entries.map((entry) => (
@@ -112,8 +111,13 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
       <WeekAwardCards view={view} />
       <View style={{ gap: 12 }}>
         <WeekCaption>Game by game</WeekCaption>
-        {view.games.map((game) => (
-          <GameBreakdown key={game.id} game={game} results={results} />
+        {rowsOf(view.games, width >= 768 ? 2 : 1).map((row) => (
+          <View key={row[0]?.id} style={s.statRow}>
+            {row.map((game) => (
+              <GameBreakdown key={game.id} game={game} results={results} />
+            ))}
+            {row.length === 1 && width >= 768 && <View style={{ flex: 1 }} />}
+          </View>
         ))}
       </View>
     </View>
@@ -146,7 +150,11 @@ function PlayerResult({
       <View role="cell" style={{ gap: 12 }}>
         <View style={s.playerHeading}>
           <View style={[w.row, { gap: 4, width: 44 }]}>
-            {entry.isWinner && <Icon name="trophy" size={16} color={colors.win} filled />}
+            {entry.isWinner && (
+              <View accessibilityLabel={playoff ? "Top score" : "Won the week"}>
+                <Icon name="trophy" size={16} color={colors.win} filled />
+              </View>
+            )}
             <Text style={s.rank}>{entry.rank}</Text>
           </View>
           <View style={[w.row, { flex: 1, minWidth: 0 }]}>
@@ -366,7 +374,7 @@ function GameBreakdown({ game, results }: { game: Game; results: Results }) {
   const pows = results.entries.filter((entry) => entry.powGameId === game.id).length;
   return (
     <View
-      style={w.card}
+      style={[w.card, { flex: 1 }]}
       accessibilityLabel={`${matchup(game)}, ${covered === "push" ? "push" : covered ? `${covered === "home" ? game.homeTeam : game.awayTeam} covered` : "pending"}, ${away} picked away, ${home} picked home`}
     >
       <View style={[w.between, { flexWrap: "wrap" }]}>
@@ -432,23 +440,20 @@ function GameBreakdown({ game, results }: { game: Game; results: Results }) {
   );
 }
 const s = StyleSheet.create({
-  stats: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  stat: { flexBasis: "48%", flexGrow: 1 },
-  winner: {
-    textTransform: "uppercase",
-    fontFamily: fonts.displayBold,
-    fontSize: 24,
-    lineHeight: 28,
-    color: colors.foreground,
-    flex: 1,
-  },
+  statRow: { flexDirection: "row", gap: 8 },
   playerCard: { backgroundColor: colors.card, borderRadius: 16, padding: 12, gap: 12 },
   mine: { backgroundColor: colors.raised },
   playerHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
-  rank: { fontFamily: fonts.displayBold, fontSize: 18, color: colors.mutedForeground },
+  rank: { fontFamily: fonts.displayBold, fontSize: 18, color: colors.mutedForeground, ...tabular },
   playerName: { fontFamily: fonts.medium, fontSize: 18, lineHeight: 22, color: colors.foreground },
   cell: { fontFamily: fonts.body, fontSize: 16, lineHeight: 22, color: colors.foreground },
-  points: { fontFamily: fonts.displayBold, fontSize: 30, lineHeight: 32, color: colors.foreground },
+  points: {
+    fontFamily: fonts.displayBold,
+    fontSize: 30,
+    lineHeight: 32,
+    color: colors.foreground,
+    ...tabular,
+  },
   picks: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   pickCell: {
     minHeight: 72,

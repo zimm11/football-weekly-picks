@@ -3,18 +3,32 @@ import {
   LEAGUE_TYPE_INFO,
   type LeagueType,
   MINIMUM_AGE,
+  type Side,
   updateProfileSchema,
 } from "@picks/shared";
 import { useLocalSearchParams, usePathname } from "expo-router";
 import { type ComponentRef, useRef, useState } from "react";
-import { ScrollView, Text, type TextInput, useWindowDimensions, View } from "react-native";
-import { AppLink } from "../components/AppLink";
+import {
+  Animated,
+  type GestureResponderEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  type TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { AppLink, openPath } from "../components/AppLink";
+import { Avatar } from "../components/Avatar";
 import { Form } from "../components/Form";
 import { Icon } from "../components/Icon";
 import { PreferenceToggle } from "../components/PreferenceToggle";
-import { hoverFill } from "../components/pressState";
+import { hoverFill, pressTile } from "../components/pressState";
 import { Splash } from "../components/Splash";
 import { TeamLogo } from "../components/TeamLogo";
+import { corner, elevation, layout, radius, space, tabular, type, widths } from "../components/theme";
 import {
   Badge,
   Body,
@@ -31,13 +45,27 @@ import {
 } from "../components/ui";
 import { getSupabase, request } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { authMessage } from "../lib/authErrors";
+import { AUTH_MESSAGES, authMessage } from "../lib/authErrors";
 import { appLink } from "../lib/config";
 import { useDesktopFocus } from "../lib/desktopFocus";
+import { haptics } from "../lib/haptics";
+import {
+  EXAMPLE_GAME,
+  exampleCaption,
+  exampleLine,
+  HERO_GAP,
+  HERO_SHARE,
+  heroHeadline,
+  landingLayout,
+} from "../lib/landing";
 import { nextPath, withNext } from "../lib/links";
+import { usePop, useReducedMotion, webTransition } from "../lib/motion";
 import { useShowsSignInForm } from "../lib/signInForm";
 
-type Mode = "signin" | "signup" | "reset" | "name";
+/** What the form is doing: signing in, creating an account, sending a reset link, or saving the name. */
+type Action = "signin" | "signup" | "reset" | "name";
+/** The card's two modes: sign in to an account, or create one. */
+type FormMode = "signin" | "signup";
 
 /**
  * The name step's draft, in memory only: it survives the player reading the Terms or the Privacy policy and
@@ -48,7 +76,7 @@ let nameDraft: { userId: string; name: string; agreed: boolean } | undefined;
 export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
   const auth = useAuth();
   const path = usePathname();
-  const params = useLocalSearchParams<{ next?: string }>();
+  const params = useLocalSearchParams<{ next?: string; mode?: string }>();
   const landing = path === "/" && !nameOnly;
   // The header leaves out its own "Sign in" while this form stands in for the page that was asked for.
   useShowsSignInForm(!nameOnly && !landing);
@@ -63,9 +91,12 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
   const [name, setNameState] = useState(draft?.name ?? "");
   const [agreed, setAgreedState] = useState(draft?.agreed ?? false);
   const [forgot, setForgot] = useState(path === "/reset-password");
-  const [busy, setBusy] = useState<Mode>();
-  // The password field asks password managers for a new password once the player chose Create account.
-  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState<Action>();
+  // The home page and an invite are for newcomers; anywhere else (a page that needs an account, /login) the
+  // visitor most likely has one. `?mode=signup` asks for the other.
+  const [mode, setMode] = useState<FormMode>(
+    landing || joining || params.mode === "signup" ? "signup" : "signin",
+  );
   const lock = useRef(false);
   const [error, setError] = useState<string>();
   const [status, setStatus] = useState<string>();
@@ -75,8 +106,8 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
   const passwordRef = useRef<ComponentRef<typeof TextInput>>(null);
   const nameRef = useRef<ComponentRef<typeof TextInput>>(null);
   const [formY, setFormY] = useState(0);
-  const [cardY, setCardY] = useState(0);
   const { width } = useWindowDimensions();
+  const reduced = useReducedMotion();
   useDesktopFocus(nameOnly ? nameRef : emailRef, !landing);
   const keepDraft = (patch: Partial<{ name: string; agreed: boolean }>) => {
     if (!userId) return;
@@ -91,19 +122,25 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
     setAgreedState(value);
     keepDraft({ agreed: value });
   };
-  async function submit(mode: Mode) {
+  /** Changes between signing in and creating an account (or back from a reset), keeping what was typed. */
+  const switchMode = (next: FormMode) => {
+    setMode(next);
+    setForgot(false);
+    setError(undefined);
+    setStatus(undefined);
+  };
+  async function submit(action: Action) {
     if (lock.current) return;
     setError(undefined);
     setStatus(undefined);
-    if (mode === "signup") setCreating(true);
-    if (mode === "name" && !agreed) return setError("Agree to the Terms of use to continue.");
-    if (mode !== "name" && !email.trim()) return setError("Enter your email.");
-    if ((mode === "signin" || mode === "signup") && password.length < 6)
+    if (action === "name" && !agreed) return setError("Agree to the Terms of use to continue.");
+    if (action !== "name" && !email.trim()) return setError("Enter your email.");
+    if ((action === "signin" || action === "signup") && password.length < 6)
       return setError("Use a password of at least six characters.");
     lock.current = true;
-    setBusy(mode);
+    setBusy(action);
     try {
-      if (mode === "name") {
+      if (action === "name") {
         const parsed = updateProfileSchema.safeParse({ displayName: name, acceptTerms: true });
         if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Enter a name");
         await request("/me", { method: "PUT", body: parsed.data });
@@ -112,14 +149,14 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
         return;
       }
       const sb = await getSupabase();
-      if (mode === "reset") {
+      if (action === "reset") {
         const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
           redirectTo: appLink("/reset-password"),
         });
         if (error) throw error;
         setSent(true);
         setStatus(`If there's an account for ${email.trim()}, a reset link is on its way. Check your inbox.`);
-      } else if (mode === "signup") {
+      } else if (action === "signup") {
         const { data, error } = await sb.auth.signUp({
           email: email.trim(),
           password,
@@ -133,15 +170,20 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
         if (error) throw error;
       }
     } catch (error) {
-      setError(authMessage(error));
+      const message = authMessage(error);
+      // "There's already an account for that email. Sign in instead.": the card turns to Sign in, email kept.
+      if (action === "signup" && message === AUTH_MESSAGES.registered) setMode("signin");
+      setError(message);
     } finally {
       setBusy(undefined);
       lock.current = false;
     }
   }
-  const primary: Mode = nameOnly ? "name" : forgot ? "reset" : "signin";
-  const fields = nameOnly ? (
+  const primary: Action = nameOnly ? "name" : forgot ? "reset" : mode;
+  const creating = mode === "signup";
+  const nameFields = (
     <>
+      <NamePreview name={name} />
       <Field
         ref={nameRef}
         label="Display name"
@@ -160,17 +202,13 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
         disabled={!!busy}
         onChange={setAgreed}
       />
-      <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 20 }}>
-        <Button title="Read the Terms of use" variant="link" style={{ paddingHorizontal: 0 }} href="/terms" />
-        <Button
-          title="Read the Privacy policy"
-          variant="link"
-          style={{ paddingHorizontal: 0 }}
-          href="/privacy"
-        />
-      </View>
+      <Text style={[type.small, { color: colors.mutedForeground }]}>
+        Read the <TextLink href="/terms">Terms of use</TextLink> and the{" "}
+        <TextLink href="/privacy">Privacy policy</TextLink>.
+      </Text>
     </>
-  ) : (
+  );
+  const accountFields = (
     <>
       {forgot && (
         <Body muted>
@@ -192,110 +230,138 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
         onSubmit={() => (forgot ? void submit("reset") : passwordRef.current?.focus())}
       />
       {!forgot && (
-        <View style={{ gap: 4 }}>
+        <View style={{ gap: space.xs }}>
           <Field
             ref={passwordRef}
             label="Password"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            reveal
+            // The password manager offers a new password when creating an account, the saved one otherwise.
             autoComplete={creating ? "new-password" : "current-password"}
             textContentType={creating ? "newPassword" : "password"}
+            hint={creating ? "At least six characters." : undefined}
             editable={!busy}
             enterKeyHint="go"
-            onSubmit={() => void submit("signin")}
+            onSubmit={() => void submit(mode)}
           />
-          <Button
-            title="Forgot password?"
-            variant="link"
-            style={{ alignSelf: "flex-end", paddingHorizontal: 0 }}
-            disabled={!!busy}
-            onPress={() => {
-              setForgot(true);
-              setError(undefined);
-              setStatus(undefined);
-            }}
-          />
+          {!creating && (
+            <Button
+              title="Forgot password?"
+              variant="link"
+              small
+              style={{ alignSelf: "flex-end", paddingHorizontal: 0 }}
+              disabled={!!busy}
+              onPress={() => {
+                setForgot(true);
+                setError(undefined);
+                setStatus(undefined);
+              }}
+            />
+          )}
         </View>
       )}
     </>
   );
+  const primaryTitle =
+    primary === "name"
+      ? busy === "name"
+        ? "Saving…"
+        : "Continue"
+      : primary === "reset"
+        ? busy === "reset"
+          ? "Sending…"
+          : sent
+            ? "Send again"
+            : "Send reset link"
+        : primary === "signup"
+          ? busy === "signup"
+            ? "Creating account…"
+            : "Create account"
+          : busy === "signin"
+            ? "Signing in…"
+            : "Sign in";
   const form = (
     <Card>
-      {landing && (
-        <Title level={3} style={{ fontSize: 24, lineHeight: 28 }}>
-          Welcome to POW Pick'em
-        </Title>
-      )}
-      {nameOnly ? fields : <Form>{fields}</Form>}
+      {nameOnly ? nameFields : <Form>{accountFields}</Form>}
       <ErrorMessage message={error ?? (sent ? undefined : auth.linkError)} />
       <Notice message={status} />
-      <View style={{ gap: 8 }}>
-        <Button
-          title={
-            busy === "name"
-              ? "Saving…"
-              : nameOnly
-                ? "Continue"
-                : forgot
-                  ? busy === "reset"
-                    ? "Sending…"
-                    : sent
-                      ? "Send again"
-                      : "Send reset link"
-                  : busy === "signin"
-                    ? "Signing in…"
-                    : "Sign in"
-          }
-          busy={busy === primary}
-          // Ticking the box is what lets the name step continue, so it stays switched off until then.
-          disabled={(!!busy && busy !== primary) || (nameOnly && !agreed)}
-          onPress={() => void submit(primary)}
-        />
-        {!nameOnly && (
+      <Button
+        title={primaryTitle}
+        busy={busy === primary}
+        // Ticking the box is what lets the name step continue, so it stays switched off until then.
+        disabled={(!!busy && busy !== primary) || (nameOnly && !agreed)}
+        onPress={() => void submit(primary)}
+      />
+      {!nameOnly &&
+        (forgot ? (
           <Button
-            title={forgot ? "Back to sign in" : busy === "signup" ? "Creating account…" : "Create account"}
-            variant={forgot ? "ghost" : "outline"}
-            busy={busy === "signup"}
-            disabled={!!busy && busy !== "signup"}
-            onPress={() => {
-              if (forgot) {
-                setForgot(false);
-                setError(undefined);
-                setStatus(undefined);
-              } else void submit("signup");
-            }}
+            title="Back to sign in"
+            variant="ghost"
+            disabled={!!busy}
+            onPress={() => switchMode("signin")}
           />
-        )}
-      </View>
+        ) : (
+          <View style={s.switchRow}>
+            <Text style={[type.small, { color: colors.mutedForeground }]}>
+              {creating ? "Already have an account?" : "New here?"}
+            </Text>
+            <Button
+              title={creating ? "Sign in" : "Create account"}
+              variant="link"
+              small
+              style={{ paddingHorizontal: space.xs }}
+              disabled={!!busy}
+              onPress={() => switchMode(creating ? "signin" : "signup")}
+            />
+          </View>
+        ))}
       {!nameOnly && (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 20, justifyContent: "center" }}>
-          <Button title="Terms of use" variant="link" style={{ paddingHorizontal: 0 }} href="/terms" />
-          <Button title="Privacy policy" variant="link" style={{ paddingHorizontal: 0 }} href="/privacy" />
+        <View style={s.legal}>
+          <Button
+            title="Terms of use"
+            variant="link"
+            small
+            labelTone="muted"
+            style={{ paddingHorizontal: 0 }}
+            href="/terms"
+          />
+          <Button
+            title="Privacy policy"
+            variant="link"
+            small
+            labelTone="muted"
+            style={{ paddingHorizontal: 0 }}
+            href="/privacy"
+          />
         </View>
       )}
     </Card>
   );
+  const heading = nameOnly
+    ? "What should we call you?"
+    : forgot
+      ? "Reset your password"
+      : joining
+        ? "Join the league"
+        : creating
+          ? "Create your account"
+          : "Welcome back";
   if (!landing)
     return (
-      <Screen narrow contentStyle={{ maxWidth: 416, paddingTop: 44 }}>
-        <View style={{ gap: 8 }}>
-          <Title>
-            {nameOnly
-              ? "What should we call you?"
-              : forgot
-                ? "Reset your password"
-                : joining
-                  ? "Join the league"
-                  : "Welcome back"}
-          </Title>
+      <Screen narrow contentStyle={{ maxWidth: widths.auth, paddingTop: 44 }}>
+        <View style={{ gap: space.md }}>
+          <Title>{heading}</Title>
           {nameOnly ? (
             <Body muted>This is the name your league sees on the leaderboard.</Body>
           ) : (
             !forgot && (
               <Body muted>
                 {joining
-                  ? "Sign in or create an account to join the league."
+                  ? creating
+                    ? "Create an account to join the league."
+                    : "Sign in to join the league."
                   : "Pick pro football winners against the spread with your league."}
               </Body>
             )
@@ -304,23 +370,51 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
         {form}
       </Screen>
     );
-  const wide = width >= 768;
-  // Brings the whole sign-up card into view (not just its section's heading), then puts the cursor in Email.
+  const shape = landingLayout(width);
+  const wide = shape !== "phone";
+  const desktop = shape === "desktop";
+  // Brings the whole sign-up card into view (its title too), then puts the cursor in Email. In a browser the
+  // focus waits for the smooth scroll to settle and doesn't scroll itself: a focus that scrolls the field into
+  // view cancels the smooth scroll halfway.
   const getStarted = () => {
-    scroll.current?.scrollTo({ y: Math.max(0, formY + cardY - 16), animated: true });
-    setTimeout(() => emailRef.current?.focus(), 400);
+    switchMode("signup");
+    scroll.current?.scrollTo({ y: Math.max(0, formY - space.xl), animated: !reduced });
+    const field = emailRef.current;
+    if (!field) return;
+    setTimeout(
+      () => {
+        if (Platform.OS === "web")
+          (field as unknown as { focus(options: { preventScroll: boolean }): void }).focus({
+            preventScroll: true,
+          });
+        else field.focus();
+      },
+      reduced ? 0 : 600,
+    );
   };
   return (
     <ScrollView
       ref={scroll}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={[styles.content, { gap: 40, paddingTop: 36, paddingBottom: 64 }]}
+      contentContainerStyle={[
+        styles.content,
+        {
+          maxWidth: desktop ? widths.landing : widths.page,
+          gap: desktop ? space["5xl"] : 40,
+          paddingTop: desktop ? space["5xl"] + space.xl : 36,
+          paddingBottom: 64,
+        },
+      ]}
     >
       <View
-        style={{ flexDirection: wide ? "row" : "column", alignItems: wide ? "center" : "stretch", gap: 32 }}
+        style={{
+          flexDirection: wide ? "row" : "column",
+          alignItems: wide ? "center" : "stretch",
+          gap: desktop ? HERO_GAP.desktop : HERO_GAP.tablet,
+        }}
       >
-        <View style={{ gap: 20, flex: 1 }}>
-          <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.primary }}>
+        <View style={{ gap: space["2xl"], flex: desktop ? HERO_SHARE : wide ? 1 : undefined }}>
+          <Text style={[type.small, { fontFamily: fonts.semibold, color: colors.primary }]}>
             Your league. Every week. All season.
           </Text>
           <Text
@@ -328,8 +422,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
             aria-level={1}
             style={{
               fontFamily: fonts.displayExtraBold,
-              fontSize: wide ? 72 : 60,
-              lineHeight: wide ? 65 : 54,
+              ...heroHeadline(width),
               color: colors.foreground,
               textTransform: "uppercase",
             }}
@@ -341,11 +434,11 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
             A pro football pick'em built for your crew. Pick every game against the spread, call your Pick of
             the Week, and chase the top spot in your league.
           </Body>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <Button title="Get started" icon="chevron-right" onPress={getStarted} />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.lg }}>
+            <Button title="Get started" iconAfter="arrow-right" onPress={getStarted} />
             <Button title="How to play" variant="outline" href="/how-to-play" />
           </View>
-          <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+          <Body muted style={type.small}>
             Have an invite? Open your commissioner's link to join their league.
           </Body>
         </View>
@@ -353,84 +446,133 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
           <ExamplePick />
         </View>
       </View>
-      <View style={{ flexDirection: wide ? "row" : "column", gap: 16 }}>
-        {[
-          {
-            icon: "football" as const,
-            title: "Pick the slate",
-            detail: "Choose a side in every game. The spread is the score to beat.",
-          },
-          {
-            icon: "star" as const,
-            title: "Call your POW",
-            detail: "Back one pick for 5 extra points if it wins.",
-          },
-          {
-            icon: "trophy" as const,
-            title: "Chase first place",
-            detail: "See everyone's picks and the standings once the week is final.",
-          },
-        ].map((item) => (
-          <Card key={item.title} style={{ flex: wide ? 1 : undefined, gap: 8 }}>
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: colors.primaryTint,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Icon name={item.icon} color={colors.primary} size={20} />
-            </View>
-            <Title level={3} style={{ fontSize: 20, lineHeight: 24 }}>
-              {item.title}
-            </Title>
-            <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
-              {item.detail}
-            </Body>
-          </Card>
-        ))}
+      <View style={{ gap: space["4xl"] }}>
+        <HowAWeekWorks wide={wide} />
+        <MoreWays wide={wide} />
       </View>
-      <MoreWays wide={wide} />
       <View
         onLayout={(event) => setFormY(event.nativeEvent.layout.y)}
-        style={{ flexDirection: wide ? "row" : "column", gap: 24 }}
+        style={{ width: "100%", maxWidth: widths.auth, alignSelf: "center", gap: space.lg }}
       >
-        <View style={{ flex: 1, gap: 16 }}>
-          <Title level={2}>Your next game starts here</Title>
-          <Body muted>
-            Sign in to your leagues or create an account to get going. Set your display name, then follow an
-            invite link or start a league of your own.
-          </Body>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <Icon name="lock" color={colors.primary} />
-            <Body muted style={{ fontSize: 14, lineHeight: 20, flex: 1 }}>
-              Each game locks at kickoff. Change your picks and your POW any time before then.
-            </Body>
-          </View>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <Icon name="trophy" color={colors.primary} />
-            <Body muted style={{ fontSize: 14, lineHeight: 20, flex: 1 }}>
-              Running the league? Let it run itself from the pro football schedule, or run each week by hand.
-              The guide covers both.
-            </Body>
-          </View>
-          <Button
-            title="Read the rules & app guide"
-            variant="link"
-            style={{ alignSelf: "flex-start", paddingHorizontal: 0 }}
-            href="/how-to-play"
-          />
-        </View>
-        <View onLayout={(event) => setCardY(event.nativeEvent.layout.y)} style={{ flex: 1 }}>
-          {form}
-        </View>
+        <Title level={2} size="heading" style={{ textAlign: "center" }}>
+          {heading}
+        </Title>
+        {form}
+        <Button
+          title="Read the rules & app guide"
+          variant="link"
+          small
+          labelTone="muted"
+          style={{ alignSelf: "center" }}
+          href="/how-to-play"
+        />
       </View>
     </ScrollView>
   );
 }
+
+/** The name step's preview: the player's avatar and name as their league will see them, as they type. */
+function NamePreview({ name }: { name: string }) {
+  const shown = name.trim();
+  return (
+    <View style={s.preview}>
+      {shown ? (
+        <Avatar name={shown} size={48} />
+      ) : (
+        <View aria-hidden accessible={false} style={s.blankAvatar}>
+          <Icon name="user" size={24} color={colors.mutedForeground} />
+        </View>
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          numberOfLines={1}
+          style={[type.cardTitle, { color: shown ? colors.foreground : colors.mutedForeground }]}
+        >
+          {shown || "Your name"}
+        </Text>
+        <Text style={[type.small, { color: colors.mutedForeground }]}>How your league sees you</Text>
+      </View>
+    </View>
+  );
+}
+
+/** A click the browser should handle itself: ⌘/Ctrl/Shift-click opens the link in a new tab or window. */
+function browserOwns(event: GestureResponderEvent) {
+  if (Platform.OS !== "web") return false;
+  const click = event as unknown as {
+    metaKey?: boolean;
+    ctrlKey?: boolean;
+    shiftKey?: boolean;
+    button?: number;
+  };
+  return !!(click.metaKey || click.ctrlKey || click.shiftKey) || (click.button ?? 0) !== 0;
+}
+
+/** A link inside a line of text: a real `<a href>` on the web, opened through the unsaved-work guard. */
+function TextLink({ href, children }: { href: string; children: string }) {
+  return (
+    <Text
+      accessibilityRole="link"
+      style={s.textLink}
+      {...(Platform.OS === "web" ? ({ href } as object) : null)}
+      onPress={(event) => {
+        if (browserOwns(event)) return;
+        event.preventDefault?.();
+        void openPath(href);
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
+
+/** How a week works, in three numbered steps on one card. */
+const STEPS = [
+  {
+    title: "Pick the slate",
+    detail: "Choose a side in every game. The spread is the score to beat, and each game locks at kickoff.",
+  },
+  { title: "Call your POW", detail: "Back one pick for 5 extra points if it wins." },
+  { title: "Chase first place", detail: "See everyone's picks and the standings once the week is final." },
+];
+
+function HowAWeekWorks({ wide }: { wide: boolean }) {
+  return (
+    <View style={{ gap: space.lg }}>
+      <SectionLabel title="How a week works" />
+      <Card style={{ flexDirection: wide ? "row" : "column", gap: wide ? space["3xl"] : space.xl }}>
+        {STEPS.map((step, index) => (
+          <View key={step.title} style={{ flex: wide ? 1 : undefined, flexDirection: "row", gap: space.lg }}>
+            <View aria-hidden accessible={false} style={s.stepNumber}>
+              <Text style={[type.statSmall, tabular, { color: colors.primaryText }]}>{index + 1}</Text>
+            </View>
+            <View style={{ flex: 1, gap: space.xs }}>
+              <Title level={3} size="subheading">
+                {step.title}
+              </Title>
+              <Body muted style={type.small}>
+                {step.detail}
+              </Body>
+            </View>
+          </View>
+        ))}
+      </Card>
+    </View>
+  );
+}
+
+function SectionLabel({ title }: { title: string }) {
+  return (
+    <Text
+      accessibilityRole="header"
+      aria-level={2}
+      style={[type.small, { fontFamily: fonts.semibold, color: colors.primary }]}
+    >
+      {title}
+    </Text>
+  );
+}
+
 /** The other games a league can play: a quieter strip under the weekly pitch, each linking to its rules. */
 const OTHER_GAMES: { type: Exclude<LeagueType, "weekly">; pitch: string }[] = [
   { type: "playoff", pitch: "Pick'em through the playoffs, with one champion after the Super Bowl." },
@@ -440,40 +582,26 @@ const OTHER_GAMES: { type: Exclude<LeagueType, "weekly">; pitch: string }[] = [
 
 function MoreWays({ wide }: { wide: boolean }) {
   return (
-    <View style={{ gap: 12 }}>
-      <View style={{ gap: 4 }}>
-        <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.primary }}>
-          More ways to play
-        </Text>
-        <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
-          A league can play one of these instead, with the same invites, messages and reminders.
-        </Body>
-      </View>
-      <View style={{ flexDirection: wide ? "row" : "column", gap: 8 }}>
-        {OTHER_GAMES.map(({ type, pitch }) => (
+    <View style={{ gap: space.lg }}>
+      <SectionLabel title="More ways to play" />
+      <View style={{ flexDirection: wide ? "row" : "column", gap: space.md }}>
+        {OTHER_GAMES.map(({ type: game, pitch }) => (
           <AppLink
-            key={type}
-            href={`/how-to-play?section=${type}`}
-            accessibilityLabel={`How ${LEAGUE_TYPE_INFO[type].name} works`}
-            style={(state) => ({
-              flex: wide ? 1 : undefined,
-              minHeight: 44,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              padding: 12,
-              borderRadius: 12,
-              backgroundColor: hoverFill(state, colors.card),
-            })}
+            key={game}
+            href={`/how-to-play?section=${game}`}
+            accessibilityLabel={`How ${LEAGUE_TYPE_INFO[game].name} works`}
+            style={(state) => [
+              webTransition(["background-color"]),
+              s.otherGame,
+              { flex: wide ? 1 : undefined, backgroundColor: hoverFill(state, colors.card) },
+            ]}
           >
-            <Icon name={LEAGUE_TYPE_INFO[type].icon} color={colors.mutedForeground} size={20} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={{ fontFamily: fonts.semibold, fontSize: 15, color: colors.foreground }}>
-                {LEAGUE_TYPE_INFO[type].name}
+            <Icon name={LEAGUE_TYPE_INFO[game].icon} color={colors.mutedForeground} size={20} />
+            <View style={{ flex: 1, gap: space.xxs }}>
+              <Text style={[type.body, { fontFamily: fonts.semibold, color: colors.foreground }]}>
+                {LEAGUE_TYPE_INFO[game].name}
               </Text>
-              <Body muted style={{ fontSize: 13, lineHeight: 18 }}>
-                {pitch}
-              </Body>
+              {wide && <Text style={[type.caption, { color: colors.mutedForeground }]}>{pitch}</Text>}
             </View>
             <Icon name="chevron-right" color={colors.mutedForeground} size={16} />
           </AppLink>
@@ -483,87 +611,185 @@ function MoreWays({ wide }: { wide: boolean }) {
   );
 }
 
+/**
+ * The example pick, live: tap a team to move the pick, tap POW to light it, and the line under it says what
+ * that pick needs and is worth by the real rules. Drawn like the pick sheet's buttons, but its own: nothing is
+ * saved.
+ */
 function ExamplePick() {
+  const [side, setSide] = useState<Side>("away");
+  const [pow, setPow] = useState(true);
+  const caption = exampleCaption(side, pow);
+  const choose = (next: Side) => {
+    if (next === side) return;
+    haptics.select();
+    setSide(next);
+  };
   return (
     <Card>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Body muted style={{ fontSize: 14 }}>
+        <Body muted style={type.small}>
           Monday night · 8:15 PM
         </Body>
-        <View style={{ flexDirection: "row", gap: 6 }}>
+        <View style={{ flexDirection: "row", gap: space.sm }}>
           <Badge tone="outline">Example</Badge>
-          <Badge>3 pts</Badge>
+          <Badge>{`${exampleCaption(side, false).points} pts`}</Badge>
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        {[
-          { team: "BUF", name: "Bills", spread: "−3.5", picked: true },
-          { team: "MIA", name: "Dolphins", spread: "+3.5 · home", picked: false },
-        ].map((team) => (
-          <View
-            key={team.team}
-            style={{
-              position: "relative",
-              flex: 1,
-              minHeight: 104,
-              borderRadius: 12,
-              backgroundColor: team.picked ? colors.primary : colors.raised,
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 3,
-            }}
-          >
-            {team.picked && (
-              <View style={{ position: "absolute", right: 6, top: 6 }}>
-                <Icon name="check" size={15} color={colors.primaryForeground} />
-              </View>
-            )}
-            <TeamLogo team={team.team} size={36} />
-            <Text
-              style={{
-                fontFamily: fonts.displayBold,
-                fontSize: 20,
-                color: team.picked ? colors.primaryForeground : colors.foreground,
-                textTransform: "uppercase",
-              }}
-            >
-              {team.name}
-            </Text>
-            <Text
-              style={{
-                fontFamily: fonts.medium,
-                fontSize: 14,
-                color: team.picked ? colors.primaryForeground : colors.mutedForeground,
-              }}
-            >
-              {team.spread}
-            </Text>
-          </View>
+      <View style={{ flexDirection: "row", gap: space.md }}>
+        {(["away", "home"] as const).map((team) => (
+          <ExampleTeam key={team} side={team} selected={side === team} onPress={() => choose(team)} />
         ))}
-        <View
-          style={{
-            width: 56,
-            borderRadius: 12,
-            backgroundColor: colors.pow,
-            alignItems: "center",
-            justifyContent: "center",
+        <ExamplePow
+          on={pow}
+          onPress={() => {
+            haptics.toggle();
+            setPow(!pow);
           }}
-        >
-          <Text style={{ fontFamily: fonts.displayExtraBold, fontSize: 16, color: colors.powForeground }}>
-            POW
-          </Text>
-        </View>
+        />
       </View>
-      <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
-        Buffalo at Miami: the Bills need to win by 4 or more. Make it your POW and a win is worth{" "}
-        <Text style={{ color: colors.win, fontFamily: fonts.semibold }}>8 points</Text>.
-      </Body>
+      <Text aria-live="polite" style={[type.small, { color: colors.mutedForeground }]}>
+        {caption.rule} Worth{" "}
+        <Text
+          style={{ fontFamily: fonts.semibold, color: colors.foreground }}
+        >{`${caption.points}\u00a0points`}</Text>
+        {pow ? " as your POW" : ""}.
+      </Text>
     </Card>
   );
 }
+
+function ExampleTeam({ side, selected, onPress }: { side: Side; selected: boolean; onPress: () => void }) {
+  const team = EXAMPLE_GAME[side];
+  const line = exampleLine(side);
+  const scale = usePop(selected);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${team.name} ${line}${side === "home" ? ", home" : ""}`}
+      accessibilityState={{ selected }}
+      aria-pressed={selected}
+      onPress={onPress}
+      style={(state) => [
+        s.team,
+        selected && s.teamSelected,
+        pressTile(state, selected),
+        webTransition(["background-color", "opacity", "transform", "box-shadow"]),
+      ]}
+    >
+      {selected && (
+        <Animated.View style={[s.mark, { transform: [{ scale }] }]}>
+          <Icon name="check-circle" size={16} color={colors.primaryForeground} />
+        </Animated.View>
+      )}
+      <TeamLogo team={team.abbr} size={28} />
+      <Text numberOfLines={1} style={[s.teamName, selected && s.selectedText]}>
+        {team.name}
+      </Text>
+      <Text numberOfLines={1} style={[s.line, tabular, selected && s.selectedText]}>
+        {line}
+        {side === "home" ? " · home" : ""}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ExamplePow({ on, onPress }: { on: boolean; onPress: () => void }) {
+  const scale = usePop(on);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="POW: Bills at Dolphins"
+      accessibilityState={{ selected: on }}
+      aria-pressed={on}
+      onPress={onPress}
+      style={(state) => [
+        s.pow,
+        on && s.powOn,
+        pressTile(state, on),
+        webTransition(["background-color", "opacity", "transform", "box-shadow"]),
+      ]}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Text style={[s.powText, on && { color: colors.powForeground }]}>POW</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+const s = StyleSheet.create({
+  switchRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center" },
+  legal: { flexDirection: "row", flexWrap: "wrap", columnGap: space["2xl"], justifyContent: "center" },
+  textLink: { color: colors.mutedForeground, textDecorationLine: "underline" },
+  preview: { flexDirection: "row", alignItems: "center", gap: space.lg },
+  blankAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.full,
+    backgroundColor: colors.raised,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepNumber: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryTint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  otherGame: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.lg,
+    paddingHorizontal: layout.densePad,
+    paddingVertical: space.lg,
+    ...corner(radius.lg),
+  },
+  team: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 86,
+    ...corner(radius.lg),
+    backgroundColor: colors.raised,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space.sm,
+    paddingVertical: space.md,
+    gap: space.xxs,
+  },
+  teamSelected: { backgroundColor: colors.primary, boxShadow: elevation.glowPrimary },
+  selectedText: { color: colors.primaryForeground },
+  mark: { position: "absolute", top: space.sm, right: space.sm },
+  teamName: {
+    textTransform: "uppercase",
+    fontFamily: fonts.displayBold,
+    fontSize: 18,
+    lineHeight: 20,
+    letterSpacing: 0.2,
+    color: colors.foreground,
+  },
+  line: { ...type.small, fontFamily: fonts.medium, lineHeight: 18, color: colors.foreground },
+  pow: {
+    width: 56,
+    ...corner(radius.lg),
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.raised,
+  },
+  powOn: { backgroundColor: colors.powFill, boxShadow: elevation.glowPow },
+  powText: {
+    ...type.tag,
+    fontFamily: fonts.displayExtraBold,
+    letterSpacing: 0.8,
+    color: colors.mutedForeground,
+  },
+});
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
-  if (auth.loading) return <Splash name={auth.me?.displayName ?? undefined} />;
+  if (auth.loading) return <Splash name={auth.me?.displayName ?? undefined} status={!!auth.session} />;
   if (auth.error)
     return (
       <Screen narrow>

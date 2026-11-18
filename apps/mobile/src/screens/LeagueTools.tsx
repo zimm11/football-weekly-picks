@@ -26,9 +26,9 @@ import { confirmDiscard } from "../lib/unsaved";
 import {
   Action,
   Card,
+  CardTitle,
   colors,
   confirm,
-  Eyebrow,
   Failure,
   IconButton,
   Input,
@@ -224,7 +224,7 @@ export function LeagueTools({
   const reportsWaiting = admin && !!league.openReports;
   const reports = admin && (
     <Card label="Reports">
-      <Eyebrow>Reports{league.openReports ? ` (${league.openReports})` : ""}</Eyebrow>
+      <CardTitle>Reports{league.openReports ? ` (${league.openReports})` : ""}</CardTitle>
       <ReportsQueue path={`${base}/reports`} onChanged={reload} />
     </Card>
   );
@@ -243,77 +243,76 @@ export function LeagueTools({
       "League settings saved.",
     );
   }
+  // While the commissioner is still on their own, inviting players is the first job, ahead of the type's tools.
+  const inviteFirst = league.members.length <= 1;
+  const invite = admin && league.inviteCode && (
+    <Card label="Invite">
+      <View style={{ gap: 4 }}>
+        <CardTitle>Invite players</CardTitle>
+        <Label>Anyone with this link can join the league.</Label>
+      </View>
+      {Platform.OS === "web" ? (
+        // A read-only box that wraps the whole link, so it can be selected and copied by hand.
+        <AutoGrowInput
+          value={inviteUrl}
+          editable={false}
+          selectTextOnFocus
+          accessibilityLabel="Invite link"
+          style={[s.input, inviteText]}
+        />
+      ) : (
+        // A read-only text field can't be selected on iPhone; text can (press and hold).
+        <Text selectable accessibilityLabel={`Invite link: ${inviteUrl}`} style={[s.input, inviteText]}>
+          {inviteUrl}
+        </Text>
+      )}
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        {canShare() && (
+          <Action icon="share" onPress={() => void share()} style={{ paddingHorizontal: 16 }}>
+            Share
+          </Action>
+        )}
+        <Action
+          secondary={canShare()}
+          icon={copied ? "check" : "copy"}
+          onPress={() => void copy()}
+          style={{ paddingHorizontal: 16 }}
+        >
+          {copied ? "Copied" : "Copy link"}
+        </Action>
+      </View>
+      <Action
+        ghost
+        muted
+        compact
+        icon="refresh"
+        disabled={!!busy}
+        onPress={() =>
+          confirm("Make a new invite link?", "The current link will stop working.", "Make new link", () => {
+            setCopied(false);
+            void run(
+              "invite",
+              () => request(`${base}/invite`, { method: "POST" }),
+              "New invite link created.",
+            );
+          })
+        }
+      >
+        {busy === "invite" ? "Creating…" : "Make a new link"}
+      </Action>
+    </Card>
+  );
   return (
     <>
       {/* Reports waiting for a decision come first, so a commissioner sees them on opening the tab. */}
       {reportsWaiting && reports}
+      {inviteFirst && invite}
       {/* The admin's tools for this league type (`LEAGUE_TYPE_SCREENS[type].AdminTools`): Set up a week, … */}
       {admin && adminTools}
-      {admin && league.inviteCode && (
-        <Card label="Invite">
-          <View style={{ gap: 4 }}>
-            <Eyebrow>Invite players</Eyebrow>
-            <Label>Anyone with this link can join the league.</Label>
-          </View>
-          {Platform.OS === "web" ? (
-            // A read-only box that wraps the whole link, so it can be selected and copied by hand.
-            <AutoGrowInput
-              value={inviteUrl}
-              editable={false}
-              selectTextOnFocus
-              accessibilityLabel="Invite link"
-              style={[s.input, inviteText]}
-            />
-          ) : (
-            // A read-only text field can't be selected on iPhone; text can (press and hold).
-            <Text selectable accessibilityLabel={`Invite link: ${inviteUrl}`} style={[s.input, inviteText]}>
-              {inviteUrl}
-            </Text>
-          )}
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {canShare() && (
-              <Action icon="share" onPress={() => void share()} style={{ paddingHorizontal: 16 }}>
-                Share
-              </Action>
-            )}
-            <Action
-              secondary={canShare()}
-              icon={copied ? "check" : "copy"}
-              onPress={() => void copy()}
-              style={{ paddingHorizontal: 16 }}
-            >
-              {copied ? "Copied" : "Copy link"}
-            </Action>
-          </View>
-          <Action
-            ghost
-            muted
-            compact
-            icon="refresh"
-            disabled={!!busy}
-            onPress={() =>
-              confirm(
-                "Make a new invite link?",
-                "The current link will stop working.",
-                "Make new link",
-                () => {
-                  setCopied(false);
-                  void run(
-                    "invite",
-                    () => request(`${base}/invite`, { method: "POST" }),
-                    "New invite link created.",
-                  );
-                },
-              )
-            }
-          >
-            {busy === "invite" ? "Creating…" : "Make a new link"}
-          </Action>
-        </Card>
-      )}
+      {!inviteFirst && invite}
       {!reportsWaiting && reports}
       <Card label="Members">
-        <Eyebrow>Members ({league.members.length})</Eyebrow>
+        <CardTitle>Members ({league.members.length})</CardTitle>
         <View>
           {league.members.map((target) => (
             <View
@@ -384,7 +383,7 @@ export function LeagueTools({
       </Card>
       {admin && (
         <Card label="League settings">
-          <Eyebrow>League settings</Eyebrow>
+          <CardTitle>League settings</CardTitle>
           <Input
             label="League name"
             value={name}
@@ -428,7 +427,7 @@ export function LeagueTools({
         </Card>
       )}
       <Card label="Leave league">
-        <Eyebrow>Leave league</Eyebrow>
+        <CardTitle>Leave league</CardTitle>
         <Label>
           {admin && adminCount === 1
             ? "You're the only commissioner. Make another member a commissioner before you leave."

@@ -1,6 +1,6 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Eyebrow, Label and Heading render native Text.
 import { type Record3, type Standings, weekLabel, winRate } from "@picks/shared";
-import { type ReactNode, useState } from "react";
+import { type ComponentRef, type ReactNode, useRef, useState } from "react";
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -16,8 +16,10 @@ import {
 import { Avatar } from "../components/Avatar";
 import { Icon } from "../components/Icon";
 import { hoverFill } from "../components/pressState";
+import { radius, space, tabular, type } from "../components/theme";
 import { colors, fonts } from "../components/ui";
-import { Card, Eyebrow, Label, RowLink, StatTile, s } from "./leagueUi";
+import { statColumns, tileRows } from "../lib/resultsPresentation";
+import { Card, CardTitle, EmptyState, Eyebrow, Label, RowLink, StatTile, s } from "./leagueUi";
 
 type Entry = Standings["entries"][number];
 export const record = (r: Record3) => `${r.wins}–${r.losses}${r.pushes ? `–${r.pushes}` : ""}`;
@@ -31,21 +33,35 @@ const avg = (entry: Entry) => {
   return weeks.length ? weeks.reduce((total, w) => total + w.points, 0) / weeks.length : null;
 };
 
+/** A place moved since last week: a filled caret and the number, read out in words. Up in `win`, down muted. */
 function RankChange({ change }: { change: number | null }) {
-  return change ? (
-    <Text
+  if (!change) return null;
+  const tone = change > 0 ? colors.win : colors.mutedForeground;
+  return (
+    <View
+      accessible
       accessibilityLabel={`${Math.abs(change)} places ${change > 0 ? "up" : "down"} since last week`}
-      style={{
-        fontFamily: fonts.semibold,
-        fontSize: 12,
-        color: change > 0 ? colors.win : colors.mutedForeground,
-      }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 1 }}
     >
-      {" "}
-      {change > 0 ? "▲" : "▼"}
-      {Math.abs(change)}
-    </Text>
-  ) : null;
+      <Icon name={change > 0 ? "caret-up" : "caret-down"} size={12} color={tone} filled />
+      <Text style={[type.micro, tabular, { fontFamily: fonts.semibold, color: tone }]}>
+        {Math.abs(change)}
+      </Text>
+    </View>
+  );
+}
+/** The leaderboard's rank: the numeral, right-aligned in a fixed width so the avatars line up, and its movement under it. */
+function Rank({ entry }: { entry: Entry }) {
+  return (
+    <View style={{ width: 24, alignItems: "flex-end", gap: 1 }}>
+      <Text
+        style={[type.statSmall, tabular, { fontSize: 18, lineHeight: 20, color: colors.mutedForeground }]}
+      >
+        {entry.rank}
+      </Text>
+      <RankChange change={entry.rankChange} />
+    </View>
+  );
 }
 function Name({ entry }: { entry: Entry }) {
   return (
@@ -54,7 +70,6 @@ function Name({ entry }: { entry: Entry }) {
       <View style={{ flex: 1, gap: 2 }}>
         <Text numberOfLines={2} style={[s.text, { fontSize: 14, lineHeight: 18, fontFamily: fonts.medium }]}>
           {entry.displayName}
-          <RankChange change={entry.rankChange} />
         </Text>
         {entry.removed && (
           <Text style={[s.muted, { fontSize: 10, lineHeight: 12 }]}>No longer in the league</Text>
@@ -134,7 +149,7 @@ export function StickyTable({
 }) {
   const all = footer ? [...rows, footer] : rows;
   const { width } = useWindowDimensions();
-  const nameWidth = width < 440 ? 145 : 185;
+  const nameWidth = width < 440 ? 160 : 185;
   const statsWidth = columnsWidth(columns);
   const { more, scrollProps } = useMoreToTheRight();
   const headerStyle = {
@@ -145,7 +160,7 @@ export function StickyTable({
     borderBottomColor: colors.border,
   };
   const cellStyle = {
-    height: 66,
+    height: 56,
     justifyContent: "center" as const,
     paddingHorizontal: 10,
     borderBottomWidth: 1,
@@ -273,11 +288,23 @@ export function StickyTable({
 }
 
 export function StandingsDashboard({ standings, userId }: { standings: Standings; userId: string }) {
+  const { width } = useWindowDimensions();
+  if (!standings.weeks.length)
+    return (
+      <EmptyState
+        icon="trophy"
+        title="No standings yet"
+        detail="The table fills in once the first week closes."
+      />
+    );
+  // On a phone the table comes first; from 768px the player's own season heads the page.
+  const phone = width < 768;
+  const yourSeason = <YourSeason standings={standings} userId={userId} />;
   return (
     <View style={{ gap: 24 }}>
-      <YourSeason standings={standings} userId={userId} />
+      {!phone && yourSeason}
       <View style={{ gap: 12 }}>
-        {standings.weeks.length > 0 && <Eyebrow>Leaderboard</Eyebrow>}
+        <Eyebrow>Leaderboard</Eyebrow>
         <StickyTable
           label="Season standings"
           columns={[
@@ -295,14 +322,12 @@ export function StandingsDashboard({ standings, userId }: { standings: Standings
             mine: entry.userId === userId,
             name: (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Text style={{ fontFamily: fonts.displayBold, fontSize: 18, color: colors.mutedForeground }}>
-                  {entry.rank}
-                </Text>
+                <Rank entry={entry} />
                 <Name entry={entry} />
               </View>
             ),
             values: [
-              <Text key="points" style={{ fontFamily: fonts.displayBold, fontSize: 22 }}>
+              <Text key="points" style={[type.statSmall, tabular, { fontSize: 22 }]}>
                 {entry.points}
               </Text>,
               record({ wins: entry.powWins, losses: entry.powLosses, pushes: entry.powPushes }),
@@ -319,79 +344,73 @@ export function StandingsDashboard({ standings, userId }: { standings: Standings
           Closed weeks only. Ties go to POWs won, then wins, then MNF and SNF wins.
         </Text>
       </View>
-      {standings.weeks.length > 0 && (
-        <>
-          <View style={{ gap: 12 }}>
-            <Eyebrow>Week by week</Eyebrow>
-            <StickyTable
-              label="Points by week"
-              columns={[
-                ...standings.weeks.map((w) => ({ title: `W${w.number}`, width: 58 })),
-                { title: "Total", width: 64 },
-              ]}
-              rows={standings.entries.map((entry) => ({
-                id: entry.userId,
-                mine: entry.userId === userId,
-                name: <Name entry={entry} />,
-                values: [
-                  ...standings.weeks.map((week, i) => {
-                    const result = entry.weekly[i];
-                    return result ? (
-                      <Text
-                        key={week.id}
-                        accessibilityLabel={`${result.points} points, ${ordinal(result.rank)}${result.isWinner ? ", won the week" : ""}`}
-                        style={{ color: result.isWinner ? colors.win : colors.foreground }}
-                      >
-                        {result.isWinner ? "★ " : ""}
-                        {result.points}
-                        {Platform.OS === "web" && result.isWinner && (
-                          <Text style={srOnly}> (won the week)</Text>
-                        )}
-                      </Text>
-                    ) : (
-                      "—"
-                    );
-                  }),
-                  entry.points,
-                ],
-              }))}
-              footer={{
-                id: "average",
-                name: <Text style={s.muted}>Avg</Text>,
-                values: [...standings.weeks.map((w) => average(w.averagePoints)), ""],
-              }}
-            />
-          </View>
-          <View style={{ gap: 12 }}>
-            <Eyebrow>Pick splits</Eyebrow>
-            <StickyTable
-              label="Pick splits"
-              columns={[
-                { title: "Favorites", width: 116 },
-                { title: "Underdogs", width: 116 },
-                { title: "Home", width: 116 },
-                { title: "Away", width: 116 },
-              ]}
-              rows={standings.entries.map((entry) => ({
-                id: entry.userId,
-                mine: entry.userId === userId,
-                name: <Name entry={entry} />,
-                values: (["favorite", "underdog", "home", "away"] as const).map((kind) => {
-                  const r = entry.splits[kind];
-                  return r.wins + r.losses + r.pushes ? `${record(r)}  ${percent(winRate(r))}` : "—";
-                }),
-              }))}
-            />
-            <Label>Records against the spread. Pick'em games count as home or away only.</Label>
-          </View>
-        </>
-      )}
+      {phone && yourSeason}
+      <View style={{ gap: 12 }}>
+        <Eyebrow>Week by week</Eyebrow>
+        <StickyTable
+          label="Points by week"
+          columns={[
+            ...standings.weeks.map((w) => ({ title: `W${w.number}`, width: 58 })),
+            { title: "Total", width: 64 },
+          ]}
+          rows={standings.entries.map((entry) => ({
+            id: entry.userId,
+            mine: entry.userId === userId,
+            name: <Name entry={entry} />,
+            values: [
+              ...standings.weeks.map((week, i) => {
+                const result = entry.weekly[i];
+                return result ? (
+                  <Text
+                    key={week.id}
+                    accessibilityLabel={`${result.points} points, ${ordinal(result.rank)}${result.isWinner ? ", won the week" : ""}`}
+                    style={{ color: result.isWinner ? colors.win : colors.foreground }}
+                  >
+                    {result.isWinner ? "★ " : ""}
+                    {result.points}
+                    {Platform.OS === "web" && result.isWinner && <Text style={srOnly}> (won the week)</Text>}
+                  </Text>
+                ) : (
+                  "—"
+                );
+              }),
+              entry.points,
+            ],
+          }))}
+          footer={{
+            id: "average",
+            name: <Text style={s.muted}>Avg</Text>,
+            values: [...standings.weeks.map((w) => average(w.averagePoints)), ""],
+          }}
+        />
+      </View>
+      <View style={{ gap: 12 }}>
+        <Eyebrow>Pick splits</Eyebrow>
+        <StickyTable
+          label="Pick splits"
+          columns={[
+            { title: "Favorites", width: 116 },
+            { title: "Underdogs", width: 116 },
+            { title: "Home", width: 116 },
+            { title: "Away", width: 116 },
+          ]}
+          rows={standings.entries.map((entry) => ({
+            id: entry.userId,
+            mine: entry.userId === userId,
+            name: <Name entry={entry} />,
+            values: (["favorite", "underdog", "home", "away"] as const).map((kind) => {
+              const r = entry.splits[kind];
+              return r.wins + r.losses + r.pushes ? `${record(r)}  ${percent(winRate(r))}` : "—";
+            }),
+          }))}
+        />
+        <Label>Records against the spread. Pick'em games count as home or away only.</Label>
+      </View>
     </View>
   );
 }
 function YourSeason({ standings, userId }: { standings: Standings; userId: string }) {
   const { width } = useWindowDimensions();
-  const cols = width >= 1024 ? 6 : width >= 640 ? 3 : 2;
   const me = standings.entries.find((entry) => entry.userId === userId);
   if (!me || !standings.weeks.length) return null;
   const leader = standings.entries[0];
@@ -404,19 +423,17 @@ function YourSeason({ standings, userId }: { standings: Standings; userId: strin
     undefined,
   );
   const pow = { wins: me.powWins, losses: me.powLosses, pushes: me.powPushes };
+  // The rank's movement is said in the detail, so every tile's value is one line of the same height.
+  const moved = me.rankChange ? `${me.rankChange > 0 ? "Up" : "Down"} ${Math.abs(me.rankChange)} · ` : "";
   const tiles = [
     {
       label: "Rank",
-      value: (
-        <>
-          {ordinal(me.rank)}
-          <RankChange change={me.rankChange} />
-        </>
-      ),
+      value: ordinal(me.rank),
       detail:
-        me.rank === 1
+        moved +
+        (me.rank === 1
           ? "Leading the league"
-          : `${behind} ${behind === 1 ? "pt" : "pts"} behind ${leader?.displayName}`,
+          : `${behind} ${behind === 1 ? "pt" : "pts"} behind ${leader?.displayName}`),
     },
     { label: "Points", value: me.points, detail: `${average(avg(me))} a week` },
     { label: "Record", value: record(me), detail: `${percent(winRate(me))} against the spread` },
@@ -432,12 +449,10 @@ function YourSeason({ standings, userId }: { standings: Standings; userId: strin
     <View role="region" aria-label="Your season" style={{ gap: 12 }}>
       <Eyebrow>Your season</Eyebrow>
       <View role="region" aria-label="Your season stats" style={{ gap: 8 }}>
-        {Array.from({ length: Math.ceil(tiles.length / cols) }, (_, i) =>
-          tiles.slice(i * cols, (i + 1) * cols),
-        ).map((row) => (
-          <View key={row[0]?.label} style={{ flexDirection: "row", gap: 8 }}>
-            {row.map((tile) => (
-              <StatTile key={tile.label} {...tile} />
+        {tileRows(tiles, statColumns(width)).map((row) => (
+          <View key={row.items[0]?.label} style={{ flexDirection: "row", gap: 8 }}>
+            {row.items.map((tile) => (
+              <StatTile key={tile.label} compact {...tile} />
             ))}
           </View>
         ))}
@@ -446,8 +461,11 @@ function YourSeason({ standings, userId }: { standings: Standings; userId: strin
     </View>
   );
 }
+/** The tallest bar, with room above it for its points and a trophy. */
+const BAR = 96;
 function PointsChart({ standings, entry }: { standings: Standings; entry: Entry }) {
   const [selected, setSelected] = useState(standings.weeks.length - 1);
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const max = Math.max(
     1,
     ...standings.weeks.map((w) => w.topPoints ?? 0),
@@ -463,7 +481,7 @@ function PointsChart({ standings, entry }: { standings: Standings; entry: Entry 
   return (
     <Card>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between" }}>
-        <Eyebrow>Points by week</Eyebrow>
+        <CardTitle level={3}>Points by week</CardTitle>
         <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
           <View style={{ flexDirection: "row", gap: 5, alignItems: "center" }}>
             <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: colors.primary }} />
@@ -475,10 +493,27 @@ function PointsChart({ standings, entry }: { standings: Standings; entry: Entry 
           </View>
         </View>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ height: 150, flexDirection: "row", alignItems: "flex-end", gap: 2 }}>
+      <ScrollView
+        ref={scroller}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1 }}
+        // A long season starts at its latest weeks, beside the description of the last one.
+        onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
+      >
+        <View
+          style={{
+            flexGrow: 1,
+            height: 150,
+            flexDirection: "row",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            gap: 2,
+          }}
+        >
           {standings.weeks.map((w, i) => {
             const result = entry.weekly[i];
+            const height = result ? Math.max(1, (result.points / max) * BAR) : 0;
             return (
               <Pressable
                 key={w.id}
@@ -488,58 +523,90 @@ function PointsChart({ standings, entry }: { standings: Standings; entry: Entry 
                 onPress={() => setSelected(i)}
                 aria-pressed={i === selected}
                 style={(state) => ({
-                  width: 44,
+                  flex: 1,
+                  minWidth: 32,
+                  maxWidth: 72,
                   height: 148,
                   borderRadius: 6,
                   backgroundColor: hoverFill(state),
                 })}
               >
-                <View style={{ flex: 1, position: "relative" }}>
-                  {result && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 7,
-                        right: 7,
-                        height: Math.max(1, (result.points / max) * 112),
-                        backgroundColor: colors.primary,
-                        opacity: i === selected ? 1 : 0.75,
-                        borderTopLeftRadius: 3,
-                        borderTopRightRadius: 3,
-                      }}
-                    />
-                  )}
-                  <View
-                    style={{
-                      position: "absolute",
-                      bottom: ((w.averagePoints ?? 0) / max) * 112,
-                      left: 0,
-                      right: 0,
-                      height: 2,
-                      backgroundColor: colors.mutedForeground,
-                    }}
-                  />
-                  {result?.isWinner && (
-                    <View style={{ position: "absolute", bottom: (result.points / max) * 112 + 3, left: 15 }}>
-                      <Icon name="trophy" size={14} filled color={colors.win} />
+                {(state) => (
+                  <>
+                    <View style={{ flex: 1, position: "relative" }}>
+                      {result && (
+                        <View
+                          style={{
+                            position: "absolute",
+                            bottom: 0,
+                            left: "16%",
+                            right: "16%",
+                            height,
+                            backgroundColor: colors.primary,
+                            opacity: i === selected ? 1 : 0.75,
+                            borderTopLeftRadius: 3,
+                            borderTopRightRadius: 3,
+                          }}
+                        />
+                      )}
+                      <View
+                        style={{
+                          position: "absolute",
+                          bottom: ((w.averagePoints ?? 0) / max) * BAR,
+                          left: 0,
+                          right: 0,
+                          height: 2,
+                          backgroundColor: colors.mutedForeground,
+                        }}
+                      />
+                      {result && (
+                        <View
+                          style={{
+                            position: "absolute",
+                            bottom: height + 2,
+                            left: 0,
+                            right: 0,
+                            alignItems: "center",
+                            gap: 1,
+                          }}
+                        >
+                          {result.isWinner && <Icon name="trophy" size={12} filled color={colors.win} />}
+                          <Text
+                            style={[
+                              type.micro,
+                              tabular,
+                              {
+                                fontFamily: fonts.semibold,
+                                color: i === selected ? colors.foreground : colors.mutedForeground,
+                                // The slot's own fill behind the number, so the average line never runs through it.
+                                backgroundColor: hoverFill(state, colors.card),
+                                paddingHorizontal: space.xxs,
+                                borderRadius: radius.xs,
+                              },
+                            ]}
+                          >
+                            {result.points}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
-                <Text
-                  style={[
-                    s.muted,
-                    {
-                      textAlign: "center",
-                      fontSize: 11,
-                      borderTopWidth: 1,
-                      borderTopColor: colors.border,
-                      paddingTop: 4,
-                    },
-                  ]}
-                >
-                  {w.number}
-                </Text>
+                    <Text
+                      style={[
+                        s.muted,
+                        tabular,
+                        {
+                          textAlign: "center",
+                          fontSize: 11,
+                          borderTopWidth: 1,
+                          borderTopColor: colors.border,
+                          paddingTop: 4,
+                        },
+                      ]}
+                    >
+                      {w.number}
+                    </Text>
+                  </>
+                )}
               </Pressable>
             );
           })}
@@ -556,16 +623,20 @@ export function SeasonResults({
   standings,
   userId,
   weekHref,
+  latestOnly = false,
 }: {
   standings: Standings;
   userId: string;
   /** Where a week's row leads: its results page. */
   weekHref: (id: string) => string;
+  /** Only the latest final week (the Picks tab between weeks). */
+  latestOnly?: boolean;
 }) {
   const me = standings.entries.find((e) => e.userId === userId);
+  const weeks = [...standings.weeks].reverse();
   return (
     <View style={{ gap: 8 }}>
-      {[...standings.weeks].reverse().map((week) => {
+      {(latestOnly ? weeks.slice(0, 1) : weeks).map((week) => {
         const index = standings.weeks.findIndex((w) => w.id === week.id);
         const mine = me?.weekly[index];
         return (

@@ -13,7 +13,7 @@ test("a Playoff pick'em league waits for the Wild Card round, and a round set up
   await openNewLeague(page);
   await page.getByRole("radio", { name: "Playoff pick'em" }).click();
   await page.getByLabel("League name").fill("Bracket night");
-  await expect(page.getByRole("combobox", { name: "Format", exact: true })).toHaveValue("traditional");
+  await expect(page.getByRole("radio", { name: "Traditional", exact: true })).toBeChecked();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Bracket night", exact: true })).toBeVisible();
   // The season selector names the playoffs, and the tabs are weekly pick'em's.
@@ -67,7 +67,7 @@ test("a Survivor pool waits for its start week, and has no Results tab", async (
   await openNewLeague(page);
   await page.getByRole("radio", { name: "Survivor" }).click();
   await page.getByLabel("League name").fill("Last one in");
-  await expect(page.getByRole("combobox", { name: "Lives", exact: true })).toHaveValue("1");
+  await expect(page.getByRole("radio", { name: "1 life", exact: true })).toBeChecked();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Last one in", exact: true })).toBeVisible();
   const leagueUrl = page.url().replace(/\/league$/, "");

@@ -7,7 +7,14 @@ import { WeekSetupCard } from "./WeekSetup";
 
 export function WeeklyPicks({ league, year, header, reload, fresh }: LeagueTabProps) {
   return (
-    <PicksPanel key={`${league.id}:${year}`} league={league} header={header} reload={reload} fresh={fresh} />
+    <PicksPanel
+      key={`${league.id}:${year}`}
+      league={league}
+      year={year}
+      header={header}
+      reload={reload}
+      fresh={fresh}
+    />
   );
 }
 

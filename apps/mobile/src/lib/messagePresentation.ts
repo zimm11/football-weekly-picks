@@ -102,3 +102,55 @@ export function threadArrival(
   if (firstUnread) return { at: "post", postId: firstUnread.id, reason: "unread" };
   return thread.posts.length > 1 ? { at: "end" } : { at: "top" };
 }
+
+/** How long after a message the same author's next one still reads as part of it. */
+export const GROUP_WINDOW_MS = 5 * 60_000;
+
+/** What `groupsWithPrevious` needs to know about a message as it is drawn. */
+export type GroupedPost = {
+  authorId: string;
+  createdAt: string;
+  position: number;
+  /** It stands in for the text (removed, hidden, blocked, a deleted player's): drawn as its own row. */
+  placeholder?: boolean;
+};
+
+/**
+ * Whether a reply follows straight on from the message above it, so it drops its avatar and name and sits
+ * close under it: the same author, under five minutes later, both drawn with their text, and no "New" line
+ * between them (`separated`). The first message is the thread's topic, in its own card, so nothing joins it.
+ */
+export function groupsWithPrevious(
+  previous: GroupedPost | undefined,
+  post: GroupedPost,
+  separated = false,
+): boolean {
+  if (!previous || separated || previous.position === 1) return false;
+  if (previous.placeholder || post.placeholder || previous.authorId !== post.authorId) return false;
+  const gap = new Date(post.createdAt).getTime() - new Date(previous.createdAt).getTime();
+  return gap >= 0 && gap < GROUP_WINDOW_MS;
+}
+
+/**
+ * A message's reactions after the reader turns one on or off (`active`), before the server answers: their own
+ * mark flips and the count moves by one; a reaction nobody has left goes, a new one joins at the end. Turning
+ * on one already theirs (or off one that isn't) changes nothing.
+ */
+export function toggledReactions<R extends { emoji: string; count: number; reacted: boolean }>(
+  reactions: readonly R[],
+  emoji: R["emoji"],
+  active: boolean,
+): R[] {
+  const current = reactions.find((reaction) => reaction.emoji === emoji);
+  if (!!current?.reacted === active) return [...reactions];
+  if (!current) return active ? [...reactions, { emoji, count: 1, reacted: true } as R] : [...reactions];
+  const count = current.count + (active ? 1 : -1);
+  return count > 0
+    ? reactions.map((reaction) => (reaction === current ? { ...reaction, count, reacted: active } : reaction))
+    : reactions.filter((reaction) => reaction !== current);
+}
+
+/** The keyboard shortcut that posts a reply (⌘↩ on a Mac, Ctrl+↩ elsewhere), from the browser's platform. */
+export function postShortcut(platform: string | undefined): string {
+  return /mac|iphone|ipad/i.test(platform ?? "") ? "⌘↩ to post" : "Ctrl+↩ to post";
+}

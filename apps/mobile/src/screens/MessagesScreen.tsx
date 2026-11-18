@@ -32,10 +32,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppLink } from "../components/AppLink";
 import { AutoGrowInput } from "../components/AutoGrowInput";
 import { Avatar } from "../components/Avatar";
-import { Icon } from "../components/Icon";
+import { FadeIn } from "../components/FadeIn";
+import { Icon, type IconName } from "../components/Icon";
 import {
   BoardRows,
   MessageBackLink,
@@ -47,14 +47,23 @@ import {
 import { ReportSheet, type ReportTarget, setBlocked, useTermsGate } from "../components/Moderation";
 import { type Anchor, Menu, MenuItem, Popover, useAnchor } from "../components/Popover";
 import { hoverFill, pressFade, pressState } from "../components/pressState";
-import { Badge, colors, fonts, Notice } from "../components/ui";
+import { SkeletonBlock } from "../components/SkeletonBlock";
+import { corner, elevation, layout, radius, space, tabular, type, widths } from "../components/theme";
+import { Badge, colors, fonts, Notice, Title } from "../components/ui";
 import { request, statusOf } from "../lib/api";
 import { now as clockNow } from "../lib/clock";
 import { showConfirm } from "../lib/dialogs";
 import { fieldDefaults } from "../lib/fieldProps";
 import { haptics } from "../lib/haptics";
 import { readLoadCache, writeLoadCache } from "../lib/loadCache";
-import { counted, type ThreadArrival, threadArrival } from "../lib/messagePresentation";
+import {
+  counted,
+  groupsWithPrevious,
+  postShortcut,
+  type ThreadArrival,
+  threadArrival,
+  toggledReactions,
+} from "../lib/messagePresentation";
 import {
   announceMessagesChanged,
   postingBlockedIn,
@@ -63,13 +72,15 @@ import {
   subscribeMessagesChanged,
 } from "../lib/messageUnread";
 import { postActions, postPlaceholder } from "../lib/moderation";
+import { webTransition } from "../lib/motion";
 import { notifyDone, notifyError } from "../lib/notify";
 import { usePageTitle } from "../lib/pageTitle";
 import { usePullRefresh } from "../lib/pullRefresh";
 import { useScrollRestore } from "../lib/scrollRestore";
 import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
-import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
+import { LeagueFrame } from "./LeagueChrome";
 import { useLeagueShell } from "./leagueContext";
+import { Action, EmptyState, Failure } from "./leagueUi";
 
 const errorOf = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong. Try again.";
@@ -87,40 +98,6 @@ const backToBoard = (leagueId: string) =>
 const APP_HEADER_HEIGHT = 57;
 /** Tabs move from the bottom bar to a row under the league's name from this width (`LeagueTabBar`). */
 const WIDE = 768;
-
-function Action({
-  label,
-  onPress,
-  disabled = false,
-  secondary = false,
-  destructive = false,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  secondary?: boolean;
-  destructive?: boolean;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={(state) => [
-        s.button,
-        secondary && s.secondary,
-        secondary && pressState(state).hovered && { backgroundColor: colors.raisedHover },
-        !secondary && pressFade(state),
-        disabled && s.disabled,
-        state.pressed && s.pressed,
-      ]}
-    >
-      <Text style={[s.buttonText, secondary && s.text, destructive && s.error]}>{label}</Text>
-    </Pressable>
-  );
-}
 
 /**
  * Poll only the screen the player is looking at, and only once it shows something: a board or thread that
@@ -159,33 +136,49 @@ function useKeyboardOffset() {
   return useSafeAreaInsets().top + APP_HEADER_HEIGHT;
 }
 
+/** The shape of the board (rows in a card) or a thread (a topic card, then replies) while it loads. */
 function LoadingMessages({ thread = false }: { thread?: boolean }) {
   return (
     <View
       accessibilityRole="progressbar"
       accessibilityLabel={thread ? "Loading thread" : "Loading messages"}
-      style={s.stack}
+      accessibilityState={{ busy: true }}
+      style={thread ? s.posts : s.loadingBoard}
     >
+      {thread && (
+        <View style={[s.topic, s.loadingPost]}>
+          <SkeletonBlock width={32} height={32} radius={radius.full} />
+          <View style={s.loadingLines}>
+            <SkeletonBlock width="35%" height={14} />
+            <SkeletonBlock width="90%" height={16} />
+            <SkeletonBlock width="70%" height={16} />
+          </View>
+        </View>
+      )}
       {[0, 1, 2].map((key) => (
-        <View key={key} style={s.card}>
-          <View style={[s.skeleton, { width: "65%" }]} />
-          <View style={[s.skeleton, { width: "90%" }]} />
-          {thread && <View style={[s.skeleton, { width: "80%" }]} />}
+        <View key={key} style={[thread ? s.reply : s.loadingRow, s.loadingPost]}>
+          <SkeletonBlock width={32} height={32} radius={radius.full} />
+          <View style={s.loadingLines}>
+            <SkeletonBlock width={thread ? "30%" : "60%"} height={14} />
+            <SkeletonBlock width={thread ? "75%" : "35%"} height={14} />
+          </View>
         </View>
       ))}
     </View>
   );
 }
 
-function Failure({ error, retry }: { error: string; retry: () => void }) {
-  return (
-    <View style={s.card}>
-      <Text accessibilityRole="alert" style={s.error}>
-        {error}
-      </Text>
-      <Action label="Try again" secondary onPress={retry} />
-    </View>
-  );
+/** The icon beside what stands in for a message's text. */
+function placeholderIcon(state: MessagePost["state"]): IconName {
+  if (state === "blocked") return "block";
+  if (state === "hidden") return "eye";
+  return "trash";
+}
+
+/** The browser's platform ("MacIntel", "Win32"), to name the right shortcut key. */
+function browserPlatform(): string | undefined {
+  const nav = (globalThis as { navigator?: { platform?: string; userAgent?: string } }).navigator;
+  return nav?.platform || nav?.userAgent;
 }
 
 /** Why the player can't post right now, where the form or reply box would be. */
@@ -262,20 +255,15 @@ function StandaloneMessages({ leagueId, threadId }: { leagueId: string; threadId
   // which would take a third of the screen before the first message.
   const compact = !wide && !isNew;
   const header = compact ? null : (
-    // The same spacing as the league's own tabs (`LeagueTabHeader`), so nothing moves between board and thread.
-    <View style={s.leagueHeader}>
-      <LeagueHeader leagueId={leagueId} leagueName={league.name} />
-      {wide && (
-        <LeagueTabBar
-          wide
-          leagueId={leagueId}
-          type={league.type}
-          active="messages"
-          unreadCount={shell.unreadCount}
-          reportsWaiting={league.openReports ?? 0}
-        />
-      )}
-    </View>
+    // The same frame as the league's own tabs, so nothing moves between board and thread.
+    <LeagueFrame
+      leagueId={leagueId}
+      leagueName={league.name}
+      type={league.type}
+      active="messages"
+      unreadCount={shell.unreadCount}
+      reportsWaiting={league.openReports ?? 0}
+    />
   );
   return (
     <View style={s.flex}>
@@ -383,41 +371,47 @@ function Board({ leagueId, header }: { leagueId: string; header?: ReactNode }) {
     >
       {header}
       <View style={s.boardHeading}>
-        <Text accessibilityRole="header" style={s.heading}>
-          Message board
-        </Text>
-        {!page?.postingBlocked && (
-          <AppLink href={threadPath(leagueId, "new")} style={(state) => [s.newThread, pressFade(state)]}>
-            <Icon name="plus" size={16} color={colors.primaryForeground} />
-            <Text style={s.buttonText}>New thread</Text>
-          </AppLink>
+        <Title>Message board</Title>
+        {/* While the board is empty, its empty state offers the one New thread. */}
+        {!!page && threads.length > 0 && !page.postingBlocked && (
+          <Action href={threadPath(leagueId, "new")} icon="plus" compact>
+            New thread
+          </Action>
         )}
       </View>
       {!!page?.postingBlocked && <PostingBlocked reason={page.postingBlocked} />}
-      {!!error && (
-        <Failure
-          error={error}
-          retry={() => {
-            void refresh();
-          }}
-        />
-      )}
+      <Failure
+        message={error}
+        retry={() => {
+          void refresh();
+        }}
+      />
       {!page && !error && <LoadingMessages />}
       {page && threads.length === 0 && (
-        <View style={s.card}>
-          <Text style={s.text}>No threads yet. Start the conversation.</Text>
-        </View>
+        <EmptyState
+          icon="chat"
+          title="No threads yet"
+          detail="Start one and everyone in the league hears about it."
+          action={
+            !page.postingBlocked && (
+              <Action href={threadPath(leagueId, "new")} icon="plus" compact style={{ alignSelf: "center" }}>
+                New thread
+              </Action>
+            )
+          }
+        />
       )}
       <BoardRows threads={threads} now={clockNow()} hrefOf={(id) => threadPath(leagueId, id)} />
       {cursor && (
         <Action
-          label={loadingOlder ? "Loading…" : "Load older threads"}
           secondary
-          disabled={loadingOlder}
+          busy={loadingOlder}
           onPress={() => {
             void loadOlder();
           }}
-        />
+        >
+          {loadingOlder ? "Loading…" : "Load older threads"}
+        </Action>
       )}
     </ScrollView>
   );
@@ -519,11 +513,11 @@ function NewThread({
         contentContainerStyle={s.screen}
       >
         {header}
-        <View style={s.card}>
+        <View style={s.column}>
           <MessageBackLink href={boardPath(leagueId)} onPress={() => backToBoard(leagueId)} />
-          <Text accessibilityRole="header" style={s.heading}>
-            New thread
-          </Text>
+          <Title>New thread</Title>
+        </View>
+        <View style={[s.card, s.column]}>
           {blocked ? (
             <PostingBlocked reason={blocked} />
           ) : (
@@ -564,12 +558,14 @@ function NewThread({
               />
               <Notice message={error} kind="alert" />
               <Action
-                label={busy ? "Posting…" : "Create thread"}
-                disabled={busy || !title.trim() || !body.trim()}
+                busy={busy}
+                disabled={!title.trim() || !body.trim()}
                 onPress={() => {
                   void submit();
                 }}
-              />
+              >
+                {busy ? "Posting…" : "Create thread"}
+              </Action>
             </>
           )}
         </View>
@@ -635,8 +631,9 @@ function Thread({
   const terms = useTermsGate();
   const announcement = useAnnouncement();
   const keyboardOffset = useKeyboardOffset();
-  // Under 480px the quote button is its icon alone, so it stays on the reactions' row.
-  const narrow = useWindowDimensions().width < 480;
+  const wide = useWindowDimensions().width >= WIDE;
+  // A keyboard is at hand on a wide screen in a browser: the reply box says how it posts.
+  const shortcutHint = wide && Platform.OS === "web";
   // A link to one message (`?post=<id>`, from a report or a quote opened in a new tab) lands on it.
   const linkedPost = useLocalSearchParams<{ post?: string }>().post;
   // Messages the reader chose to show: a blocked player's, or (for admins) one hidden for review.
@@ -666,13 +663,31 @@ function Thread({
   const postCount = useRef(0);
   const nearEnd = useRef(true);
   const followEnd = useRef(false);
+  // Each message's top within the messages' column, and the column's top in the scroll view (iPhone).
   const positions = useRef(new Map<string, number>());
+  const postsTop = useRef<number | undefined>(undefined);
+  /** Where a message starts in the scroll view, once both it and the column are laid out. */
+  const postTop = useCallback((postId: string) => {
+    const top = positions.current.get(postId);
+    return top === undefined || postsTop.current === undefined ? undefined : postsTop.current + top;
+  }, []);
   const postBodies = useRef(new Map<string, ComponentRef<typeof Text>>());
   const postCards = useRef(new Map<string, ComponentRef<typeof View>>());
   const unreadLine = useRef<ComponentRef<typeof View>>(null);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
   const mutating = useRef(false);
+  // Messages whose reaction change is on its way: one at a time per message, so two quick taps can't cross.
+  const reacting = useRef(new Set<string>());
+  const latestThread = useRef(thread);
+  latestThread.current = thread;
+  // The messages the thread opened with: any later one (a reply posted or arrived) fades in.
+  const firstPosts = useRef<ReadonlySet<string> | undefined>(undefined);
+  // Set once the thread has drawn: a reaction chip that appears after that fades in.
+  const drawn = useRef(false);
+  useEffect(() => {
+    if (thread) drawn.current = true;
+  }, [thread]);
   const loading = useRef(false);
   const sequence = useRef(0);
   const alive = useRef(true);
@@ -703,6 +718,7 @@ function Thread({
       const before = postCount.current;
       postCount.current = value.posts.length;
       if (!before) {
+        firstPosts.current ??= new Set(value.posts.map((post) => post.id));
         const where = threadArrival(value, linkedPost);
         landing.current = where;
         setArrival(where);
@@ -717,7 +733,7 @@ function Thread({
     [linkedPost],
   );
   const refresh = useCallback(async () => {
-    if (loading.current || mutating.current) return;
+    if (loading.current || mutating.current || reacting.current.size) return;
     loading.current = true;
     const attempt = ++sequence.current;
     try {
@@ -770,18 +786,21 @@ function Thread({
     });
     return () => subscription.remove();
   }, [focused, markRead]);
-  const scrollToPost = useCallback((postId: string, animated: boolean, lead = 12) => {
-    if (Platform.OS === "web") {
-      const card = postCards.current.get(postId) as unknown as HTMLElement | undefined;
-      if (!card?.scrollIntoView) return false;
-      card.scrollIntoView({ block: "start", behavior: animated ? "smooth" : "auto" });
+  const scrollToPost = useCallback(
+    (postId: string, animated: boolean, lead = 12) => {
+      if (Platform.OS === "web") {
+        const card = postCards.current.get(postId) as unknown as HTMLElement | undefined;
+        if (!card?.scrollIntoView) return false;
+        card.scrollIntoView({ block: "start", behavior: animated ? "smooth" : "auto" });
+        return true;
+      }
+      const top = postTop(postId);
+      if (top === undefined) return false;
+      scroll.current?.scrollTo({ y: Math.max(0, top - lead), animated });
       return true;
-    }
-    const top = positions.current.get(postId);
-    if (top === undefined) return false;
-    scroll.current?.scrollTo({ y: Math.max(0, top - lead), animated });
-    return true;
-  }, []);
+    },
+    [postTop],
+  );
   /** Puts the thread where it opens. Runs until it has (the messages may not be laid out yet). */
   const land = useCallback(() => {
     const where = landing.current;
@@ -812,14 +831,14 @@ function Thread({
       card?.focus?.({ preventScroll: true });
       return () => clearTimeout(timer);
     }
-    const top = positions.current.get(scrollToId);
+    const top = postTop(scrollToId);
     if (top !== undefined) {
       scroll.current?.scrollTo({ y: Math.max(0, top - 12), animated: true });
       const target = postBodies.current.get(scrollToId);
       if (target) AccessibilityInfo.sendAccessibilityEvent(target, "focus");
     }
     return () => clearTimeout(timer);
-  }, [scrollToId]);
+  }, [scrollToId, postTop]);
   function onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     nearEnd.current = contentSize.height - contentOffset.y - layoutMeasurement.height < 120;
@@ -880,24 +899,46 @@ function Thread({
     // Sending from the button or the keyboard leaves the player in the box, ready for the next reply.
     if (alive.current) input.current?.focus();
   }
+  /** Puts one message's reactions in place, leaving the rest of the thread as it is. */
+  const setReactions = (postId: string, reactions: MessageReaction[]) =>
+    setThread(
+      (previous) =>
+        previous && {
+          ...previous,
+          posts: previous.posts.map((value) => (value.id === postId ? { ...value, reactions } : value)),
+        },
+    );
+  /**
+   * Turns the reader's reaction on or off at once, then sends it: the server's answer replaces the guess, and
+   * a refusal puts the reactions back as they were and says why. One change per message is on its way at a time.
+   */
   async function toggleReaction(post: MessagePost, emoji: MessageEmoji) {
     setReactionPost(undefined);
-    const active = !post.reactions.find((reaction) => reaction.emoji === emoji)?.reacted;
+    if (reacting.current.has(post.id)) return;
     if (!(await terms.ensure())) return;
+    const before =
+      latestThread.current?.posts.find((value) => value.id === post.id)?.reactions ?? post.reactions;
+    if (reacting.current.has(post.id)) return;
+    const active = !before.find((reaction) => reaction.emoji === emoji)?.reacted;
     haptics.select();
-    void mutate(`reaction:${post.id}:${emoji}`, async () => {
+    reacting.current.add(post.id);
+    // A thread refresh already on its way read the thread before this change: drop its answer.
+    sequence.current++;
+    setReactions(post.id, toggledReactions(before, emoji, active));
+    try {
       const reactions = await request<MessageReaction[]>(`${path}/posts/${post.id}/reactions`, {
         method: "PUT",
         body: { emoji, active },
       });
-      setThread(
-        (previous) =>
-          previous && {
-            ...previous,
-            posts: previous.posts.map((value) => (value.id === post.id ? { ...value, reactions } : value)),
-          },
-      );
-    });
+      if (alive.current) setReactions(post.id, reactions);
+    } catch (err) {
+      if (alive.current) {
+        setReactions(post.id, before);
+        notifyError(errorOf(err));
+      }
+    } finally {
+      reacting.current.delete(post.id);
+    }
   }
   function pin() {
     options.close();
@@ -1065,33 +1106,31 @@ function Thread({
           {!compact && backLink}
           {!thread && !loadError && <LoadingMessages thread />}
           {missing ? (
-            <View style={s.card}>
+            <View style={[s.card, s.column]}>
               <Text accessibilityRole="alert" style={s.text}>
                 Thread not found. It may have been deleted.
               </Text>
-              <AppLink
+              <Action
+                secondary
+                compact
                 href={boardPath(leagueId)}
-                accessibilityLabel="See all threads"
+                label="See all threads"
                 onPress={() => backToBoard(leagueId)}
-                style={(state) => [
-                  s.button,
-                  s.secondary,
-                  pressState(state).hovered && { backgroundColor: colors.raisedHover },
-                  state.pressed && s.pressed,
-                ]}
               >
-                <Text style={[s.buttonText, s.text]}>See all threads</Text>
-              </AppLink>
+                See all threads
+              </Action>
             </View>
           ) : (
             !!loadError &&
             !thread && (
-              <Failure
-                error={loadError}
-                retry={() => {
-                  void refresh();
-                }}
-              />
+              <View style={s.column}>
+                <Failure
+                  message={loadError}
+                  retry={() => {
+                    void refresh();
+                  }}
+                />
+              </View>
             )
           )}
           {thread && (
@@ -1099,320 +1138,415 @@ function Thread({
               {compact ? (
                 thread.pinned && <PinnedBadge />
               ) : (
-                <View style={[s.row, { alignItems: "flex-start" }]}>
+                <View style={[s.row, s.column, { alignItems: "flex-start" }]}>
                   <View style={[s.flex, s.stack]}>
                     {thread.pinned && <PinnedBadge />}
-                    <Text accessibilityRole="header" style={s.heading}>
-                      {thread.title}
-                    </Text>
+                    <Title size="heading">{thread.title}</Title>
                   </View>
                   {optionsButton}
                 </View>
               )}
               {!!readError && (
-                <View style={s.card}>
+                <View style={[s.card, s.column]}>
                   <Text accessibilityRole="alert" style={s.error}>
                     Could not mark this thread read: {readError}
                   </Text>
                   <Action
                     secondary
-                    label="Try marking read again"
+                    compact
                     onPress={() => {
                       void markRead();
                     }}
-                  />
+                  >
+                    Try marking read again
+                  </Action>
                 </View>
               )}
-              {thread.posts.map((post) => {
-                const placeholder = postPlaceholder(post.state, revealed.has(post.id), thread.canModerate);
-                // Removed and hidden messages take no reactions or quotes; a blocked player's do once shown.
-                const interactive = !placeholder && post.state !== "removed" && post.state !== "hidden";
-                const actions = postActions(post, {
-                  canModerate: thread.canModerate,
-                  blockedAuthor: post.state === "blocked",
-                });
-                return (
-                  <Fragment key={post.id}>
-                    {post.id === unreadPostId && (
-                      <View ref={unreadLine} role="separator" aria-label="New replies" style={s.newLine}>
-                        <View style={s.newRule} />
-                        <Text style={s.newLabel}>New</Text>
-                        <View style={s.newRule} />
-                      </View>
-                    )}
-                    <View
-                      style={[s.card, scrollToId === post.id && s.highlight]}
+              <View
+                style={s.posts}
+                onLayout={(event) => {
+                  postsTop.current = event.nativeEvent.layout.y;
+                  if (landing.current) land();
+                }}
+              >
+                {thread.posts.map((post, index) => {
+                  const placeholder = postPlaceholder(post.state, revealed.has(post.id), thread.canModerate);
+                  // Removed and hidden messages take no reactions or quotes; a blocked player's do once shown.
+                  const interactive = !placeholder && post.state !== "removed" && post.state !== "hidden";
+                  const actions = postActions(post, {
+                    canModerate: thread.canModerate,
+                    blockedAuthor: post.state === "blocked",
+                  });
+                  const previous = index > 0 ? thread.posts[index - 1] : undefined;
+                  const topic = post.position === 1;
+                  const grouped =
+                    !!previous &&
+                    groupsWithPrevious(
+                      {
+                        ...previous,
+                        placeholder: !!postPlaceholder(
+                          previous.state,
+                          revealed.has(previous.id),
+                          thread.canModerate,
+                        ),
+                      },
+                      { ...post, placeholder: !!placeholder },
+                      post.id === unreadPostId,
+                    );
+                  const bodyRef = (node: ComponentRef<typeof Text> | null) => {
+                    if (node) postBodies.current.set(post.id, node);
+                    else postBodies.current.delete(post.id);
+                  };
+                  // The ⋯ at the row's end: on a placeholder's line, else at the end of the message's controls.
+                  const menuButton = actions.length > 0 && (
+                    <Pressable
                       ref={(node) => {
-                        if (node) postCards.current.set(post.id, node);
-                        else postCards.current.delete(post.id);
+                        if (node) postMenuButtons.current.set(post.id, node);
+                        else postMenuButtons.current.delete(post.id);
                       }}
-                      onLayout={(event) => {
-                        positions.current.set(post.id, event.nativeEvent.layout.y);
-                        // On iPhone the place to land is known only once the message is laid out.
-                        if (landing.current) land();
-                      }}
-                      role="region"
-                      aria-label={`Message ${post.position} by ${post.authorName}`}
-                      // Focusable on the web, so "View original" can move focus to it.
-                      tabIndex={Platform.OS === "web" ? -1 : undefined}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Options for message ${post.position} by ${post.authorName}`}
+                      disabled={!!busy}
+                      style={(state) => [
+                        s.iconButton,
+                        s.postMenuButton,
+                        { backgroundColor: hoverFill(state) },
+                      ]}
+                      onPress={() =>
+                        postMenuButtons.current
+                          .get(post.id)
+                          ?.measureInWindow((x, y, width, height) =>
+                            setPostMenu({ postId: post.id, anchor: { x, y, width, height } }),
+                          )
+                      }
                     >
-                      <View style={s.postHeader}>
-                        <Avatar avatarId={post.avatarId} name={post.authorName} />
-                        {/* The name gives way first (it shortens), then the time drops under it. */}
-                        <View style={s.byline}>
-                          <Text numberOfLines={1} style={s.author}>
-                            {post.authorName}
-                          </Text>
-                          <MessageTimestamp value={post.createdAt} now={clockNow()} />
+                      <Icon name="more" size={20} color={colors.mutedForeground} />
+                    </Pressable>
+                  );
+                  return (
+                    <Fragment key={post.id}>
+                      {post.id === unreadPostId && (
+                        <View ref={unreadLine} role="separator" aria-label="New replies" style={s.newLine}>
+                          <View style={s.newRule} />
+                          <Text style={s.newLabel}>New</Text>
+                          <View style={s.newRule} />
                         </View>
-                        {actions.length > 0 && (
-                          <Pressable
-                            ref={(node) => {
-                              if (node) postMenuButtons.current.set(post.id, node);
-                              else postMenuButtons.current.delete(post.id);
-                            }}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Options for message ${post.position} by ${post.authorName}`}
-                            disabled={!!busy}
-                            style={(state) => [
-                              s.iconButton,
-                              s.postMenuButton,
-                              { backgroundColor: hoverFill(state) },
-                            ]}
-                            onPress={() =>
-                              postMenuButtons.current
-                                .get(post.id)
-                                ?.measureInWindow((x, y, width, height) =>
-                                  setPostMenu({ postId: post.id, anchor: { x, y, width, height } }),
-                                )
-                            }
-                          >
-                            <Icon name="more" size={20} color={colors.mutedForeground} />
-                          </Pressable>
-                        )}
+                      )}
+                      <View
+                        style={[
+                          topic ? s.topic : grouped ? s.grouped : s.reply,
+                          scrollToId === post.id && s.highlight,
+                        ]}
+                        ref={(node) => {
+                          if (node) postCards.current.set(post.id, node);
+                          else postCards.current.delete(post.id);
+                        }}
+                        onLayout={(event) => {
+                          positions.current.set(post.id, event.nativeEvent.layout.y);
+                          // On iPhone the place to land is known only once the message is laid out.
+                          if (landing.current) land();
+                        }}
+                        role="region"
+                        aria-label={`Message ${post.position} by ${post.authorName}`}
+                        // Focusable on the web, so "View original" can move focus to it.
+                        tabIndex={Platform.OS === "web" ? -1 : undefined}
+                      >
+                        <FadeIn
+                          from={4}
+                          enabled={!!firstPosts.current && !firstPosts.current.has(post.id)}
+                          style={placeholder ? s.placeholderRow : s.postRow}
+                        >
+                          {placeholder ? (
+                            <>
+                              <View style={s.gutter}>
+                                <Icon
+                                  name={placeholderIcon(post.state)}
+                                  size={16}
+                                  color={colors.mutedForeground}
+                                />
+                              </View>
+                              <Text ref={bodyRef} style={[s.placeholderText, s.flex]}>
+                                {post.state === "removed" || post.state === "hidden"
+                                  ? `${post.authorName} · ${placeholder.text}`
+                                  : placeholder.text}
+                              </Text>
+                              {placeholder.canShow && (
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Show message ${post.position} by ${post.authorName}`}
+                                  style={(state) => [s.showButton, { backgroundColor: hoverFill(state) }]}
+                                  onPress={() => setRevealed((previous) => new Set(previous).add(post.id))}
+                                >
+                                  <Text style={s.showText}>Show</Text>
+                                </Pressable>
+                              )}
+                              {menuButton}
+                            </>
+                          ) : (
+                            <>
+                              <View style={s.gutter}>
+                                {!grouped && <Avatar avatarId={post.avatarId} name={post.authorName} />}
+                              </View>
+                              <View style={s.postMain}>
+                                {!grouped && (
+                                  // The name gives way first (it shortens), then the time drops under it.
+                                  <View style={s.byline}>
+                                    {/* A long name shortens; "(you)" stays whole beside it. */}
+                                    <View style={s.name}>
+                                      <Text numberOfLines={1} style={s.author}>
+                                        {post.authorName}
+                                      </Text>
+                                      {post.mine && <Text style={s.you}>(you)</Text>}
+                                    </View>
+                                    <MessageTimestamp value={post.createdAt} now={clockNow()} />
+                                  </View>
+                                )}
+                                {post.state === "review" && <Badge>Under review</Badge>}
+                                {post.quote && (
+                                  <QuotedMessage
+                                    quote={post.quote}
+                                    href={`${path}?post=${encodeURIComponent(post.quote.id)}`}
+                                    onOriginal={() => {
+                                      setScrollToId(undefined);
+                                      requestAnimationFrame(() => setScrollToId(post.quote?.id));
+                                    }}
+                                  />
+                                )}
+                                <MessageBody
+                                  ref={bodyRef}
+                                  accessibilityLabel={`Message ${post.position} by ${post.authorName}: ${post.body}`}
+                                  style={s.text}
+                                  body={post.body}
+                                />
+                                {(interactive || !!menuButton) && (
+                                  // One cluster of controls at the text's edge, the ⋯ at the row's end.
+                                  <View style={s.postActions}>
+                                    {interactive && (
+                                      <View role="group" aria-label="Message reactions" style={s.reactions}>
+                                        {MESSAGE_REACTIONS.flatMap(({ emoji }) => {
+                                          const reaction = post.reactions.find(
+                                            (value) => value.emoji === emoji,
+                                          );
+                                          return reaction && reaction.count > 0 ? [reaction] : [];
+                                        }).map((reaction) => (
+                                          <FadeIn key={reaction.emoji} enabled={drawn.current}>
+                                            <Pressable
+                                              disabled={!!thread.postingBlocked}
+                                              accessibilityRole="button"
+                                              accessibilityLabel={`${MESSAGE_REACTIONS.find((value) => value.emoji === reaction.emoji)?.label ?? reaction.emoji}, ${counted(reaction.count, "reaction")}`}
+                                              // A toggle: pressed while it is your reaction.
+                                              aria-pressed={reaction.reacted}
+                                              accessibilityState={{ disabled: !!thread.postingBlocked }}
+                                              onPress={() => void toggleReaction(post, reaction.emoji)}
+                                              style={s.reactionTarget}
+                                            >
+                                              {(state) => (
+                                                <View
+                                                  style={[
+                                                    s.reactionPill,
+                                                    reaction.reacted && s.selected,
+                                                    !reaction.reacted &&
+                                                      pressState(state).hovered && {
+                                                        backgroundColor: colors.raisedHover,
+                                                      },
+                                                    webTransition(["background-color"]),
+                                                  ]}
+                                                >
+                                                  <Text style={s.reactionEmoji}>{reaction.emoji}</Text>
+                                                  <Text
+                                                    style={[
+                                                      s.reactionCount,
+                                                      reaction.reacted && s.reactedCount,
+                                                    ]}
+                                                  >
+                                                    {reaction.count}
+                                                  </Text>
+                                                </View>
+                                              )}
+                                            </Pressable>
+                                          </FadeIn>
+                                        ))}
+                                        {!thread.postingBlocked && (
+                                          <Pressable
+                                            ref={(node) => {
+                                              if (node) addReactionButtons.current.set(post.id, node);
+                                              else addReactionButtons.current.delete(post.id);
+                                            }}
+                                            accessibilityRole="button"
+                                            accessibilityLabel="Add reaction"
+                                            style={[
+                                              s.reactionTarget,
+                                              // Alone, its icon lines up with the text above.
+                                              !post.reactions.some((value) => value.count > 0) && s.addAlone,
+                                            ]}
+                                            onPress={() =>
+                                              addReactionButtons.current
+                                                .get(post.id)
+                                                ?.measureInWindow((x, y, width, height) => {
+                                                  setReactionAnchor({ x, y, width, height });
+                                                  setReactionPost(post.id);
+                                                })
+                                            }
+                                          >
+                                            {(state) => (
+                                              <View
+                                                style={[
+                                                  s.addReaction,
+                                                  { backgroundColor: hoverFill(state) },
+                                                  webTransition(["background-color"]),
+                                                ]}
+                                              >
+                                                <Icon name="smile" size={18} color={colors.mutedForeground} />
+                                                <Icon name="plus" size={10} color={colors.mutedForeground} />
+                                              </View>
+                                            )}
+                                          </Pressable>
+                                        )}
+                                      </View>
+                                    )}
+                                    {interactive && !thread.postingBlocked && (
+                                      <Pressable
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Quote message ${post.position} by ${post.authorName}`}
+                                        disabled={!!busy}
+                                        style={[s.reactionTarget, s.quoteTarget]}
+                                        onPress={() => {
+                                          setQuote({
+                                            id: post.id,
+                                            authorName: post.authorName,
+                                            body: post.body,
+                                          });
+                                          input.current?.focus();
+                                        }}
+                                      >
+                                        {(state) => (
+                                          <View
+                                            style={[
+                                              s.quoteReply,
+                                              { backgroundColor: hoverFill(state) },
+                                              webTransition(["background-color"]),
+                                            ]}
+                                          >
+                                            <Icon
+                                              name="quote"
+                                              size={18}
+                                              color={colors.mutedForeground}
+                                              filled
+                                            />
+                                          </View>
+                                        )}
+                                      </Pressable>
+                                    )}
+                                    {menuButton && <View style={s.menuEnd}>{menuButton}</View>}
+                                  </View>
+                                )}
+                              </View>
+                            </>
+                          )}
+                        </FadeIn>
                       </View>
-                      {post.state === "review" && <Badge>Under review</Badge>}
-                      {placeholder ? (
-                        <View style={s.placeholder}>
-                          <Text
-                            ref={(node) => {
-                              if (node) postBodies.current.set(post.id, node);
-                              else postBodies.current.delete(post.id);
-                            }}
-                            style={s.placeholderText}
-                          >
-                            {placeholder.text}
-                          </Text>
-                          {placeholder.canShow && (
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`Show message ${post.position} by ${post.authorName}`}
-                              style={(state) => [s.quoteReply, { backgroundColor: hoverFill(state) }]}
-                              onPress={() => setRevealed((previous) => new Set(previous).add(post.id))}
-                            >
-                              <Icon name="eye" size={16} color={colors.mutedForeground} />
-                              <Text style={s.quoteReplyText}>Show</Text>
-                            </Pressable>
-                          )}
-                        </View>
-                      ) : (
-                        <>
-                          {post.quote && (
-                            <QuotedMessage
-                              quote={post.quote}
-                              href={`${path}?post=${encodeURIComponent(post.quote.id)}`}
-                              onOriginal={() => {
-                                setScrollToId(undefined);
-                                requestAnimationFrame(() => setScrollToId(post.quote?.id));
-                              }}
-                            />
-                          )}
-                          <MessageBody
-                            ref={(node) => {
-                              if (node) postBodies.current.set(post.id, node);
-                              else postBodies.current.delete(post.id);
-                            }}
-                            accessibilityLabel={`Message ${post.position} by ${post.authorName}: ${post.body}`}
-                            style={s.text}
-                            body={post.body}
-                          />
-                        </>
-                      )}
-                      {interactive && (
-                        <View style={s.postActions}>
-                          <View role="group" aria-label="Message reactions" style={s.reactions}>
-                            {MESSAGE_REACTIONS.flatMap(({ emoji }) => {
-                              const reaction = post.reactions.find((value) => value.emoji === emoji);
-                              return reaction && reaction.count > 0 ? [reaction] : [];
-                            }).map((reaction) => (
-                              <Pressable
-                                key={reaction.emoji}
-                                disabled={!!busy || !!thread.postingBlocked}
-                                accessibilityRole="button"
-                                accessibilityLabel={`${MESSAGE_REACTIONS.find((value) => value.emoji === reaction.emoji)?.label ?? reaction.emoji}, ${counted(reaction.count, "reaction")}`}
-                                // A toggle: pressed while it is your reaction.
-                                aria-pressed={reaction.reacted}
-                                accessibilityState={{ disabled: !!busy || !!thread.postingBlocked }}
-                                onPress={() => void toggleReaction(post, reaction.emoji)}
-                                style={s.reactionTarget}
-                              >
-                                {(state) => (
-                                  <View
-                                    style={[
-                                      s.reactionPill,
-                                      reaction.reacted && s.selected,
-                                      !reaction.reacted &&
-                                        pressState(state).hovered && { backgroundColor: colors.raisedHover },
-                                    ]}
-                                  >
-                                    <Text style={s.reactionEmoji}>{reaction.emoji}</Text>
-                                    <Text style={[s.reactionCount, reaction.reacted && s.text]}>
-                                      {busy === `reaction:${post.id}:${reaction.emoji}`
-                                        ? "Saving…"
-                                        : reaction.count}
-                                    </Text>
-                                  </View>
-                                )}
-                              </Pressable>
-                            ))}
-                            {!thread.postingBlocked && (
-                              <Pressable
-                                ref={(node) => {
-                                  if (node) addReactionButtons.current.set(post.id, node);
-                                  else addReactionButtons.current.delete(post.id);
-                                }}
-                                accessibilityRole="button"
-                                accessibilityLabel="Add reaction"
-                                disabled={!!busy}
-                                style={s.reactionTarget}
-                                onPress={() =>
-                                  addReactionButtons.current
-                                    .get(post.id)
-                                    ?.measureInWindow((x, y, width, height) => {
-                                      setReactionAnchor({ x, y, width, height });
-                                      setReactionPost(post.id);
-                                    })
-                                }
-                              >
-                                {(state) => (
-                                  <View
-                                    style={[
-                                      s.reactionPill,
-                                      pressState(state).hovered && { backgroundColor: colors.raisedHover },
-                                    ]}
-                                  >
-                                    <Icon name="smile" size={20} color={colors.mutedForeground} />
-                                    <Icon name="plus" size={12} color={colors.mutedForeground} />
-                                  </View>
-                                )}
-                              </Pressable>
-                            )}
-                          </View>
-                          {!thread.postingBlocked && (
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`Quote message ${post.position} by ${post.authorName}`}
-                              disabled={!!busy}
-                              style={(state) => [
-                                s.quoteReply,
-                                narrow && s.quoteReplyIcon,
-                                { backgroundColor: hoverFill(state) },
-                              ]}
-                              onPress={() => {
-                                setQuote({ id: post.id, authorName: post.authorName, body: post.body });
-                                input.current?.focus();
-                              }}
-                            >
-                              <Icon name="quote" size={narrow ? 20 : 16} color={colors.mutedForeground} />
-                              {!narrow && <Text style={s.quoteReplyText}>Quote reply</Text>}
-                            </Pressable>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  </Fragment>
-                );
-              })}
+                    </Fragment>
+                  );
+                })}
+              </View>
             </>
           )}
         </ScrollView>
         {newBelow && (
           <View pointerEvents="box-none" style={s.newBelow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="New replies"
-              style={(state) => [s.newBelowPill, pressFade(state)]}
-              onPress={() => {
-                scrollToPost(newBelow, true);
-                setNewBelow(undefined);
-              }}
-            >
-              <Text style={s.buttonText}>New replies</Text>
-              <Icon name="chevron-down" size={16} color={colors.primaryForeground} />
-            </Pressable>
+            <FadeIn from={8}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="New replies"
+                style={(state) => [s.newBelowPill, pressFade(state)]}
+                onPress={() => {
+                  scrollToPost(newBelow, true);
+                  setNewBelow(undefined);
+                }}
+              >
+                <Text style={s.newBelowText}>New replies</Text>
+                <Icon name="chevron-down" size={16} color={colors.primaryForeground} />
+              </Pressable>
+            </FadeIn>
           </View>
         )}
       </View>
-      {thread && !deleted && thread.postingBlocked && (
-        <View style={s.composer}>
-          <PostingBlocked reason={thread.postingBlocked} />
-        </View>
-      )}
-      {thread && !deleted && !thread.postingBlocked && (
-        <View style={s.composer}>
-          {quote && (
-            <View role="region" aria-label="Reply quote preview" style={s.quotePreview}>
-              <Icon name="quote" size={16} color={colors.primary} />
-              <Text style={[s.meta, s.flex]} numberOfLines={1}>
-                <Text style={s.author}>{quote.authorName} wrote: </Text>
-                {quote.body}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Remove quote"
-                disabled={!!busy}
-                style={(state) => [s.iconButton, { backgroundColor: hoverFill(state) }]}
-                onPress={() => {
-                  setQuote(undefined);
-                  // The button is gone with the quote: put the player back in their reply.
-                  input.current?.focus();
-                }}
-              >
-                <Icon name="close" size={18} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
-          )}
-          <View style={s.replyRow}>
-            <AutoGrowInput
-              ref={input}
-              accessibilityLabel="Reply"
-              placeholder="Write a reply…"
-              placeholderTextColor={colors.mutedForeground}
-              selectionColor={colors.primary}
-              style={[s.input, s.replyInput]}
-              focusedStyle={s.inputFocused}
-              minHeight={44}
-              maxHeight={160}
-              maxLength={MESSAGE_BODY_MAX}
-              value={body}
-              onChangeText={setBody}
-              onSubmit={() => void submitReply()}
-            />
-            <View {...keepsFocus}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={busy === "reply" ? "Posting…" : "Post reply"}
-                accessibilityState={{ disabled: !!busy || !body.trim() }}
-                disabled={!!busy || !body.trim()}
-                style={(state) => [s.sendButton, pressFade(state), (!!busy || !body.trim()) && s.disabled]}
-                onPress={() => void submitReply()}
-              >
-                <Icon name="send" size={20} color={colors.primaryForeground} filled />
-              </Pressable>
-            </View>
+      {thread && !deleted && (
+        // The bar runs the window's width; what is in it lines up with the thread's column.
+        <View style={s.composerBar}>
+          <View style={s.composer}>
+            {thread.postingBlocked ? (
+              <PostingBlocked reason={thread.postingBlocked} />
+            ) : (
+              <>
+                {quote && (
+                  <View role="region" aria-label="Reply quote preview" style={s.quotePreview}>
+                    <Icon name="quote" size={16} color={colors.primaryText} />
+                    <Text style={[s.meta, s.flex]} numberOfLines={1}>
+                      <Text style={s.author}>{quote.authorName} wrote: </Text>
+                      {quote.body}
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove quote"
+                      disabled={!!busy}
+                      style={(state) => [s.iconButton, { backgroundColor: hoverFill(state) }]}
+                      onPress={() => {
+                        setQuote(undefined);
+                        // The button is gone with the quote: put the player back in their reply.
+                        input.current?.focus();
+                      }}
+                    >
+                      <Icon name="close" size={18} color={colors.mutedForeground} />
+                    </Pressable>
+                  </View>
+                )}
+                <View style={s.replyRow}>
+                  <View style={s.replyField}>
+                    <AutoGrowInput
+                      ref={input}
+                      accessibilityLabel="Reply"
+                      placeholder="Write a reply…"
+                      placeholderTextColor={colors.mutedForeground}
+                      selectionColor={colors.primary}
+                      style={[s.input, s.replyInput, shortcutHint && s.replyInputHinted]}
+                      focusedStyle={s.inputFocused}
+                      minHeight={44}
+                      maxHeight={160}
+                      maxLength={MESSAGE_BODY_MAX}
+                      value={body}
+                      onChangeText={setBody}
+                      onSubmit={() => void submitReply()}
+                    />
+                    {/* Inside the box, in space it always keeps, so nothing moves when it appears. */}
+                    {shortcutHint && !!body.trim() && (
+                      <Text pointerEvents="none" aria-hidden style={s.hint}>
+                        {postShortcut(browserPlatform())}
+                      </Text>
+                    )}
+                  </View>
+                  <View {...keepsFocus}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={busy === "reply" ? "Posting…" : "Post reply"}
+                      accessibilityState={{ disabled: !!busy || !body.trim() }}
+                      disabled={!!busy || !body.trim()}
+                      style={(state) => [
+                        s.sendButton,
+                        pressFade(state),
+                        (!!busy || !body.trim()) && s.disabled,
+                      ]}
+                      onPress={() => void submitReply()}
+                    >
+                      <Icon name="send" size={20} color={colors.primaryForeground} filled />
+                    </Pressable>
+                  </View>
+                </View>
+                <Notice message={error} kind="alert" />
+                {announcement.region}
+              </>
+            )}
           </View>
-          <Notice message={error} kind="alert" />
-          {announcement.region}
         </View>
       )}
       <Menu anchor={options.anchor} onClose={options.close} label="Thread options" align="end">
@@ -1567,209 +1701,267 @@ function Thread({
   );
 }
 
+/** A reply's row reaches 8px past the column on each side, so the landing highlight has room around it. */
+const ROW_INSET = space.md;
+/** The avatar's gutter beside every message (32px avatar, 10px to the text). */
+const GUTTER = 32;
+/** What the reply box keeps free at its right for "Ctrl+↩ to post". */
+const HINT_SPACE = 104;
+
 const s = StyleSheet.create({
   flex: { flex: 1 },
   screen: {
-    padding: 16,
-    paddingTop: 20,
-    paddingBottom: 28,
-    gap: 12,
+    paddingHorizontal: layout.pageX,
+    paddingTop: layout.pageTop,
+    paddingBottom: layout.pageBottom,
+    gap: space.lg,
     backgroundColor: colors.background,
     flexGrow: 1,
     width: "100%",
-    maxWidth: 896,
+    maxWidth: widths.page,
     alignSelf: "center",
   },
-  stack: { gap: 8 },
-  leagueHeader: { gap: 20 },
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  card: { padding: 16, borderRadius: 16, backgroundColor: colors.card, gap: 12 },
-  boardHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  newThread: {
-    minHeight: 44,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
+  // The thread and the New thread form read in a column, left-aligned with the page's title.
+  column: { width: "100%", maxWidth: widths.reading, gap: space.lg },
+  stack: { gap: space.md },
+  row: { flexDirection: "row", alignItems: "center", gap: space.md },
+  card: {
+    padding: layout.cardPad,
+    ...corner(radius.xl),
+    backgroundColor: colors.card,
+    gap: layout.cardGap,
+    boxShadow: elevation.cardEdge,
+  },
+  boardHeading: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    gap: space.lg,
   },
-  heading: {
-    textTransform: "uppercase",
-    fontFamily: fonts.display,
-    fontSize: 24,
-    lineHeight: 29,
-    color: colors.foreground,
-  },
-  threadTitle: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 22, color: colors.foreground },
+  threadTitle: { ...type.body, fontFamily: fonts.semibold, lineHeight: 22, color: colors.foreground },
   // A phone's thread bar: back, the title (three lines at most) and the thread's options, always in reach.
   threadBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: space.xs,
     minHeight: 52,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    paddingHorizontal: space.xs,
+    paddingVertical: space.xs,
     backgroundColor: colors.chrome,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  threadBarEnd: { width: 8 },
-  text: { fontFamily: fonts.body, color: colors.foreground, fontSize: 16, lineHeight: 23 },
+  threadBarEnd: { width: space.md },
+  text: { ...type.body, color: colors.foreground },
   author: {
+    ...type.small,
     fontFamily: fonts.semibold,
     color: colors.foreground,
-    fontSize: 14,
-    lineHeight: 20,
     flexShrink: 1,
     maxWidth: "100%",
   },
-  meta: { fontFamily: fonts.body, color: colors.mutedForeground, fontSize: 14, lineHeight: 20 },
-  label: { fontFamily: fonts.medium, color: colors.mutedForeground, fontSize: 14, lineHeight: 20 },
-  error: { fontFamily: fonts.body, color: colors.destructive, fontSize: 14, lineHeight: 20 },
+  you: { ...type.small, color: colors.mutedForeground, flexShrink: 0 },
+  meta: { ...type.small, color: colors.mutedForeground },
+  label: { ...type.small, fontFamily: fonts.medium, color: colors.mutedForeground },
+  error: { ...type.small, color: colors.destructive },
+  // At the reply box's bottom right, centered on its first line while it is one line tall.
+  hint: { ...type.caption, color: colors.mutedForeground, position: "absolute", right: 14, bottom: 14 },
   input: {
     minHeight: 44,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: radius.md,
+    paddingHorizontal: space.lg,
     paddingVertical: 10,
-    fontFamily: fonts.body,
-    fontSize: 16,
-    lineHeight: 23,
-    backgroundColor: `${colors.background}99`,
+    ...type.body,
+    backgroundColor: colors.field,
     borderColor: colors.input,
     borderWidth: 1,
     color: colors.foreground,
   },
   inputFocused: { borderColor: colors.primary },
-  replyInput: { borderRadius: 22, flex: 1, paddingHorizontal: 14 },
-  button: {
-    minHeight: 44,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  secondary: { backgroundColor: colors.raised },
-  buttonText: { fontFamily: fonts.semibold, color: colors.primaryForeground, fontSize: 14, lineHeight: 20 },
+  replyField: { flex: 1, minWidth: 0 },
+  replyInput: { borderRadius: radius.sheet, paddingHorizontal: 14 },
+  // Room kept for the shortcut hint, whether or not it shows, so the text never wraps under it.
+  replyInputHinted: { paddingRight: HINT_SPACE },
   iconButton: {
     minWidth: 44,
     minHeight: 44,
-    paddingHorizontal: 8,
+    paddingHorizontal: space.md,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 22,
+    borderRadius: radius.full,
   },
-  // One row whatever the width: the name shortens, the time drops under it, the ⋯ stays at the end.
-  postHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  // The thread: a topic card, then replies as rows on the page.
+  posts: { width: "100%", maxWidth: widths.reading },
+  topic: {
+    ...corner(radius.xl),
+    backgroundColor: colors.card,
+    boxShadow: elevation.cardEdge,
+    padding: layout.cardPad,
+    marginBottom: space.xs,
+  },
+  reply: {
+    marginTop: space.md,
+    marginHorizontal: -ROW_INSET,
+    paddingHorizontal: ROW_INSET,
+    paddingVertical: space.xs,
+    ...corner(radius.lg),
+  },
+  // A follow-up from the same author, a few minutes on: 4px under the one above.
+  grouped: {
+    marginTop: -space.xs,
+    marginHorizontal: -ROW_INSET,
+    paddingHorizontal: ROW_INSET,
+    paddingVertical: space.xs,
+    ...corner(radius.lg),
+  },
+  highlight: { backgroundColor: colors.raised },
+  postRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  gutter: { width: GUTTER, alignItems: "center" },
+  postMain: { flex: 1, minWidth: 0, gap: space.xs },
+  // One row whatever the width: the name shortens, the time drops under it.
   byline: {
-    flex: 1,
-    minWidth: 0,
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    columnGap: 10,
+    columnGap: space.md,
+    marginBottom: -space.xxs,
   },
-  postMenuButton: { flexShrink: 0, marginVertical: -8, marginRight: -8 },
+  // The ⋯ at the row's end, its dots near the column's edge.
+  postMenuButton: { flexShrink: 0, marginRight: -10 },
+  menuEnd: { marginLeft: "auto" },
+  addAlone: { marginLeft: -space.md },
   // Reactions wrap inside their own space; the quote button keeps its place at the end of the first row.
-  postActions: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginVertical: -6 },
-  reactions: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 4 },
+  // The buttons are 44px to touch and 28px to see, so the row takes 28px.
+  postActions: { flexDirection: "row", alignItems: "flex-start", gap: space.md, marginVertical: -space.md },
+  name: { flexDirection: "row", alignItems: "baseline", gap: space.xs, flexShrink: 1, minWidth: 0 },
+  reactions: {
+    flexShrink: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    columnGap: space.xs,
+  },
   reactionTarget: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   reactionPill: {
-    minHeight: 30,
-    borderRadius: 20,
+    height: 28,
+    borderRadius: radius.full,
     paddingHorizontal: 10,
-    paddingVertical: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: space.sm,
     backgroundColor: colors.secondary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
-  reactionEmoji: { fontSize: 16, lineHeight: 20 },
-  reactionCount: { fontFamily: fonts.medium, fontSize: 12, color: colors.mutedForeground },
-  selected: { borderColor: `${colors.primary}b3`, backgroundColor: `${colors.primary}33` },
-  quoteReply: {
-    marginLeft: "auto",
-    flexShrink: 0,
-    minHeight: 44,
+  selected: { backgroundColor: colors.primaryTintStrong },
+  reactionEmoji: { fontSize: 15, lineHeight: 18 },
+  reactionCount: { ...type.caption, ...tabular, fontFamily: fonts.semibold, color: colors.mutedForeground },
+  reactedCount: { color: colors.foreground },
+  addReaction: {
+    height: 28,
+    minWidth: 40,
+    borderRadius: radius.full,
+    paddingHorizontal: space.md,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 8,
-    borderRadius: 10,
+    justifyContent: "center",
+    gap: space.xxs,
   },
-  quoteReplyIcon: { width: 44, justifyContent: "center", paddingHorizontal: 0, borderRadius: 22 },
-  quoteReplyText: { fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground },
-  highlight: { backgroundColor: colors.raised },
-  newLine: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4, paddingTop: 8 },
+  quoteTarget: { flexShrink: 0 },
+  quoteReply: {
+    height: 28,
+    width: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+  },
+  // What stands in for a message's text: one quiet 44px line, no avatar or name.
+  placeholderRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
+  placeholderText: { ...type.small, color: colors.mutedForeground },
+  showText: { ...type.small, fontFamily: fonts.medium, color: colors.mutedForeground },
+  showButton: {
+    minHeight: 44,
+    paddingHorizontal: space.lg,
+    justifyContent: "center",
+    borderRadius: radius.md,
+  },
+  newLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: space.xs,
+    marginTop: space.lg,
+    marginBottom: space.xs,
+  },
   newRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.primary },
-  newLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16, color: colors.primary },
-  newBelow: { position: "absolute", left: 0, right: 0, bottom: 12, alignItems: "center" },
+  newLabel: { ...type.caption, fontFamily: fonts.semibold, color: colors.primaryText },
+  newBelow: { position: "absolute", left: 0, right: 0, bottom: space.lg, alignItems: "center" },
   newBelowPill: {
     minHeight: 44,
-    paddingHorizontal: 16,
-    borderRadius: 22,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.full,
     backgroundColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    boxShadow: "0 4px 16px #00000066",
+    gap: space.sm,
+    boxShadow: elevation.float,
   },
+  newBelowText: { ...type.small, fontFamily: fonts.semibold, color: colors.primaryForeground },
   // In the page for screen readers, out of sight for everyone else.
   announcement: { position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 },
-  placeholder: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  placeholderText: {
-    fontFamily: fonts.body,
-    fontStyle: "italic",
-    color: colors.mutedForeground,
-    fontSize: 16,
-    lineHeight: 23,
-  },
-  blockedNotice: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 },
-  composer: {
-    width: "100%",
-    maxWidth: 896,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
+  blockedNotice: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: 44 },
+  composerBar: {
     backgroundColor: colors.chrome,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    boxShadow: elevation.bar,
+  },
+  // Lined up with the thread's column above it.
+  composer: {
+    width: "100%",
+    maxWidth: widths.page,
+    alignSelf: "center",
+    paddingHorizontal: layout.pageX,
+    paddingVertical: space.lg,
+    gap: space.md,
   },
   quotePreview: {
+    maxWidth: widths.reading,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
+    gap: space.md,
+    ...corner(radius.lg),
     backgroundColor: colors.raised,
-    paddingLeft: 12,
-    paddingRight: 2,
+    paddingLeft: space.lg,
+    paddingRight: space.xxs,
   },
-  replyRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  replyRow: { flexDirection: "row", alignItems: "flex-end", gap: space.md, maxWidth: widths.reading },
   sendButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: radius.full,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   disabled: { opacity: 0.5 },
-  pressed: { opacity: 0.75 },
-  skeleton: { height: 18, borderRadius: 6, backgroundColor: colors.raised },
+  loadingBoard: { ...corner(radius.xl), backgroundColor: colors.card, overflow: "hidden" },
+  loadingRow: { paddingHorizontal: layout.cardPad, paddingVertical: 14, minHeight: 64 },
+  loadingPost: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  loadingLines: { flex: 1, gap: space.md, paddingTop: space.xxs },
   reactionPicker: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 2,
+    gap: space.xxs,
   },
-  reactionChoice: { width: 44, height: 44, borderRadius: 22, justifyContent: "center", alignItems: "center" },
-  choiceSelected: { backgroundColor: `${colors.primary}40` },
+  reactionChoice: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.full,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  choiceSelected: { backgroundColor: colors.primaryTintStrong },
   emoji: { fontSize: 24, lineHeight: 30 },
 });

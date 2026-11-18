@@ -52,7 +52,7 @@ export function DateTimeField({
           padding: "10px 12px",
           borderRadius: 10,
           border: `1px solid ${colors.input}`,
-          backgroundColor: `${colors.background}99`,
+          backgroundColor: colors.field,
           color: colors.foreground,
           colorScheme: "dark",
           fontFamily: fonts.body,

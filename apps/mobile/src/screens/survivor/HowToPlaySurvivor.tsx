@@ -1,7 +1,8 @@
 import { MAX_SURVIVOR_LIVES } from "@picks/shared";
-import { Text, View } from "react-native";
-import { Icon } from "../../components/Icon";
-import { Body, Card, colors, fonts, Title } from "../../components/ui";
+import { View } from "react-native";
+import { GuideHeading, GuideList } from "../../components/Guide";
+import { space } from "../../components/theme";
+import { Body } from "../../components/ui";
 
 const rules: [string, string][] = [
   [
@@ -37,36 +38,10 @@ const rules: [string, string][] = [
 /** How to play: the Survivor section. */
 export function HowToPlaySurvivor() {
   return (
-    <View style={{ gap: 20 }}>
-      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-        <Icon name="heart" size={28} color={colors.primary} />
-        <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
-          Survivor
-        </Title>
-      </View>
+    <View style={{ gap: space.xl }}>
+      <GuideHeading title="Survivor" icon="heart" />
       <Body muted>Pick one team to win each week, never the same team twice. Last player standing wins.</Body>
-      <Card>
-        {rules.map(([title, detail], index) => (
-          <View
-            key={title}
-            style={{
-              gap: 4,
-              paddingTop: index ? 16 : 0,
-              borderTopWidth: index ? 1 : 0,
-              borderTopColor: colors.border,
-            }}
-          >
-            <Text
-              accessibilityRole="header"
-              aria-level={3}
-              style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
-            >
-              {title}
-            </Text>
-            <Body muted>{detail}</Body>
-          </View>
-        ))}
-      </Card>
+      <GuideList items={rules} />
     </View>
   );
 }

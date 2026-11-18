@@ -199,6 +199,8 @@ export function recapSummary(view: SurvivorView, weekId: string, userId: string)
     wentOut,
     left: week.aliveAfter ?? view.players.filter((p) => p.alive).length,
     total: view.players.length,
+    /** The player's lives, for the pips, while they are still playing. */
+    lives: me?.alive && !view.over ? { left: me.livesLeft, of: view.settings?.lives ?? 1 } : null,
     winners: view.over ? view.winners.map(name) : [],
   };
 }
@@ -253,7 +255,7 @@ export function teamsUsed(view: SurvivorView, userId: string): { team: string; w
 }
 
 /** A week inside a sentence: "Week 11", "the Wild Card round", "the Super Bowl". */
-const weekInSentence = (number: number) =>
+export const weekInSentence = (number: number) =>
   !isPostseasonWeek(number)
     ? weekLabel(number)
     : number === LAST_WEEK
@@ -261,6 +263,160 @@ const weekInSentence = (number: number) =>
       : `the ${weekLabel(number)} round`;
 
 const capitalized = (text: string) => `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`;
+
+/** A day in the league's time zone, as "2026-11-22", for counting days between two moments. */
+const dayKey = (at: Date, timeZone: string) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(
+    at,
+  );
+
+/**
+ * When a game kicks off, inside a sentence, in the league's time zone: "today at 8:15 PM EST", "tomorrow at …",
+ * "Sunday at 1:00 PM EST" within the coming week, else "Sunday, Nov 29 at 1:00 PM EST".
+ */
+export function kickoffWhen(iso: string, timeZone: string, now: Date): string {
+  const at = new Date(iso);
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(at);
+  const days = Math.round(
+    (Date.parse(dayKey(at, timeZone)) - Date.parse(dayKey(now, timeZone))) / 86_400_000,
+  );
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" }).format(at);
+  const day =
+    days === 0
+      ? "today"
+      : days === 1
+        ? "tomorrow"
+        : days > 1 && days < 7
+          ? weekday
+          : `${weekday}, ${new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric" }).format(at)}`;
+  return `${day} at ${time}`;
+}
+
+/**
+ * The status card at the top of the Pick tab: whether the signed-in player has anything left to do this week.
+ * It always describes what is saved, never an unsaved choice (the save bar says that). Null when the player
+ * has no pick to make for another reason (out, watching, the pool over, no week being played): the pool's
+ * status card says why.
+ * - `needs`: still in, the week open, nothing saved, and a team left to pick.
+ * - `set`: a saved pick whose game hasn't kicked off. `locked`: it has, with no result yet.
+ * - `won` / `lost`: the saved pick's game has a result (a tie is `lost`), before the week is final.
+ * - `missed`: nothing saved and no team left to pick.
+ * Before the week is final it says only what is certain (see below).
+ */
+export type PickBanner = {
+  kind: "needs" | "set" | "locked" | "won" | "lost" | "missed";
+  title: string;
+  detail: string;
+};
+
+export function pickBanner(view: SurvivorView, userId: string, now: Date): PickBanner | null {
+  const week = currentWeek(view);
+  const me = view.players.find((p) => p.userId === userId);
+  // The week being played is always an open one: once it is final the pool's status card, worked out by the
+  // rules (`survivorStatus`), says how it went, and the banner has nothing to add.
+  if (!week || week.status === "final" || !view.current || !me?.alive || view.watching || view.over)
+    return null;
+  const when = (iso: string) => kickoffWhen(iso, view.timeZone, now);
+  const label = weekInSentence(week.number);
+  /*
+   * Nothing counts until the week is final, so the banner says only what is certain. A loss, tie or missed
+   * pick with a life to spare is a strike for sure: that player stays in, so the week can't be one that "would
+   * put out everyone still in" (the rule that cancels a week's strikes). On the last life it puts the player
+   * out, unless everyone still in goes out too.
+   */
+  const spare = me.livesLeft > 1;
+  const lifeAfter = `You'll have ${me.livesLeft - 1} ${me.livesLeft - 1 === 1 ? "life" : "lives"} left once the week is final.`;
+  const lastLife = "You're out when the week is final, unless everyone still in goes out too.";
+  const saved = view.current.myPick;
+  const game = saved && week.games.find((g) => g.id === saved.gameId);
+  if (saved && game) {
+    const team = saved.side === "home" ? game.homeTeam : game.awayTeam;
+    const other = saved.side === "home" ? game.awayTeam : game.homeTeam;
+    const name = teamName(team);
+    if (!survivorGameLocked(game, now)) {
+      return {
+        kind: "set",
+        title: `You're all set for ${label}`,
+        detail: `You picked the ${name}. You can change it until they kick off ${when(game.kickoff)}.`,
+      };
+    }
+    if (!hasResult(game)) {
+      return { kind: "locked", title: `Your pick is in: ${name}`, detail: "Their game is under way." };
+    }
+    const mine = (saved.side === "home" ? game.homeScore : game.awayScore) ?? 0;
+    const theirs = (saved.side === "home" ? game.awayScore : game.homeScore) ?? 0;
+    const score = `${name} ${mine}, ${teamName(other)} ${theirs}.`;
+    if (mine > theirs) {
+      // The pool goes on past this week only if someone else is sure to stay in too: a life to spare, or a
+      // pick of theirs already won. Otherwise this week could be the one that ends it, so no next week is named.
+      const othersStay = view.players.some(
+        (p) =>
+          p.alive &&
+          p.userId !== userId &&
+          (p.livesLeft > 1 ||
+            view.picks.some((k) => k.userId === p.userId && k.weekId === week.id && k.outcome === "won")),
+      );
+      const next = week.number < LAST_WEEK && othersStay ? ` to ${weekInSentence(week.number + 1)}` : "";
+      return { kind: "won", title: `${name} won: you're through${next}`, detail: `Final: ${score}` };
+    }
+    const result = mine === theirs ? "tied" : "lost";
+    return spare
+      ? { kind: "lost", title: `${name} ${result}: that's a strike`, detail: `${score} ${lifeAfter}` }
+      : { kind: "lost", title: `${name} ${result} on your last life`, detail: lastLife };
+  }
+  const used = new Set(view.current.usedWaived ? [] : view.current.used.map((u) => u.team));
+  const pickable = week.games
+    .filter((g) => !survivorGameLocked(g, now) && (!used.has(g.homeTeam) || !used.has(g.awayTeam)))
+    .sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff));
+  const next = pickable[0];
+  if (!next) {
+    return spare
+      ? {
+          kind: "missed",
+          title: `No pick for ${label}: that's a strike`,
+          detail: `No team is left for you to pick. ${lifeAfter}`,
+        }
+      : { kind: "missed", title: `No pick for ${label} on your last life`, detail: lastLife };
+  }
+  const first = !week.games.some((g) => survivorGameLocked(g, now));
+  return {
+    kind: "needs",
+    title: `Pick a team for ${label}`,
+    detail: `${first ? "First" : "Next"} kickoff ${when(next.kickoff)}.`,
+  };
+}
+
+/** "1 of 2 lives left", for the lives pips. */
+export const livesLeftLabel = (left: number, lives: number) =>
+  `${left} of ${lives} ${lives === 1 ? "life" : "lives"} left`;
+
+/**
+ * The Standings grid's columns for a card `width` wide: whole week columns always (`cell` wide, `visible` of
+ * them in view; the scroller snaps to them), with the slack given to the name column (up to 320) when the
+ * weeks don't fill the card, then to the cells (up to `maxCell`). `fixed` is the pinned Lives column's width.
+ */
+export function gridLayout(input: {
+  width: number;
+  weeks: number;
+  name: number;
+  fixed: number;
+  minCell?: number;
+  maxCell?: number;
+}): { name: number; cell: number; visible: number } {
+  const { width, weeks, fixed, minCell = 56, maxCell = minCell } = input;
+  const columns = Math.max(1, weeks);
+  const room = width - input.name - fixed;
+  const fit = Math.max(1, Math.floor(room / minCell));
+  if (columns > fit) return { name: input.name, cell: room / fit, visible: fit };
+  const name = Math.max(input.name, Math.min(320, width - fixed - columns * minCell));
+  const cell = Math.min(maxCell, Math.max(minCell, (width - fixed - name) / columns));
+  return { name, cell, visible: columns };
+}
 
 /**
  * What the Pick tab says while no week is being played: which week comes next and what opens it, so the wait

@@ -12,7 +12,10 @@ import { useIsFocused } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FadeIn } from "../components/FadeIn";
 import { NotFound } from "../components/NotFound";
+import { SkeletonBlock } from "../components/SkeletonBlock";
+import { layout, radius } from "../components/theme";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { now } from "../lib/clock";
@@ -23,7 +26,7 @@ import { usePageTitle } from "../lib/pageTitle";
 import { seasonChoiceLabel } from "../lib/seasonLabel";
 import { readSeason, rememberSeason } from "../lib/seasonSelection";
 import { confirmDiscard } from "../lib/unsaved";
-import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
+import { LeagueFrame, LeagueTabBar } from "./LeagueChrome";
 import { LeagueTabScroll } from "./LeagueTabScroll";
 import { LeagueTools } from "./LeagueTools";
 import {
@@ -73,6 +76,9 @@ export function LeagueShell({ leagueId, children }: { leagueId: string; children
     30_000,
   );
   const registryUnread = useUnreadThreads(leagueId);
+  // Whether this mount draws the placeholder first: then the league fades in over it. One drawn at once from
+  // the load cache doesn't fade.
+  const cold = useRef(league.data === undefined).current;
   const focused = useIsFocused();
   const { me } = useAuth();
   const { width } = useWindowDimensions();
@@ -193,7 +199,8 @@ export function LeagueShell({ leagueId, children }: { leagueId: string; children
         <Failure message={league.error} retry={league.reload} />
       </View>
     );
-  return <LeagueShellContext value={value}>{children}</LeagueShellContext>;
+  const shell = <LeagueShellContext value={value}>{children}</LeagueShellContext>;
+  return cold ? <FadeIn style={s.page}>{shell}</FadeIn> : shell;
 }
 
 /** What the tab navigator's `layout` is given: its state and its own navigation (`app/leagues/[id]/_layout.tsx`). */
@@ -299,12 +306,11 @@ export function LeagueBottomBar() {
 export function LeagueTabHeader({ tab }: { tab: LeagueTabId }) {
   const shell = useLeagueShell();
   const { detail, leagueId, year, years } = shell;
-  const { width } = useWindowDimensions();
   const screens = LEAGUE_TYPE_SCREENS[detail.type];
   const { newYear } = shell;
   return (
-    <View style={{ gap: 20 }}>
-      <LeagueHeader
+    <View style={{ gap: layout.pageGap }}>
+      <LeagueFrame
         leagueId={leagueId}
         leagueName={detail.name}
         season={tab !== "messages" && screens.seasonSelector ? year : undefined}
@@ -314,17 +320,11 @@ export function LeagueTabHeader({ tab }: { tab: LeagueTabId }) {
         ]}
         onSeason={shell.chooseYear}
         seasonWidth={detail.type === "playoff" ? 156 : undefined}
+        type={detail.type}
+        active={tab}
+        unreadCount={shell.unreadCount}
+        reportsWaiting={detail.openReports ?? 0}
       />
-      {width >= 768 && (
-        <LeagueTabBar
-          wide
-          leagueId={leagueId}
-          type={detail.type}
-          active={tab}
-          unreadCount={shell.unreadCount}
-          reportsWaiting={detail.openReports ?? 0}
-        />
-      )}
       <Failure message={shell.error} retry={shell.reload} />
       {shell.newSeason && tab !== "messages" && screens.seasonSelector && detail.role === "admin" && (
         <Card label="Start a new season">
@@ -410,31 +410,41 @@ export function LeagueTab({ path }: { path: string }) {
 
 /**
  * The league's frame while it loads for the first time (afterwards the load cache draws it at once): the header's
- * rows, the tab row or bottom bar, and blank cards, each where the real one will be, so nothing jumps when it arrives.
+ * rows, the tab row or bottom bar, and blank cards, each where the real one will be, so nothing jumps when it
+ * arrives. The blocks pulse gently (`SkeletonBlock`).
  */
 function LeagueSkeleton({ wide }: { wide: boolean }) {
   const insets = useSafeAreaInsets();
-  const block = { borderRadius: 6, backgroundColor: colors.raised } as const;
   return (
     <View accessible accessibilityLabel="Loading league" accessibilityState={{ busy: true }} style={s.page}>
-      <View style={[s.content, { flex: 1, gap: 20 }]}>
-        <View>
-          <View style={{ height: 44, justifyContent: "center" }}>
-            <View style={[block, { width: 84, height: 14 }]} />
+      <View style={[s.content, { flex: 1, gap: layout.pageGap }]}>
+        {/* As `LeagueFrame` draws it: the "All leagues" row, the league's name, then the tab row. */}
+        <View style={{ gap: layout.pageGap }}>
+          <View>
+            <View style={{ height: 44, justifyContent: "center" }}>
+              <SkeletonBlock width={84} height={14} />
+            </View>
+            <SkeletonBlock width={220} height={24} style={{ maxWidth: "70%", marginVertical: 2 }} />
           </View>
-          <View style={[block, { width: 220, maxWidth: "70%", height: 30, marginVertical: 1 }]} />
+          {wide && (
+            <View
+              style={{ height: 44, flexDirection: "row", alignItems: "center", gap: 28, paddingLeft: 16 }}
+            >
+              {[72, 84, 96, 96, 80].map((width, n) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: fixed placeholder shapes.
+                <SkeletonBlock key={n} width={width} height={16} />
+              ))}
+            </View>
+          )}
         </View>
-        {wide && (
-          <View style={{ height: 44, flexDirection: "row", alignItems: "center", gap: 28, paddingLeft: 16 }}>
-            {[72, 84, 96, 96, 80].map((width, n) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixed placeholder shapes.
-              <View key={n} style={[block, { width, height: 16 }]} />
-            ))}
-          </View>
-        )}
         {[64, 120, 120].map((height, n) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: fixed placeholder shapes.
-          <View key={n} style={[s.card, { height }]} />
+          <SkeletonBlock
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed placeholder shapes.
+            key={n}
+            height={height}
+            radius={radius.xl}
+            style={{ backgroundColor: colors.card }}
+          />
         ))}
       </View>
       {!wide && (

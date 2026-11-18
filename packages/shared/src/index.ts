@@ -244,12 +244,38 @@ export type Me = {
   moderation: ModerationStatus;
 };
 
+/**
+ * What is waiting for a player in one league on Your leagues, worked out from their own data only: it never says
+ * anything about another player's picks or squares. Times are ISO strings.
+ */
+export type LeagueTodo =
+  /**
+   * Weekly and playoff pick'em: the open week the Picks tab would show, and how many of its games the player can
+   * still pick and hasn't (not kicked off, no result, no pick). `locksAt` is the earliest of those kickoffs. Never
+   * for a player the guillotine has put out.
+   */
+  | { kind: "picks"; weekId: string; weekNumber: number; count: number; locksAt: string }
+  /**
+   * Survivor: the week being played is open, the player is still in and has no pick yet, and a team they may pick
+   * hasn't kicked off. `locksAt` is the earliest such kickoff.
+   */
+  | { kind: "survivor-pick"; weekId: string; weekNumber: number; locksAt: string }
+  /**
+   * Squares: boards still open for claims (not drawn, before kickoff) on which the player holds no square.
+   * `count` is how many; `boardId` and `locksAt` (its kickoff) are the one kicking off first.
+   */
+  | { kind: "squares"; boardId: string; count: number; locksAt: string };
+
 export type LeagueSummary = {
   id: string;
   name: string;
   role: Role;
   type: LeagueType;
   management: LeagueManagement;
+  /** What is waiting for this player, if anything. Their own data only. Absent when nothing is. */
+  todo?: LeagueTodo;
+  /** The league's message board has a thread this player hasn't read (the Messages tab's dot). */
+  unread?: boolean;
 };
 
 /** What creating a league did. `skipped`: members of the copied league who couldn't be added, and why. */
@@ -317,6 +343,10 @@ export type InvitePreview = {
   alreadyMember: boolean;
   /** The league has reached its player limit, so the invite can't be used right now. */
   full: boolean;
+  /** The kind of league it is. */
+  type?: LeagueType;
+  /** How many current members it has (the count the player limit is checked against). */
+  memberCount?: number;
 };
 
 export type Game = {

@@ -1,6 +1,6 @@
 import type { PressableStateCallbackType } from "react-native";
 import { expect, test } from "vitest";
-import { busyProps, hoverFill, pressFade, pressState } from "./pressState";
+import { busyProps, hoverFill, pressFade, pressState, pressTile } from "./pressState";
 import { colors } from "./theme";
 
 // react-native-web passes all three; the iPhone app passes only `pressed`.
@@ -44,4 +44,19 @@ test("a busy button is disabled on iPhone but stays enabled, marked busy, in a b
     disabled: true,
   });
   expect(busyProps(undefined, false, true).disabled).toBe(false);
+});
+
+test("pressTile gives a tile the hover fill when unselected, a fade when selected, and shrinks it while pressed", () => {
+  expect(pressTile(web({}), false)).toBeUndefined();
+  expect(pressTile(web({}), true)).toBeUndefined();
+  expect(pressTile(web({ hovered: true }), false)).toEqual({ backgroundColor: colors.raisedHover });
+  expect(pressTile(web({ hovered: true }), true)).toEqual({ opacity: 0.95 });
+  expect(pressTile(native(true), false)).toEqual({
+    transform: [{ scale: 0.97 }],
+    backgroundColor: colors.raisedHover,
+  });
+  expect(pressTile(web({ hovered: true, pressed: true }), true)).toEqual({
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
+  });
 });

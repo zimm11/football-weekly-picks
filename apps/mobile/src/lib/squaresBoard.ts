@@ -11,6 +11,7 @@ import {
   type SquarePeriod,
   teamName,
 } from "@picks/shared";
+import { colors } from "../components/theme";
 import { parseLeagueKickoff } from "./leagueLogic";
 
 /*
@@ -131,8 +132,68 @@ export const winsText = (wins: SquarePeriod[], held = true) =>
       ? `Won ${joinPeriods(wins)}`
       : `Hit ${joinPeriods(wins)}: nobody's square, so no winner`;
 
+/** Who holds a square, as one key: the player's id, or a guest's name (guests have no account). */
+export const holderKey = (holder: Pick<BoardSquare, "userId" | "name">) =>
+  holder.userId ?? `guest:${holder.name}`;
+
+/**
+ * A held square's fill and the color of its mark. Solid fills mean only "yours" (`primary`) or "won" (`win`);
+ * everyone else's square is a tint of their avatar color (`colorOf`, `avatarColor` in components/Avatar.tsx:
+ * about 40% over the card), with the foreground's ink, so your own squares stand out from across the room.
+ * The Players card draws each holder's chip with the same tone, so it is the grid's legend.
+ */
+export function squareTone(
+  { mine, won, name }: { mine: boolean; won: boolean; name: string },
+  colorOf: (name: string) => string | undefined,
+): { fill: string; ink: string } {
+  if (won) return { fill: colors.win, ink: colors.primaryForeground };
+  if (mine) return { fill: colors.primary, ink: colors.primaryForeground };
+  return { fill: `${colorOf(name) ?? colors.avatars[0]}66`, ink: colors.foreground };
+}
+
+/**
+ * The player's own squares once the numbers are drawn, in the grid's reading order: each with its two numbers
+ * (home first, as `squarePlace` orders them: "WSH 8 · TB 5"), the quarters it has won and whether it would win
+ * now. Empty before the draw, when a square has no numbers yet.
+ */
+export function mySquares(
+  view: Pick<
+    BoardView,
+    "homeTeam" | "awayTeam" | "homeDigits" | "awayDigits" | "squares" | "quarters" | "current"
+  >,
+  userId: string,
+) {
+  const { homeDigits, awayDigits } = view;
+  if (!homeDigits || !awayDigits) return [];
+  return view.squares
+    .filter((sq) => sq.userId === userId)
+    .sort((a, b) => a.row - b.row || a.col - b.col)
+    .map((sq) => ({
+      square: sq,
+      row: sq.row,
+      col: sq.col,
+      numbers: `${view.homeTeam} ${homeDigits[sq.col]} · ${view.awayTeam} ${awayDigits[sq.row]}`,
+      wins: winsOf(view.quarters, sq.row, sq.col),
+      current: view.current?.row === sq.row && view.current.col === sq.col,
+    }));
+}
+
+/** What a score is, in the scoreboard's words: "After Q1", "Halftime", "After Q3", "Final", and for a screen reader. */
+export function scoreStatus(period: SquarePeriod) {
+  const name = SQUARE_PERIOD_LABEL[period];
+  const settled = period === "final" || period === "half";
+  return {
+    status: settled ? name : `After ${name}`,
+    label: settled ? `${name} score` : `Score after ${name}`,
+  };
+}
+
 /** The gap between cells, in every size of grid. */
 export const GRID_GAP = 2;
+
+/** The grid card's height besides its eleven rows of cells: its padding, the home team's name, and the gaps. */
+const gridChrome = (bleed: boolean, side: number) =>
+  2 * (bleed ? 10 : 16) + side + 4 + (bleed ? 2 : 6) + BOARD_SIZE * GRID_GAP;
 
 /**
  * The grid's measurements for the width the page gives it (`contentWidth`, inside the page's `gutter` on each
@@ -141,17 +202,22 @@ export const GRID_GAP = 2;
  * - Under 560px of screen the card runs edge to edge (`bleed`) with 4px of padding: 32px cells on a 390px
  *   phone, 25px at 320px. Cells may be under the 44px tap size there, because the whole board has to be in view.
  * - From 560px the card sits inside the gutter and its cells are 43px or more, growing to 56px.
+ * - With `maxHeight` (the room from the card's top to the window's bottom: the desktop layout, where the grid
+ *   sits beside a rail), the whole card also fits that height: cells stop at 52px, and don't shrink under 40px
+ *   for the height (the width still has the last word).
  */
-export function gridLayout(contentWidth: number, gutter = 16) {
+export function gridLayout(contentWidth: number, gutter = 16, maxHeight?: number) {
   const bleed = contentWidth + 2 * gutter < 560;
   const padding = bleed ? 4 : 12;
   const side = bleed ? 18 : 24;
   const axis = bleed ? 22 : 28;
   const inner = (bleed ? contentWidth + 2 * gutter : contentWidth) - 2 * padding;
-  const cell = Math.max(
-    16,
-    Math.min(56, Math.floor((inner - side - axis - BOARD_SIZE * GRID_GAP) / BOARD_SIZE)),
-  );
+  const widthFit = Math.floor((inner - side - axis - BOARD_SIZE * GRID_GAP) / BOARD_SIZE);
+  const heightFit =
+    maxHeight === undefined
+      ? 56
+      : Math.min(52, Math.max(40, Math.floor((maxHeight - gridChrome(bleed, side)) / (BOARD_SIZE + 1))));
+  const cell = Math.max(16, Math.min(56, widthFit, heightFit));
   return {
     bleed,
     padding,
@@ -164,6 +230,8 @@ export function gridLayout(contentWidth: number, gutter = 16) {
     span: BOARD_SIZE * cell + (BOARD_SIZE - 1) * GRID_GAP,
     /** The whole board: the name column, the number column, ten cells and the gaps between them. */
     width: side + axis + BOARD_SIZE * (cell + GRID_GAP),
+    /** The whole card's height: its padding, the home team's name, the row of numbers and the ten rows. */
+    height: gridChrome(bleed, side) + (BOARD_SIZE + 1) * cell,
     /** Room for a holder's mark and a quarter's label, one above the other; a smaller cell shows one of them. */
     twoLines: cell >= 32,
     /** Type sizes that stay readable as the cell shrinks. */
@@ -242,13 +310,10 @@ export function boardScore(view: Pick<BoardView, "live" | "quarters">) {
     .reverse()
     .find((row) => row.result)?.result;
   if (!latest) return null;
-  const name = SQUARE_PERIOD_LABEL[latest.period];
-  const settled = latest.period === "final" || latest.period === "half";
   return {
     homeScore: latest.homeScore,
     awayScore: latest.awayScore,
-    status: settled ? name : `After ${name}`,
-    label: settled ? `${name} score` : `Score after ${name}`,
+    ...scoreStatus(latest.period),
     live: false,
   };
 }

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import {
+  Animated,
   type KeyDownEvent,
   Modal,
   Platform,
@@ -15,16 +16,17 @@ import {
   ScrollView,
   Text,
   useWindowDimensions,
-  View,
+  type View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useReducedMotion } from "../lib/motion";
+import { haptics } from "../lib/haptics";
+import { duration, easing, nativeDriver, useReducedMotion, webTransition } from "../lib/motion";
 import { useOverlayBack } from "../lib/overlayBack";
 import { rovingTarget } from "../lib/rovingFocus";
-import { Backdrop } from "./BottomSheet";
+import { Backdrop, noFocusOutline } from "./BottomSheet";
 import { Icon, type IconName } from "./Icon";
-import { hoverFill, ringInside } from "./pressState";
-import { colors, fonts } from "./theme";
+import { disabledOpacity, hoverFill, ringInside } from "./pressState";
+import { colors, elevation, fonts } from "./theme";
 
 /** Lets the chosen item of a long, scrolling list bring itself into view when the list opens. */
 const RevealContext = createContext<((y: number) => void) | undefined>(undefined);
@@ -98,7 +100,32 @@ export function Popover({
   const [size, setSize] = useState<{ width: number; height: number }>();
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const container = useRef<ComponentRef<typeof View>>(null);
+  // The entrance, in a browser (where the Modal's own fade is off): 0 until the popover has been measured,
+  // then it fades in and moves a few pixels from its anchor's side. Closing is immediate.
+  const entrance = useRef(new Animated.Value(0)).current;
+  const animated = Platform.OS === "web" && !reduced;
   const open = !!anchor;
+  const measured = !!size;
+  useEffect(() => {
+    if (!open) {
+      entrance.setValue(0);
+      return;
+    }
+    if (!measured) return;
+    if (!animated) {
+      entrance.setValue(1);
+      return;
+    }
+    const timing = Animated.timing(entrance, {
+      toValue: 1,
+      duration: duration.fast,
+      easing: easing.out,
+      useNativeDriver: nativeDriver,
+    });
+    timing.start();
+    return () => timing.stop();
+  }, [open, measured, animated, entrance]);
+
   // In a browser, Back closes the menu as Escape does.
   useOverlayBack(open, onClose);
   // Before the Modal's focus trap looks for somewhere to put the focus, which could be a disabled item: the
@@ -145,7 +172,7 @@ export function Popover({
       {...dialog}
     >
       <Backdrop onPress={onClose} />
-      <View
+      <Animated.View
         ref={container}
         role={menu ? "menu" : undefined}
         // Focusable from code only (never a Tab stop): where the focus rests when no item can take it.
@@ -165,15 +192,22 @@ export function Popover({
           minWidth,
           maxWidth: screenWidth - EDGE * 2,
           maxHeight: Math.min(maxHeight ?? Number.POSITIVE_INFINITY, room),
-          // Hidden until measured, so it never flashes in the wrong place.
-          opacity: size ? 1 : 0,
+          // Hidden until measured, so it never flashes in the wrong place; then it fades in from its anchor's side.
+          opacity: entrance,
+          transform: [
+            {
+              translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [fitsBelow ? -4 : 4, 0] }),
+            },
+          ],
           backgroundColor: colors.popover,
           borderWidth: 1,
           borderColor: colors.border,
           borderRadius: radius,
           padding: 4,
           overflow: "hidden",
-          boxShadow: "0 8px 24px #00000066",
+          boxShadow: elevation.popover,
+          // Where the focus rests when no item can take it: no browser outline round the whole menu.
+          ...noFocusOutline,
         }}
       >
         {maxHeight ? (
@@ -187,7 +221,7 @@ export function Popover({
         ) : (
           children
         )}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
@@ -228,7 +262,11 @@ export function MenuItem({
       aria-checked={checked}
       {...(Platform.OS === "web" && checked !== undefined ? ({ role: "menuitemradio" } as object) : null)}
       disabled={disabled}
-      onPress={onPress}
+      onPress={() => {
+        // A new choice in a list is felt (iPhone), as any choice that changes is.
+        if (checked === false) haptics.select();
+        onPress();
+      }}
       style={(state) => ({
         minHeight: 44,
         paddingHorizontal: 12,
@@ -237,9 +275,10 @@ export function MenuItem({
         flexDirection: "row",
         alignItems: "center",
         gap: 8,
-        opacity: disabled ? 0.45 : 1,
+        opacity: disabled ? disabledOpacity : 1,
         backgroundColor: hoverFill(state),
         ...ringInside,
+        ...webTransition(["background-color"]),
       })}
     >
       {icon && <Icon name={icon} size={20} color={ink} />}

@@ -1,10 +1,13 @@
 import type { SurvivorView } from "@picks/shared";
 import { useEffect } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
+import { corner, radius, space, type } from "../../components/theme";
+import { colors } from "../../components/ui";
 import { request } from "../../lib/api";
 import { listNames, recapSummary } from "../../lib/survivor";
 import type { RecapProps } from "../leagueTypeScreens";
-import { Action, go, Label, Sheet, StatTile, useLeagueLoad } from "../leagueUi";
+import { Action, go, Label, Sheet, s, useLeagueLoad } from "../leagueUi";
+import { LivesPips } from "./LivesPips";
 
 /**
  * The bottom sheet after a survivor week is final, once per player: whether they're still in, who went out, and
@@ -23,7 +26,7 @@ export function SurvivorRecap({ weekId, userId, leagueId, close }: RecapProps) {
   if (!recap) return null;
   return (
     <Sheet title={recap.title} close={close} closeButton={false}>
-      <Label>{recap.headline}</Label>
+      <Text style={[type.cardTitle, { color: colors.foreground }]}>{recap.headline}</Text>
       {recap.wentOut && <Label>{recap.wentOut}</Label>}
       {recap.winners.length > 0 && (
         <Label>
@@ -32,8 +35,24 @@ export function SurvivorRecap({ weekId, userId, leagueId, close }: RecapProps) {
             : `${recap.winners[0]} won the pool.`}
         </Label>
       )}
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <StatTile raised label="Still in" value={recap.left} detail={`of ${recap.total}`} />
+      {/* One quiet line, not a tile stretched across the sheet: your lives, and how many are left. */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: space.lg,
+          backgroundColor: colors.raised,
+          ...corner(radius.lg),
+          paddingHorizontal: space.lg,
+          paddingVertical: space.md + space.xxs,
+        }}
+      >
+        {recap.lives && <LivesPips left={recap.lives.left} lives={recap.lives.of} showLabel />}
+        <Text style={[s.text, { fontFamily: type.cardTitle.fontFamily }]}>
+          {`${recap.left} of ${recap.total} still in`}
+        </Text>
       </View>
       <Action
         href={`/leagues/${leagueId}/standings`}

@@ -52,7 +52,11 @@ export function Avatar({
       }}
     >
       <Text
-        style={{ fontFamily: fonts.semibold, fontSize: diameter * 0.375, color: colors.avatarForeground }}
+        style={{
+          fontFamily: fonts.semibold,
+          fontSize: Math.max(10, Math.round(diameter * 0.375)),
+          color: colors.avatarForeground,
+        }}
       >
         {avatarInitials(name)}
       </Text>

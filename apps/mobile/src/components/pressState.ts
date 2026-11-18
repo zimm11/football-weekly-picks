@@ -38,6 +38,26 @@ export function pressFade(state: PressableStateCallbackType): { opacity: number 
 }
 
 /**
+ * Feedback for a big choice tile (a team button, the POW, a survivor team, a choice card, a square): it gives a
+ * little under a finger or the mouse. Unselected, it takes the `raisedHover` fill on hover and press; selected
+ * (already filled with its own color), it fades a touch instead. Nothing at rest, so it can sit last in a
+ * style array.
+ */
+export function pressTile(state: PressableStateCallbackType, selected: boolean) {
+  const { pressed, hovered } = pressState(state);
+  if (pressed)
+    return selected
+      ? { transform: [{ scale: 0.97 }], opacity: 0.9 }
+      : { transform: [{ scale: 0.97 }], backgroundColor: colors.raisedHover };
+  if (hovered) return selected ? { opacity: 0.95 } : { backgroundColor: colors.raisedHover };
+  return undefined;
+}
+
+/** How faded a disabled control is, and a busy one (its own request is running). */
+export const disabledOpacity = 0.45;
+export const busyOpacity = 0.7;
+
+/**
  * Draws the web's keyboard focus ring (`:focus-visible` in `public/boot.css`) just inside the control instead
  * of around it. For a control that sits flush inside a clipped container (a row in a card with
  * `overflow: "hidden"`, an item in a menu), where a ring drawn outside would be cut off. Nothing on iPhone.

@@ -6,7 +6,7 @@ import { request } from "../../lib/api";
 import { now } from "../../lib/clock";
 import { notifyDone, notifyError } from "../../lib/notify";
 import { confirmDiscard } from "../../lib/unsaved";
-import { Action, Card, Heading, Label, Select } from "../leagueUi";
+import { Action, Card, CardTitle, Label, Select } from "../leagueUi";
 import { automaticNextStep } from "./weeklyNextStep";
 
 /**
@@ -27,7 +27,7 @@ export function AutomaticSeasonCard({
   if (league.weeks.length > 0)
     return (
       <Card label="Automatic season">
-        <Heading>{year} season runs itself</Heading>
+        <CardTitle>{year} season runs itself</CardTitle>
         <Label>{automaticNextStep(league.weeks)}</Label>
         <Label>
           You can still edit spreads and points until a week's first kickoff, choose the tiebreaker game, add
@@ -39,7 +39,7 @@ export function AutomaticSeasonCard({
   if (year < seasonYear(now()))
     return (
       <Card label="Automatic season">
-        <Heading>{year} season</Heading>
+        <CardTitle>{year} season</CardTitle>
         <Label>
           That season is over, so there is nothing to start. Choose the current season in the selector above.
         </Label>
@@ -60,7 +60,7 @@ export function AutomaticSeasonCard({
   }
   return (
     <Card label="Start season">
-      <Heading>Start the {year} season</Heading>
+      <CardTitle>Start the {year} season</CardTitle>
       <Label>
         Pick the week to start with. Each Tuesday at 9 AM Eastern the week's games and that morning's lines
         fill in automatically and it opens for picks; it finalizes after its last game. That repeats through

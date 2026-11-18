@@ -2,11 +2,12 @@
 import type { UnsubscribeResult } from "@picks/shared";
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { ScrollView, Text } from "react-native";
+import { ScrollView, Text, useWindowDimensions } from "react-native";
 import { request } from "../src/lib/api";
 import { useAuth } from "../src/lib/auth";
 import { withNext } from "../src/lib/links";
 import { usePageTitle } from "../src/lib/pageTitle";
+import { narrowPage } from "../src/screens/LeaguesScreen";
 import { Action, Card, Failure, s } from "../src/screens/leagueUi";
 
 /** Public route. Opening a link never changes preferences; only the explicit button posts. */
@@ -25,6 +26,7 @@ export default function Unsubscribe() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string>();
   const { session, refreshProfile } = useAuth();
+  const wide = useWindowDimensions().width >= 768;
   usePageTitle("Unsubscribe");
   async function unsubscribe() {
     if (busy) return;
@@ -42,7 +44,7 @@ export default function Unsubscribe() {
     }
   }
   return (
-    <ScrollView style={s.page} contentContainerStyle={s.content}>
+    <ScrollView style={s.page} contentContainerStyle={[s.content, narrowPage(wide)]}>
       <Text accessibilityRole="header" aria-level={1} style={s.title}>
         {done ? "You're unsubscribed" : "Unsubscribe"}
       </Text>

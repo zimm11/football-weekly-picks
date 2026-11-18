@@ -1,30 +1,39 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Heading, Eyebrow and Action render native Text.
+// biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, CardTitle, Eyebrow and Action render native Text.
 import { BOARD_PHASE_LABEL, type BoardSquare, type BoardView, teamName } from "@picks/shared";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Text, useWindowDimensions, View } from "react-native";
-import { Avatar } from "../../components/Avatar";
+import { Pressable, Text, useWindowDimensions, View, type ViewStyle } from "react-native";
+import { Avatar, avatarColor, avatarInitials } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
+import { hoverFill, pressTile } from "../../components/pressState";
 import { TeamLogo } from "../../components/TeamLogo";
-import { colors, fonts } from "../../components/ui";
+import { layout, radius, space, tabular, type } from "../../components/theme";
+import { Button, colors, fonts } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
 import { haptics } from "../../lib/haptics";
 import { offerHomeScreen } from "../../lib/homeScreen";
+import { webTransition } from "../../lib/motion";
 import { notifyError } from "../../lib/notify";
 import {
   boardScore,
+  cellLabel,
   claimRoom,
+  holderKey,
+  mySquares,
   type PendingChange,
   quarterRows,
   randomOpenSquare,
+  SHORT_PERIOD,
+  squareKey,
   squarePlace,
+  squareTone,
   winsOf,
   winsText,
   withPending,
 } from "../../lib/squaresBoard";
 import { kickoffDay, kickoffTime } from "../../lib/weekPresentation";
-import { Action, Card, Eyebrow, Failure, Heading, Label, Pill, Sheet, s, useLeagueLoad } from "../leagueUi";
+import { Action, Card, CardTitle, Eyebrow, Failure, Label, Pill, Sheet, s, useLeagueLoad } from "../leagueUi";
 import { rememberBoardLeague } from "./boardLeague";
-import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
+import { BoardSkeleton, RAIL_GAP, RAIL_WIDTH, SquaresGrid, useBoardColumns } from "./SquaresGrid";
 
 /** Loads one board, refetching until it is final: every 30 s while open, every minute once locked. */
 export function useBoard(boardId: string) {
@@ -74,7 +83,12 @@ export function useSquareChanges(boardId: string, setData: (view: BoardView) => 
   return { pending, send };
 }
 
-/** One board as every member sees it: the grid, your squares, the quarter results and who holds squares. */
+/**
+ * One board as every member sees it: the grid, your squares, the quarter results and who holds squares. On a
+ * phone and up to 1023px it is one column (from 768px your squares and the quarter results sit side by side);
+ * from 1024px the grid sits on the left, the whole of it in the window, with everything else in a rail beside
+ * it. A tap on a name in Players picks out that player's squares on the grid (view state only).
+ */
 export function BoardPanel({
   boardId,
   board,
@@ -91,6 +105,9 @@ export function BoardPanel({
 }) {
   const changes = useSquareChanges(boardId, board.setData, board.reload);
   const [sheet, setSheet] = useState<{ row: number; col: number } | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const columns = useBoardColumns();
+  const { width } = useWindowDimensions();
   if (!board.data) {
     return board.error ? <Failure message={board.error} retry={board.reload} /> : <BoardSkeleton />;
   }
@@ -115,51 +132,118 @@ export function BoardPanel({
     setSheet({ row, col });
   }
   const shown = sheet ? squares.find((sq) => sq.row === sheet.row && sq.col === sheet.col) : undefined;
+  // A player picked out who no longer holds a square (they gave their last one back) picks out nobody.
+  const picked = view.players.some((p) => holderKey(p) === highlight) ? highlight : null;
+  const grid = (
+    <SquaresGrid
+      view={view}
+      squares={squares}
+      userId={userId}
+      onPress={tap}
+      highlight={picked}
+      fit={columns.fit}
+    />
+  );
+  const random = room.open && (
+    <Action
+      secondary
+      compact={!columns.wide}
+      icon="grid"
+      disabled={room.left === 0}
+      onPress={() => {
+        const open = randomOpenSquare(squares);
+        if (open) claim(open.row, open.col);
+      }}
+    >
+      Claim a random square
+    </Action>
+  );
+  const help = room.open && (
+    <Label>Tap an open square to claim it, and yours to give it back, until the board locks.</Label>
+  );
+  const nowNote = view.current && (
+    <Label>
+      {view.live
+        ? "Now marks the square that would win if the quarter ended on this score. Scores update every minute."
+        : "Now marks the square that would win if the quarter ended on this score."}
+    </Label>
+  );
+  const yours = (
+    <YourSquares
+      style={columns.wide || width < 768 ? undefined : { flex: 1 }}
+      view={view}
+      squares={squares}
+      mine={mine}
+      userId={userId}
+      onSquare={(row, col) => setSheet({ row, col })}
+    />
+  );
+  const players = (
+    <Players
+      view={view}
+      userId={userId}
+      highlight={picked}
+      onHighlight={(key) => setHighlight((was) => (was === key ? null : key))}
+    />
+  );
+  const squareSheet = sheet && (
+    <SquareSheet view={view} row={sheet.row} col={sheet.col} square={shown} close={() => setSheet(null)} />
+  );
+  if (columns.wide) {
+    return (
+      <View
+        onLayout={columns.onLayout}
+        style={{ flexDirection: "row", alignItems: "flex-start", gap: RAIL_GAP }}
+      >
+        <View style={{ flexShrink: 0, width: columns.gridWidth, gap: space.lg }}>
+          {grid}
+          {help}
+          {nowNote}
+        </View>
+        <View style={{ flex: 1, minWidth: RAIL_WIDTH, gap: space.lg }}>
+          <BoardHeading view={view} admin={view.role === "admin"} rail />
+          <Failure message={board.error} retry={board.reload} />
+          <GameScore view={view} compact />
+          {yours}
+          {random}
+          <QuarterResults view={view} userId={userId} stacked />
+          {players}
+        </View>
+        {squareSheet}
+      </View>
+    );
+  }
+  // 768–1023px: one column, with your squares and the quarter results side by side under the grid.
+  const pair = width >= 768;
   return (
-    <View style={{ gap: 20 }}>
+    <View style={{ gap: layout.pageGap }}>
       <BoardHeading view={view} admin={view.role === "admin"} />
       <Failure message={board.error} retry={board.reload} />
       {/* The score, the grid and its one line of help read as one block, closer together than the cards. */}
-      <View style={{ gap: 12 }}>
+      <View style={{ gap: space.lg }}>
         <GameScore view={view} />
-        <SquaresGrid view={view} squares={squares} userId={userId} onPress={tap} />
+        {grid}
         {room.open && (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-            <Action
-              secondary
-              compact
-              icon="grid"
-              disabled={room.left === 0}
-              onPress={() => {
-                const open = randomOpenSquare(squares);
-                if (open) claim(open.row, open.col);
-              }}
-            >
-              Claim a random square
-            </Action>
-            <View style={{ flex: 1, minWidth: 200 }}>
-              <Label>Tap an open square to claim it, and yours to give it back, until the board locks.</Label>
-            </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.lg, alignItems: "center" }}>
+            {random}
+            <View style={{ flex: 1, minWidth: 200 }}>{help}</View>
           </View>
         )}
-        {view.current && (
-          <Label>
-            {view.live
-              ? "Now marks the square that would win if the quarter ended on this score. Scores update every minute."
-              : "Now marks the square that would win if the quarter ended on this score."}
-          </Label>
-        )}
+        {nowNote}
       </View>
-      <BoardDetails view={view} squares={squares} mine={mine} userId={userId} />
-      {sheet && (
-        <SquareSheet
-          view={view}
-          row={sheet.row}
-          col={sheet.col}
-          square={shown}
-          close={() => setSheet(null)}
-        />
+      {pair ? (
+        <View style={{ flexDirection: "row", gap: space.xl }}>
+          {yours}
+          <QuarterResults view={view} userId={userId} stacked style={{ flex: 1 }} />
+        </View>
+      ) : (
+        <>
+          {yours}
+          <QuarterResults view={view} userId={userId} stacked={width < 560} />
+        </>
       )}
+      {players}
+      {squareSheet}
     </View>
   );
 }
@@ -167,14 +251,15 @@ export function BoardPanel({
 /**
  * The game's score as a scoreboard strip above the grid: the away team on the left and the home team on the
  * right, as the title reads, with what the score is between them ("Live", "After Q1", "Final"). Nothing until
- * there is a score. A phone shows the teams' abbreviations at the strip's ends, since the title above spells
- * the names out; a wider screen gathers the names and scores in the middle.
+ * there is a score. A phone (and the rail beside the grid, `compact`) shows the teams' abbreviations at the
+ * strip's ends, since the title spells the names out; a wider screen gathers the names and scores in the middle.
  */
-export function GameScore({ view }: { view: BoardView }) {
+export function GameScore({ view, compact }: { view: BoardView; compact?: boolean }) {
   const { width } = useWindowDimensions();
   const score = boardScore(view);
   if (!score) return null;
-  const phone = width < 560;
+  // `compact`: the rail beside the grid, as narrow as a phone.
+  const phone = compact || width < 560;
   // The narrowest phones: smaller type, so "WSH 17" still fits beside its badge.
   const size =
     width < 360 ? { logo: 20, name: 16, points: 28, gap: 6 } : { logo: 24, name: 18, points: 32, gap: 8 };
@@ -206,7 +291,7 @@ export function GameScore({ view }: { view: BoardView }) {
           fontFamily: fonts.displayExtraBold,
           fontSize: points,
           lineHeight: points + 2,
-          fontVariant: ["tabular-nums"],
+          ...tabular,
           color: score.status === "Final" && own < other ? colors.mutedForeground : colors.foreground,
         }}
       >
@@ -255,7 +340,18 @@ export function GameScore({ view }: { view: BoardView }) {
  * On a phone it is two short rows (phase and kickoff, then the game on one line) so the grid starts higher up.
  * The link swaps the board and its manage screen in place, so going back and forth doesn't pile up history.
  */
-export function BoardHeading({ view, admin, manage }: { view: BoardView; admin: boolean; manage?: boolean }) {
+export function BoardHeading({
+  view,
+  admin,
+  manage,
+  rail,
+}: {
+  view: BoardView;
+  admin: boolean;
+  manage?: boolean;
+  /** At the top of the rail beside the grid: stacked, with the link as a full-width button under it. */
+  rail?: boolean;
+}) {
   const { width } = useWindowDimensions();
   const phone = width < 560;
   const title = manage ? "Manage board" : `${teamName(view.awayTeam)} at ${teamName(view.homeTeam)}`;
@@ -276,6 +372,27 @@ export function BoardHeading({ view, admin, manage }: { view: BoardView; admin: 
         Manage board
       </Action>
     ));
+  if (rail) {
+    return (
+      <View style={{ gap: space.sm }}>
+        {pill}
+        <Text accessibilityRole="header" style={s.title}>
+          {title}
+        </Text>
+        <Label>{when}</Label>
+        {admin && (
+          <Button
+            variant="secondary"
+            small
+            href={manage ? `/boards/${view.id}` : `/boards/${view.id}/manage`}
+            how="replace"
+            title={manage ? "View board" : "Manage board"}
+            style={{ marginTop: space.sm }}
+          />
+        )}
+      </View>
+    );
+  }
   if (phone) {
     return (
       <View style={{ gap: 6 }}>
@@ -322,109 +439,257 @@ function boardTitleSize(title: string, width: number) {
   return { fontSize, lineHeight: fontSize + 2 };
 }
 
-/** Under the grid: your squares against your limit, the four quarter results, and who holds squares. */
-export function BoardDetails({
+/**
+ * Your squares against your limit and the board's count. Once the numbers are drawn, also a chip per square
+ * with its two numbers (home first: "WSH 8 · TB 5"), which is what a player wants during the game: a square
+ * that has won says which quarters, with a check; the one that would win now says "Now". A chip opens the
+ * square's sheet, as the cell does, and is named as the cell is.
+ */
+function YourSquares({
   view,
   squares,
   mine,
   userId,
+  onSquare,
+  style,
 }: {
   view: BoardView;
   squares: BoardSquare[];
   mine: number;
   userId: string;
+  onSquare: (row: number, col: number) => void;
+  style?: ViewStyle;
 }) {
-  const stacked = useWindowDimensions().width < 560;
+  const chips = mySquares(view, userId);
   return (
-    <>
-      <Card label="Your squares">
-        <Eyebrow>Your squares</Eyebrow>
-        <Text
-          style={{ fontFamily: fonts.displayBold, fontSize: 30, lineHeight: 32, color: colors.foreground }}
-        >
-          {mine} of {view.maxPerPlayer}
+    <Card label="Your squares" style={style}>
+      <CardTitle>Your squares</CardTitle>
+      <Text style={[type.stat, { color: colors.foreground }]}>
+        {mine} of {view.maxPerPlayer}
+      </Text>
+      <Label>
+        {squares.length} of 100 squares claimed
+        {view.phase === "open" ? " · the numbers are drawn when the board locks" : ""}
+      </Label>
+      {chips.length > 0 && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.md }}>
+          {chips.map((chip) => (
+            <NumberChip
+              key={squareKey(chip.row, chip.col)}
+              chip={chip}
+              label={cellLabel({ view, ...chip, userId })}
+              onPress={() => onSquare(chip.row, chip.col)}
+            />
+          ))}
+        </View>
+      )}
+    </Card>
+  );
+}
+
+function NumberChip({
+  chip,
+  label,
+  onPress,
+}: {
+  chip: ReturnType<typeof mySquares>[number];
+  label: string;
+  onPress: () => void;
+}) {
+  const won = chip.wins.length > 0;
+  const small = [type.caption, tabular, { fontFamily: fonts.semibold }] as const;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      // 28px tall, so a dozen fit in a few rows; a finger gets the 44px with the slop.
+      hitSlop={8}
+      style={(state) => [
+        {
+          minHeight: 28,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space.sm,
+          paddingHorizontal: 10,
+          borderRadius: radius.full,
+          backgroundColor: won ? colors.winTint : colors.raised,
+        } as const,
+        webTransition(["opacity", "transform"]),
+        pressTile(state, true),
+      ]}
+    >
+      {won && <Icon name="check" size={14} color={colors.win} />}
+      <Text style={[type.tag, tabular, { color: colors.foreground }]}>{chip.numbers}</Text>
+      {won && (
+        <Text style={[...small, { color: colors.win }]}>
+          {chip.wins.map((p) => SHORT_PERIOD[p]).join(" · ")}
         </Text>
-        <Label>
-          {squares.length} of 100 squares claimed
-          {view.phase === "open" ? " · the numbers are drawn when the board locks" : ""}
-        </Label>
-      </Card>
-      <Card label="Quarter results">
-        <Heading>Quarter results</Heading>
-        {quarterRows(view).map(({ period, label, result }) => (
+      )}
+      {chip.current && <Text style={[...small, { color: colors.win }]}>Now</Text>}
+    </Pressable>
+  );
+}
+
+/**
+ * The four quarter results. `stacked` puts each score under its quarter's name, so the winner's name has room
+ * on one line: a phone, the rail beside the grid, and half a row from 768px.
+ */
+function QuarterResults({
+  view,
+  userId,
+  stacked,
+  style,
+}: {
+  view: BoardView;
+  userId: string;
+  stacked: boolean;
+  style?: ViewStyle;
+}) {
+  return (
+    <Card label="Quarter results" style={style}>
+      <CardTitle>Quarter results</CardTitle>
+      {quarterRows(view).map(({ period, label, result }) => (
+        <View
+          key={period}
+          style={{
+            minHeight: 48,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: space.lg,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            paddingTop: space.md,
+          }}
+        >
           <View
-            key={period}
-            style={{
-              minHeight: 48,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-              paddingTop: 8,
-            }}
+            style={
+              stacked
+                ? { width: 112, gap: 2 }
+                : { flexDirection: "row", alignItems: "center", gap: space.lg, width: 216 }
+            }
           >
-            {/* On a phone the score sits under the quarter's name, so the winner's name has room on one line. */}
-            <View
-              style={
-                stacked
-                  ? { width: 112, gap: 2 }
-                  : { flexDirection: "row", alignItems: "center", gap: 12, width: 216 }
-              }
+            <Text
+              style={[s.text, { fontFamily: fonts.semibold }, stacked ? { lineHeight: 20 } : { width: 84 }]}
             >
-              <Text
-                style={[s.text, { fontFamily: fonts.semibold }, stacked ? { lineHeight: 20 } : { width: 84 }]}
-              >
-                {label}
+              {label}
+            </Text>
+            {result && (
+              <Text numberOfLines={1} style={[s.muted, tabular, !stacked && { flex: 1 }]}>
+                {view.awayTeam} {result.awayScore} · {view.homeTeam} {result.homeScore}
               </Text>
-              {result && (
-                <Text numberOfLines={1} style={[s.muted, !stacked && { flex: 1 }]}>
-                  {view.awayTeam} {result.awayScore} · {view.homeTeam} {result.homeScore}
+            )}
+          </View>
+          {result ? (
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {result.winner ? (
+                <>
+                  <Icon name="check-circle" size={18} color={colors.win} />
+                  <Text numberOfLines={2} style={[s.text, { flexShrink: 1 }]}>
+                    {result.winner.userId === userId ? "You" : result.winner.name}
+                    {result.winner.guest ? " (guest)" : ""} won
+                  </Text>
+                </>
+              ) : (
+                <Text style={[s.muted, { flexShrink: 1 }]}>
+                  {result.square ? "No winner: an empty square" : "Not drawn"}
                 </Text>
               )}
             </View>
-            {result ? (
-              <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                {result.winner ? (
-                  <>
-                    <Icon name="check-circle" size={18} color={colors.win} />
-                    <Text numberOfLines={2} style={[s.text, { flexShrink: 1 }]}>
-                      {result.winner.userId === userId ? "You" : result.winner.name}
-                      {result.winner.guest ? " (guest)" : ""} won
-                    </Text>
-                  </>
+          ) : (
+            <Text style={s.muted}>To come</Text>
+          )}
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+/**
+ * Who holds squares, as the grid's legend: each name leads with a chip drawn as that player's cells are (yours
+ * solid primary, everyone else's in a tint of their color), you first. Each row is a toggle that picks out
+ * that player's squares on the grid; pressing it again, or another row, changes or clears it.
+ */
+function Players({
+  view,
+  userId,
+  highlight,
+  onHighlight,
+}: {
+  view: BoardView;
+  userId: string;
+  highlight: string | null;
+  onHighlight: (key: string) => void;
+}) {
+  const players = [...view.players].sort((a, b) => Number(b.userId === userId) - Number(a.userId === userId));
+  return (
+    <Card label="Players">
+      <CardTitle>Players</CardTitle>
+      {players.length === 0 ? (
+        <Label>Nobody has a square yet.</Label>
+      ) : (
+        <Label>Tap a name to find their squares on the board.</Label>
+      )}
+      {/* The rows reach the card's padding, so a picked row's fill has room around its contents. */}
+      <View style={{ marginHorizontal: -space.md }}>
+        {players.map((player) => {
+          const key = holderKey(player);
+          const you = player.userId === userId;
+          const on = highlight === key;
+          const tone = squareTone({ mine: you, won: false, name: player.name }, avatarColor);
+          return (
+            <Pressable
+              key={key}
+              accessibilityRole="button"
+              accessibilityLabel={you ? "Show your squares" : `Show ${player.name}'s squares`}
+              accessibilityState={{ selected: on }}
+              aria-pressed={on}
+              onPress={() => {
+                haptics.select();
+                onHighlight(key);
+              }}
+              style={(state) => [
+                {
+                  minHeight: 44,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  paddingHorizontal: space.md,
+                  borderRadius: radius.md,
+                  backgroundColor: on ? colors.raised : hoverFill(state),
+                } as const,
+                webTransition(["background-color"]),
+              ]}
+            >
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: radius.sm,
+                  backgroundColor: tone.fill,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                }}
+              >
+                {player.avatarId ? (
+                  <Avatar name={player.name} avatarId={player.avatarId} size={16} />
                 ) : (
-                  <Text style={[s.muted, { flexShrink: 1 }]}>
-                    {result.square ? "No winner: an empty square" : "Not drawn"}
+                  <Text style={[type.micro, { fontFamily: fonts.semibold, color: tone.ink }]}>
+                    {avatarInitials(player.name)}
                   </Text>
                 )}
               </View>
-            ) : (
-              <Text style={s.muted}>To come</Text>
-            )}
-          </View>
-        ))}
-      </Card>
-      <Card label="Players">
-        <Heading>Players</Heading>
-        {view.players.length === 0 && <Label>Nobody has a square yet.</Label>}
-        {view.players.map((player) => (
-          <View
-            key={player.userId ?? `guest:${player.name}`}
-            style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10 }}
-          >
-            <Avatar avatarId={player.avatarId} name={player.name} size="sm" />
-            <Text style={[s.text, { flex: 1 }]}>
-              {player.userId === userId ? `${player.name} (you)` : player.name}
-            </Text>
-            {player.guest && <Pill inline>Guest</Pill>}
-            <Text style={[s.text, { fontFamily: fonts.semibold }]}>
-              {player.count} {player.count === 1 ? "square" : "squares"}
-            </Text>
-          </View>
-        ))}
-      </Card>
-    </>
+              <Text style={[s.text, { flex: 1 }]}>{you ? `${player.name} (you)` : player.name}</Text>
+              {player.guest && <Pill inline>Guest</Pill>}
+              <Text style={[s.text, tabular, { fontFamily: fonts.semibold }]}>
+                {player.count} {player.count === 1 ? "square" : "squares"}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </Card>
   );
 }
 

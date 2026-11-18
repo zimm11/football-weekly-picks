@@ -6,6 +6,7 @@ import { AppLink } from "./AppLink";
 import { BackLink } from "./BackLink";
 import { Icon } from "./Icon";
 import { hoverFill } from "./pressState";
+import { radius, space, type, widths } from "./theme";
 import { Body, Card, colors, Eyebrow, fonts, Screen, styles, Title } from "./ui";
 
 /** A paragraph, or a bulleted list. */
@@ -29,19 +30,20 @@ export function LegalPage({
   other: { label: string; href: Href };
 }) {
   return (
-    <Screen narrow>
+    <Screen contentStyle={{ maxWidth: widths.reading }}>
       <BackLink />
-      <View style={{ gap: 4 }}>
+      <View style={{ gap: space.xs }}>
         <Title>{title}</Title>
         <Eyebrow>Last updated {updated}</Eyebrow>
       </View>
-      <Card>
+      <Card style={{ padding: space["2xl"], gap: space["2xl"] }}>
         {sections.map(([heading, blocks], index) => (
           <View
             key={heading}
             style={{
-              gap: 8,
-              paddingTop: index ? 16 : 0,
+              gap: space.lg,
+              paddingTop: index ? space["2xl"] : 0,
+              paddingBottom: space.xs,
               borderTopWidth: index ? 1 : 0,
               borderTopColor: colors.border,
             }}
@@ -49,7 +51,7 @@ export function LegalPage({
             <Text
               accessibilityRole="header"
               aria-level={2}
-              style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
+              style={[type.cardTitle, { color: colors.foreground }]}
             >
               {heading}
             </Text>
@@ -59,9 +61,9 @@ export function LegalPage({
                   {block}
                 </Body>
               ) : (
-                <View key={block[0]} role="list" style={{ gap: 6 }}>
+                <View key={block[0]} role="list" style={{ gap: space.md }}>
                   {block.map((item) => (
-                    <View key={item} role="listitem" style={{ flexDirection: "row", gap: 10 }}>
+                    <View key={item} role="listitem" style={{ flexDirection: "row", gap: space.md }}>
                       <Text aria-hidden style={[styles.body, styles.muted]}>
                         •
                       </Text>
@@ -102,16 +104,16 @@ function LegalLink({
     flexDirection: "row" as const,
     alignItems: "center" as const,
     alignSelf: "flex-start" as const,
-    gap: 8,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 10,
+    gap: space.md,
+    marginHorizontal: -space.md,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
     backgroundColor: hoverFill(state),
   });
   const content = (
     <>
       <Icon name={icon} size={18} color={colors.primary} />
-      <Text style={{ fontFamily: fonts.medium, fontSize: 16, color: colors.primary }}>{label}</Text>
+      <Text style={[type.body, { fontFamily: fonts.medium, color: colors.primary }]}>{label}</Text>
     </>
   );
   if (href)

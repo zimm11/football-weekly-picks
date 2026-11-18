@@ -1,3 +1,4 @@
+// biome-ignore-all lint/correctness/noReactNativeRawText: the Guide parts (GuideTitle, GuideNote, GuideItem) render their children inside native Text.
 import {
   LEAGUE_TYPE_INFO,
   LEAGUE_TYPES,
@@ -6,13 +7,24 @@ import {
   MAX_LEAGUES_PER_USER,
 } from "@picks/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type LayoutChangeEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { BackLink } from "../src/components/BackLink";
-import { Icon, type IconName } from "../src/components/Icon";
+import { GuideHeading, GuideNote, GuideSteps, GuideTitle } from "../src/components/Guide";
+import { Icon } from "../src/components/Icon";
 import { hoverFill } from "../src/components/pressState";
+import { corner, layout, radius, space, tabular, type, widths } from "../src/components/theme";
 import { Body, Button, Card, colors, fonts, styles, Title } from "../src/components/ui";
 import { useAuth } from "../src/lib/auth";
+import { webTransition } from "../src/lib/motion";
 import { usePageTitle } from "../src/lib/pageTitle";
 import { useScrollRestore } from "../src/lib/scrollRestore";
 import { HowToPlayManagement, HowToPlayPlayoff } from "../src/screens/playoff/HowToPlayPlayoff";
@@ -42,7 +54,7 @@ const playerSteps = [
 const adminSteps = [
   [
     "Set up a draft week",
-    "Choose the Season above the league tabs. To begin another year, select Start a new season and enter its starting year. In the League tab, select a week (1–18) and press Create week; existing weeks open with Manage week instead. The season choice carries across Picks, Results, Standings, and League. Leave Auto-fill games and spreads checked to load the slate, or add games by hand. You land on Manage week; drafts are visible only to commissioners.",
+    "Choose the Season above the league tabs. To begin another year, select Start a new season and enter its starting year. In the League tab, select a week (1–18) and press Create week; existing weeks open with Manage week instead. Set up a week suggests the coming week by the calendar and marks weeks already played. The season choice carries across Picks, Results, Standings, and League. Leave Auto-fill games and spreads checked to load the slate, or add games by hand. You land on Manage week; drafts are visible only to commissioners.",
   ],
   [
     "Review the slate, then open picks",
@@ -98,114 +110,138 @@ const everyLeagueSteps = [
     "Tap your profile picture at the top right to open the account menu: change your name, picture or password, open Settings, or sign out. In Name and picture, press Change picture to choose a profile logo or switch back to your initials. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only commissioner, make someone else a commissioner first. The Privacy policy, linked in Settings, says what POW Pick'em keeps about you.",
   ],
 ];
-function Steps({ items }: { items: string[][] }) {
-  return (
-    <Card>
-      {items.map(([title, detail], index) => (
-        <View
-          key={title}
-          style={{
-            flexDirection: "row",
-            gap: 16,
-            paddingTop: index ? 20 : 0,
-            paddingBottom: index === items.length - 1 ? 0 : 4,
-            borderTopWidth: index ? 1 : 0,
-            borderTopColor: colors.border,
-          }}
-        >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              backgroundColor: colors.primaryTint,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text style={{ fontFamily: fonts.displayBold, fontSize: 20, color: colors.primary }}>
-              {index + 1}
-            </Text>
-          </View>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text
-              accessibilityRole="header"
-              aria-level={3}
-              style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
-            >
-              {title}
-            </Text>
-            <Body muted>{detail}</Body>
-          </View>
-        </View>
-      ))}
-    </Card>
-  );
-}
-function SectionHeading({ title, icon }: { title: string; icon: IconName }) {
-  return (
-    <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-      <Icon name={icon} size={28} color={colors.primary} />
-      <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
-        {title}
-      </Title>
-    </View>
-  );
-}
 /** The tabs: one per league type, named and iconed from the registry. */
 const TABS: LeagueType[] = ["weekly", "playoff", "squares", "survivor"];
 const isLeagueType = (value: unknown): value is LeagueType =>
   typeof value === "string" && (LEAGUE_TYPES as readonly string[]).includes(value);
 
+/**
+ * The game tabs, one row: equal tabs from 600px wide, a row that scrolls sideways below that (scrolled so the
+ * chosen tab is in view, as when `?section=survivor` opens the page).
+ */
 function TypeTabs({ value, onChange }: { value: LeagueType; onChange: (type: LeagueType) => void }) {
-  return (
-    <View
-      accessibilityRole="tablist"
-      aria-label="Games"
-      style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
-    >
-      {TABS.map((type) => {
-        const selected = type === value;
+  const { width } = useWindowDimensions();
+  const fits = width >= 600;
+  const row = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const [offsets, setOffsets] = useState<Partial<Record<LeagueType, number>>>({});
+  const offset = offsets[value];
+  useEffect(() => {
+    if (!fits && offset !== undefined)
+      row.current?.scrollTo({ x: Math.max(0, offset - layout.pageX), animated: false });
+  }, [fits, offset]);
+  const tabs = (
+    <View accessibilityRole="tablist" aria-label="Games" style={{ flexDirection: "row", gap: space.md }}>
+      {TABS.map((kind) => {
+        const selected = kind === value;
         return (
           <Pressable
-            key={type}
+            key={kind}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
             aria-selected={selected}
-            onPress={() => onChange(type)}
-            style={(state) => ({
-              flexGrow: 1,
-              flexBasis: 140,
-              minHeight: 44,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              paddingHorizontal: 12,
-              borderRadius: 999,
-              backgroundColor: selected
-                ? colors.primary
-                : hoverFill(state, colors.raised, colors.raisedHover),
-            })}
+            onPress={() => onChange(kind)}
+            onLayout={(event) => {
+              const x = event.nativeEvent.layout.x;
+              setOffsets((old) => (old[kind] === x ? old : { ...old, [kind]: x }));
+            }}
+            style={(state) => [
+              webTransition(["background-color"]),
+              {
+                flex: fits ? 1 : undefined,
+                minHeight: 44,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: space.md,
+                paddingHorizontal: space.xl,
+                borderRadius: radius.full,
+                backgroundColor: selected
+                  ? colors.primary
+                  : hoverFill(state, colors.raised, colors.raisedHover),
+              },
+            ]}
           >
             <Icon
-              name={LEAGUE_TYPE_INFO[type].icon}
+              name={LEAGUE_TYPE_INFO[kind].icon}
               size={18}
               color={selected ? colors.primaryForeground : colors.mutedForeground}
             />
             <Text
-              style={{
-                fontFamily: fonts.semibold,
-                fontSize: 15,
-                color: selected ? colors.primaryForeground : colors.foreground,
-              }}
+              numberOfLines={1}
+              style={[
+                type.body,
+                {
+                  fontFamily: fonts.semibold,
+                  color: selected ? colors.primaryForeground : colors.foreground,
+                },
+              ]}
             >
-              {LEAGUE_TYPE_INFO[type].name}
+              {LEAGUE_TYPE_INFO[kind].name}
             </Text>
           </Pressable>
         );
       })}
     </View>
+  );
+  if (fits) return tabs;
+  // The row runs to the screen's edges, so a tab half out of view says there is more to scroll to.
+  return (
+    <ScrollView
+      ref={row}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginHorizontal: -layout.pageX, flexGrow: 0 }}
+      contentContainerStyle={{ paddingHorizontal: layout.pageX }}
+    >
+      {tabs}
+    </ScrollView>
+  );
+}
+
+/** Weekly's "On this page" row: quiet links that scroll to each part. */
+function JumpLinks({ onJump }: { onJump: (id: string) => void }) {
+  return (
+    <View
+      // The links' own side padding hangs past the column, so a wrapped one lines up with the text above.
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        alignItems: "center",
+        columnGap: space.xs,
+        marginHorizontal: -space.sm,
+      }}
+    >
+      <Text style={[type.small, { color: colors.mutedForeground, marginHorizontal: space.sm }]}>
+        On this page:
+      </Text>
+      {[
+        ["rules", "The pick rules"],
+        ["running", "Automatic or hands-on"],
+        ["players", "For players"],
+        ["admins", "For commissioners"],
+      ].map(([id = "", title = ""]) => (
+        <Button
+          link
+          key={id}
+          title={title}
+          variant="link"
+          small
+          fit
+          style={{ paddingHorizontal: space.sm }}
+          onPress={() => onJump(id)}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** A card of the pick rules: its title, then its text. */
+function RuleCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Card>
+      <GuideTitle>{title}</GuideTitle>
+      {children}
+    </Card>
   );
 }
 
@@ -228,121 +264,108 @@ export default function HowToPlay() {
     // Keep the URL in step, so a shared link or the back button returns to the same tab.
     router.setParams({ section: type });
   };
-  const jump = (id: string) => scroll.current?.scrollTo({ y: positions[id] ?? 0, animated: true });
+  // A little above the section, so its heading isn't flush with the window's top edge.
+  const jump = (id: string) =>
+    scroll.current?.scrollTo({ y: Math.max(0, (positions[id] ?? 0) - space.xl), animated: true });
+  const at = (id: string) => (event: LayoutChangeEvent) => {
+    const y = event.nativeEvent.layout.y;
+    setPositions((old) => (old[id] === y ? old : { ...old, [id]: y }));
+  };
   return (
     <ScrollView
       ref={scrollRef}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={[styles.content, { gap: 32, paddingTop: 32 }]}
+      contentContainerStyle={[styles.content, { maxWidth: widths.reading, gap: space["4xl"] }]}
     >
-      <View style={{ gap: 16 }}>
+      <View style={{ gap: space.xl }}>
         <BackLink fallbackLabel={auth.session ? "Your leagues" : "Home"} />
-        <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.primary }}>
-          The league playbook
-        </Text>
-        <Title style={{ fontSize: 48, lineHeight: 48 }}>How to play</Title>
-        <Body muted style={{ fontSize: 18, lineHeight: 28 }}>
-          POW Pick'em runs pro football leagues for your crew. Weekly pick'em is the main game: pick every
-          game against the spread, choose a Pick of the Week (POW), and chase weekly wins and the season lead.
-          A league can play Playoff pick'em, Squares, or Survivor instead.
-        </Body>
-        <Button
-          title={auth.session ? "Go to your leagues" : "Sign in or create an account"}
-          style={{ alignSelf: "flex-start" }}
-          icon="chevron-right"
-          href="/"
-        />
+        <View style={{ gap: space.md }}>
+          <Text style={[type.small, { fontFamily: fonts.semibold, color: colors.primaryText }]}>
+            The league playbook
+          </Text>
+          <Title size="hero">How to play</Title>
+          <Body muted>
+            POW Pick'em runs pro football leagues for your crew: choose a game to see how it's played.
+          </Body>
+        </View>
+        <TypeTabs value={tab} onChange={choose} />
       </View>
-      <TypeTabs value={tab} onChange={choose} />
       {tab === "weekly" ? (
         <>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {[
-              ["rules", "The pick rules"],
-              ["running", "Automatic or hands-on"],
-              ["players", "For players"],
-              ["admins", "For commissioners"],
-            ].map(([id = "", title = ""]) => (
-              <Button
-                link
-                key={id}
-                title={title}
-                variant="secondary"
-                style={{ flexGrow: 1 }}
-                small
-                onPress={() => jump(id)}
-              />
-            ))}
+          <View style={{ marginTop: -space.xl }}>
+            <JumpLinks onJump={jump} />
           </View>
-          <View
-            onLayout={(event) => setPositions((old) => ({ ...old, rules: event.nativeEvent.layout.y }))}
-            style={{ gap: 20 }}
-          >
-            <SectionHeading title="The pick rules" icon="trophy" />
-            <Card>
-              <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>Play the spread</Body>
+          <View onLayout={at("rules")} style={{ gap: space.xl }}>
+            <GuideHeading title="The pick rules" icon="trophy" />
+            <RuleCard title="Play the spread">
               <Body muted>
                 Pick the team you think will cover the displayed spread, rather than simply win the game. A
                 minus line means the team is favored; a plus line gives the underdog a head start.
               </Body>
-              <View style={{ backgroundColor: colors.primaryTint, borderRadius: 12, padding: 16, gap: 4 }}>
+              <View
+                style={{
+                  backgroundColor: colors.primaryTint,
+                  ...corner(radius.lg),
+                  padding: space.xl,
+                  gap: space.xs,
+                }}
+              >
                 <Body style={{ fontFamily: fonts.semibold }}>Example: Buffalo −3.5 vs. Miami +3.5</Body>
                 <Body muted>
                   Buffalo covers by winning by 4 or more. Miami covers by winning outright or losing by 3 or
                   fewer. Equal adjusted scores on a whole-number spread are a push.
                 </Body>
               </View>
-              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+              <GuideNote>
                 A winning pick earns the game’s points. Losing or missing picks earn zero. A push earns zero
                 and is neither a win nor a loss. Use the spread shown in the app; it stays fixed unless a
                 commissioner edits it.
-              </Body>
-            </Card>
-            <Card>
-              <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>What each game is worth</Body>
-              {[
-                ["Sunday daytime", "1 point"],
-                ["Sunday night · 7pm ET or later", "2 points"],
-                ["Thursday & Monday", "3 points"],
-                ["Tuesday, Wednesday, Friday & Saturday", "2 points"],
-                ["Thanksgiving & Christmas Day", "4 points"],
-              ].map(([slot, points]) => (
-                <View
-                  key={slot}
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    gap: 16,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                    paddingBottom: 12,
-                  }}
-                >
-                  <Body muted style={{ fontSize: 14, flex: 1 }}>
-                    {slot}
-                  </Body>
-                  <Body style={{ fontSize: 14, fontFamily: fonts.semibold }}>{points}</Body>
-                </View>
-              ))}
-              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+              </GuideNote>
+            </RuleCard>
+            <RuleCard title="What each game is worth">
+              <View>
+                {[
+                  ["Sunday daytime", "1 point"],
+                  ["Sunday night · 7pm ET or later", "2 points"],
+                  ["Thursday & Monday", "3 points"],
+                  ["Tuesday, Wednesday, Friday & Saturday", "2 points"],
+                  ["Thanksgiving & Christmas Day", "4 points"],
+                ].map(([slot, points], index) => (
+                  <View
+                    key={slot}
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      gap: space.xl,
+                      borderTopWidth: index ? 1 : 0,
+                      borderTopColor: colors.border,
+                      paddingVertical: space.md + space.xxs,
+                    }}
+                  >
+                    <Body muted style={[type.small, { flex: 1 }]}>
+                      {slot}
+                    </Body>
+                    <Body style={[type.small, tabular, { fontFamily: fonts.semibold }]}>{points}</Body>
+                  </View>
+                ))}
+              </View>
+              <GuideNote>
                 Default game slots use Eastern time. Holiday values take priority. Commissioners can change
                 game values, so always check the points on your sheet.
-              </Body>
-            </Card>
-            <Card>
-              <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>One POW. Bigger stakes.</Body>
+              </GuideNote>
+            </RuleCard>
+            <RuleCard title="One POW. Bigger stakes.">
               <Body muted>
                 Mark one pick as your Pick of the Week. If it covers, earn the game’s points plus{" "}
                 <Text style={{ color: colors.pow, fontFamily: fonts.semibold }}>5 bonus points</Text>. A
                 losing or pushed POW earns no bonus.
               </Body>
-              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+              <GuideNote>
                 There is no automatic POW. Move it between unlocked games as often as you like. Once its game
                 kicks off, it stays there for the week.
-              </Body>
-            </Card>
-            <Card>
-              <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>Know the deadlines</Body>
+              </GuideNote>
+            </RuleCard>
+            <RuleCard title="Know the deadlines">
               <Body muted>Every game locks at its own kickoff, or as soon as a result is entered.</Body>
               {[
                 ["Before kickoff", "Save or change your pick and move your POW as often as you like."],
@@ -354,63 +377,57 @@ export default function HowToPlay() {
               ].map(([title, detail]) => (
                 <View
                   key={title}
-                  style={{ padding: 12, borderRadius: 12, backgroundColor: colors.raised, gap: 4 }}
+                  style={{
+                    padding: space.lg,
+                    ...corner(radius.lg),
+                    backgroundColor: colors.raised,
+                    gap: space.xs,
+                  }}
                 >
                   <Body style={{ fontFamily: fonts.semibold }}>{title}</Body>
-                  <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
-                    {detail}
-                  </Body>
+                  <GuideNote>{detail}</GuideNote>
                 </View>
               ))}
-              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+              <GuideNote>
                 Enter or change your tiebreaker guess until its game locks. A saved guess cannot be removed.
-              </Body>
-            </Card>
-            <Card>
-              <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>How winners are decided</Body>
+              </GuideNote>
+            </RuleCard>
+            <RuleCard title="How winners are decided">
               <Body style={{ fontFamily: fonts.semibold }}>Weekly winner</Body>
-              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+              <GuideNote>
                 Most points, then games won, then closest to the tiebreaker game’s combined score. Equal
                 distances favor the guess that did not go over. Remaining ties share the win. The same order
                 from the bottom names the Low Point Loser; nobody is LPL if the entire league is tied.
-              </Body>
-              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+              </GuideNote>
+              <GuideNote>
                 A perfect week wins every game. A bullseye is an exact tiebreaker guess. A lone wolf is alone
                 on the covering side of a game at least three players picked. The tiebreaker is the
                 commissioner’s chosen game, otherwise the last Monday game, or last game if there is no Monday
                 game.
-              </Body>
+              </GuideNote>
               <Body style={{ fontFamily: fonts.semibold }}>Season standings</Body>
-              <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+              <GuideNote>
                 Points from closed weeks, then POWs won, wins, Monday wins, and Sunday night wins. Remaining
                 ties share a rank. Picks stay private until the week is final; commissioners can see
                 submission status, never other players’ choices.
-              </Body>
-            </Card>
+              </GuideNote>
+            </RuleCard>
           </View>
-          <View
-            onLayout={(event) => setPositions((old) => ({ ...old, running: event.nativeEvent.layout.y }))}
-          >
+          <View onLayout={at("running")}>
             <HowToPlayManagement />
           </View>
-          <View
-            onLayout={(event) => setPositions((old) => ({ ...old, players: event.nativeEvent.layout.y }))}
-            style={{ gap: 20 }}
-          >
-            <SectionHeading title="For players" icon="users" />
-            <Steps items={playerSteps} />
+          <View onLayout={at("players")} style={{ gap: space.xl }}>
+            <GuideHeading title="For players" icon="users" />
+            <GuideSteps items={playerSteps} />
           </View>
-          <View
-            onLayout={(event) => setPositions((old) => ({ ...old, admins: event.nativeEvent.layout.y }))}
-            style={{ gap: 20 }}
-          >
-            <SectionHeading title="For commissioners" icon="list" />
+          <View onLayout={at("admins")} style={{ gap: space.xl }}>
+            <GuideHeading title="For commissioners" icon="list" />
             <Body muted>
               An Automatic league needs only Start season on the League tab; see Automatic or hands-on above.
               In a Hands-on league the commissioners run each week: Draft → Accepting picks → Games underway →
               Awaiting finalization → Final. Finalizing is their action, so results stay private until then.
             </Body>
-            <Steps items={adminSteps} />
+            <GuideSteps items={adminSteps} collapsible />
           </View>
         </>
       ) : tab === "playoff" ? (
@@ -420,17 +437,24 @@ export default function HowToPlay() {
       ) : (
         <HowToPlaySurvivor />
       )}
-      <View style={{ gap: 20 }}>
-        <SectionHeading title="In every league" icon="users" />
+      <View style={{ gap: space.xl }}>
+        <GuideHeading title="In every league" icon="users" />
         <Body muted>
           Whatever the game, a league shares the same accounts, invites, commissioners, message board and
           notifications.
         </Body>
-        <Steps items={everyLeagueSteps} />
+        <GuideSteps items={everyLeagueSteps} collapsible />
       </View>
-      <View style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }}>
+      <View
+        style={{ gap: space.xl, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: space["3xl"] }}
+      >
         <Body muted>Ready for the next slate?</Body>
-        <Button title={auth.session ? "Go to your leagues" : "Get started"} icon="chevron-right" href="/" />
+        <Button
+          title={auth.session ? "Go to your leagues" : "Get started"}
+          icon="chevron-right"
+          fit
+          href="/"
+        />
       </View>
     </ScrollView>
   );

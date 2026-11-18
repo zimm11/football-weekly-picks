@@ -1,5 +1,6 @@
 import type { BoardQuarter, BoardSquare } from "@picks/shared";
 import { describe, expect, it } from "vitest";
+import { colors } from "../components/theme";
 import {
   boardScore,
   boardsInOrder,
@@ -10,10 +11,14 @@ import {
   gameFromDraft,
   gridLayout,
   gridMove,
+  holderKey,
+  mySquares,
   quarterRows,
   randomOpenSquare,
   scheduleWeekAt,
+  scoreStatus,
   squarePlace,
+  squareTone,
   winsOf,
   winsText,
   withPending,
@@ -121,6 +126,16 @@ describe("squares board presentation", () => {
     expect(gridLayout(560 - 32)).toMatchObject({ bleed: false, cell: 43 });
     expect(gridLayout(768 - 32).cell).toBe(56);
     expect(gridLayout(896 - 32)).toMatchObject({ bleed: false, cell: 56, width: 24 + 28 + 580 });
+    // Beside a rail on a desktop, the card also fits the window's height: 52px at most, 40px at least.
+    const beside = 864 - 16 - 232;
+    expect(gridLayout(beside, 16, 2000).cell).toBe(52);
+    expect(gridLayout(beside, 16, 551)).toMatchObject({ cell: 42, height: 86 + 11 * 42 });
+    expect(gridLayout(beside, 16, 551).height).toBeLessThanOrEqual(551);
+    expect(gridLayout(beside, 16, 651).cell).toBe(51);
+    expect(gridLayout(beside, 16, 300).cell).toBe(40);
+    // The width still has the last word, and the card's height adds up the same without a height to fit.
+    expect(gridLayout(560 - 32, 16, 2000).cell).toBe(43);
+    expect(gridLayout(390 - 32).height).toBe(2 * 10 + 22 + 2 + 20 + 11 * 32);
     // The type never gets too small to read.
     expect(gridLayout(320 - 32).labelSize).toBeGreaterThanOrEqual(9);
     expect(gridLayout(320 - 32).initialsSize).toBeGreaterThanOrEqual(11);
@@ -195,6 +210,50 @@ describe("squares board presentation", () => {
     expect(gridMove("End", 3, 7)).toEqual({ row: 3, col: 9 });
     expect(gridMove("Home", 3, 0)).toBeUndefined();
     expect(gridMove("Enter", 3, 3)).toBeUndefined();
+  });
+
+  it("fills only your squares and winning ones solid; everyone else's is a tint of their color", () => {
+    const colorOf = () => "#7c3aed";
+    expect(squareTone({ mine: true, won: false, name: "Me" }, colorOf)).toEqual({
+      fill: colors.primary,
+      ink: colors.primaryForeground,
+    });
+    expect(squareTone({ mine: true, won: true, name: "Me" }, colorOf)).toEqual({
+      fill: colors.win,
+      ink: colors.primaryForeground,
+    });
+    expect(squareTone({ mine: false, won: true, name: "Pat" }, colorOf).fill).toBe(colors.win);
+    expect(squareTone({ mine: false, won: false, name: "Pat" }, colorOf)).toEqual({
+      fill: "#7c3aed66",
+      ink: colors.foreground,
+    });
+    expect(holderKey(pat)).toBe("pat");
+    expect(holderKey(ray)).toBe("guest:Uncle Ray");
+  });
+
+  it("lists your squares with their numbers once drawn, and what each has won", () => {
+    const mine: BoardSquare = { row: 0, col: 1, userId: "pat", name: "Pat", guest: false };
+    const view = {
+      ...drawn,
+      squares: [pat, ray, mine],
+      quarters: [
+        { period: "q1" as const, homeScore: 10, awayScore: 8, square: { row: 0, col: 1 }, winner: null },
+      ],
+      current: { row: 2, col: 3 },
+    };
+    expect(mySquares(view, "pat")).toEqual([
+      { square: mine, row: 0, col: 1, numbers: "KC 0 · PHI 8", wins: ["q1"], current: false },
+      { square: pat, row: 2, col: 3, numbers: "KC 4 · PHI 1", wins: [], current: true },
+    ]);
+    expect(mySquares({ ...view, homeDigits: null, awayDigits: null }, "pat")).toEqual([]);
+    expect(mySquares(view, "nobody")).toEqual([]);
+  });
+
+  it("words a score as the scoreboard does", () => {
+    expect(scoreStatus("q1")).toEqual({ status: "After Q1", label: "Score after Q1" });
+    expect(scoreStatus("half")).toEqual({ status: "Halftime", label: "Halftime score" });
+    expect(scoreStatus("q3").status).toBe("After Q3");
+    expect(scoreStatus("final").status).toBe("Final");
   });
 
   it("titles a board and counts the squares left to claim", () => {

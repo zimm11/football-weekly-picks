@@ -30,7 +30,8 @@ import { NotFound } from "../components/NotFound";
 import { Menu, MenuItem, useAnchor } from "../components/Popover";
 import { hoverFill } from "../components/pressState";
 import { TeamLogo } from "../components/TeamLogo";
-import { fonts } from "../components/ui";
+import { space, type } from "../components/theme";
+import { fonts, Title } from "../components/ui";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { now } from "../lib/clock";
@@ -51,13 +52,15 @@ import { useScrollRestore } from "../lib/scrollRestore";
 import { rememberSeason } from "../lib/seasonSelection";
 import { confirmDiscard } from "../lib/unsaved";
 import { weekUnit } from "../lib/weekPresentation";
-import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
+import { LeagueFrame, LeagueTabBar } from "./LeagueChrome";
 import { timeZones } from "./LeagueTools";
 import {
   Action,
   Card,
+  CardTitle,
   colors,
   confirm,
+  Disclosure,
   Eyebrow,
   Failure,
   Heading,
@@ -93,7 +96,8 @@ const digitsKeyboard = { inputMode: "numeric" as const, autoComplete: "off" as c
 
 export function ManageWeekScreen({ weekId }: { weekId: string }) {
   const { me } = useAuth();
-  const week = useLeagueLoad(() => request<WeekView>(`/weeks/${weekId}`), weekId);
+  // Keyed by its API path: the pick sheet remembers the same answer, so either screen opens the other at once.
+  const week = useLeagueLoad(() => request<WeekView>(`/weeks/${weekId}`), `/weeks/${weekId}`);
   const pull = usePullRefresh(week.refresh);
   const reduceMotion = useReducedMotion();
   const gone = !week.data && week.status === 404;
@@ -229,6 +233,53 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
   const automatic = view.management === "auto";
   const playoff = view.leagueType === "playoff";
   const unit = weekUnit(view);
+  const finalizeAction = (primary: boolean) => (
+    <Action
+      secondary={!primary}
+      busy={busy === "finalize"}
+      disabled={(!!busy && busy !== "finalize") || missing > 0 || view.games.length === 0}
+      onPress={() =>
+        confirm(
+          `Finalize the ${unit}?`,
+          playoff
+            ? "Everyone's picks will be revealed, and the standings updated."
+            : "Everyone's picks and the winner will be revealed.",
+          `Finalize ${unit}`,
+          () => {
+            void act("finalize", `/weeks/${weekId}/finalize`);
+          },
+        )
+      }
+    >
+      {busy === "finalize" ? "Finalizing…" : `Finalize ${unit}`}
+    </Action>
+  );
+  const autoFillResults = (primary: boolean) => (
+    <Action
+      secondary={!primary}
+      busy={busy === "results"}
+      disabled={!!busy && busy !== "results"}
+      onPress={() =>
+        confirm(
+          "Auto-fill results?",
+          "Automatic results replace any final scores entered by hand. Spreads stay fixed.",
+          "Auto-fill results",
+          () => {
+            void act("results", `/weeks/${weekId}/results`);
+          },
+        )
+      }
+    >
+      {busy === "results" ? "Filling in…" : "Auto-fill results"}
+    </Action>
+  );
+  // Who has picked: a count first, then the players still missing picks ahead of those who are done.
+  const submissions = view.submissions
+    ? [...view.submissions].sort(
+        (a, b) => Number(a.pickCount >= view.games.length) - Number(b.pickCount >= view.games.length),
+      )
+    : undefined;
+  const allIn = submissions?.filter((entry) => entry.pickCount >= view.games.length).length ?? 0;
   return (
     <View style={s.page}>
       <ScrollView
@@ -241,8 +292,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
         keyboardDismissMode="interactive"
         refreshControl={<RefreshControl {...pull} tintColor={colors.foreground} />}
       >
-        <LeagueHeader leagueId={view.leagueId} leagueName={view.leagueName} />
-        {width >= 768 && <LeagueTabBar wide leagueId={view.leagueId} active="league" />}
+        <LeagueFrame leagueId={view.leagueId} leagueName={view.leagueName} active="league" />
         {announcement && (
           <Announcement
             view={view}
@@ -264,21 +314,10 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
             <Pill tone={view.status === "open" ? "primary" : "muted"}>
               {WEEK_PHASE_LABEL[weekPhase(view.status, view.games, now())]}
             </Pill>
-            <Text
-              accessibilityRole="header"
-              style={{
-                fontFamily: fonts.displayExtraBold,
-                fontSize: 48,
-                lineHeight: 46,
-                color: colors.foreground,
-                textTransform: "uppercase",
-              }}
-            >
+            <Title>
               {weekLabel(view.number)}{" "}
-              <Text style={{ fontFamily: fonts.displayBold, fontSize: 24, color: colors.mutedForeground }}>
-                · {view.year}
-              </Text>
-            </Text>
+              <Text style={[type.heading, { color: colors.mutedForeground }]}>· {view.year}</Text>
+            </Title>
           </View>
           {view.status !== "draft" && (
             <Action compact secondary href={`/weeks/${weekId}`}>
@@ -287,7 +326,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           )}
         </View>
         <Card label={playoff ? "Round controls" : "Week controls"}>
-          <Eyebrow>Manage {unit}</Eyebrow>
+          <CardTitle>Manage {unit}</CardTitle>
           {view.status === "draft" && (
             <>
               <Label>
@@ -351,41 +390,18 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   ? "Results fill in automatically as games end, never over a score you typed."
                   : "Auto-filling results updates scores only; spreads stay as they were when the week opened."}
               </Label>
-              <Action
-                busy={busy === "finalize"}
-                disabled={(!!busy && busy !== "finalize") || missing > 0 || view.games.length === 0}
-                onPress={() =>
-                  confirm(
-                    `Finalize the ${unit}?`,
-                    playoff
-                      ? "Everyone's picks will be revealed, and the standings updated."
-                      : "Everyone's picks and the winner will be revealed.",
-                    `Finalize ${unit}`,
-                    () => {
-                      void act("finalize", `/weeks/${weekId}/finalize`);
-                    },
-                  )
-                }
-              >
-                {busy === "finalize" ? "Finalizing…" : `Finalize ${unit}`}
-              </Action>
-              <Action
-                secondary
-                busy={busy === "results"}
-                disabled={!!busy && busy !== "results"}
-                onPress={() =>
-                  confirm(
-                    "Auto-fill results?",
-                    "Automatic results replace any final scores entered by hand. Spreads stay fixed.",
-                    "Auto-fill results",
-                    () => {
-                      void act("results", `/weeks/${weekId}/results`);
-                    },
-                  )
-                }
-              >
-                {busy === "results" ? "Filling in…" : "Auto-fill results"}
-              </Action>
+              {/* While scores are missing, filling them in is the job; once they're all in, finalizing is. */}
+              {missing > 0 || view.games.length === 0 ? (
+                <>
+                  {autoFillResults(true)}
+                  {finalizeAction(false)}
+                </>
+              ) : (
+                <>
+                  {finalizeAction(true)}
+                  {autoFillResults(false)}
+                </>
+              )}
             </>
           )}
           {view.status === "final" && !automatic && (
@@ -420,9 +436,14 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           )}
           <Failure message={error} />
         </Card>
-        {view.status === "open" && view.submissions && (
+        {view.status === "open" && submissions && (
           <Card>
-            <Eyebrow>Who has picked</Eyebrow>
+            <View style={{ gap: space.xs }}>
+              <CardTitle>Who has picked</CardTitle>
+              <Label>
+                {allIn} of {submissions.length} {submissions.length === 1 ? "has" : "have"} every pick in
+              </Label>
+            </View>
             <View role="table" aria-label="Who has picked">
               <View
                 role="row"
@@ -444,7 +465,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   POW
                 </Text>
               </View>
-              {view.submissions.map((entry) => (
+              {submissions.map((entry) => (
                 <View
                   role="row"
                   key={entry.userId}
@@ -489,10 +510,12 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
         ) : (
           <>
             <Eyebrow>Games</Eyebrow>
-            <Label>
-              Spreads are the home team's line: −3.5 means the home team is favored by 3.5.
-              {view.status === "open" && " A game with both scores entered is final and closed to picks."}
-            </Label>
+            <Disclosure title="How spreads work">
+              <Label>
+                Spreads are the home team's line: −3.5 means the home team is favored by 3.5.
+                {view.status === "open" && " A game with both scores entered is final and closed to picks."}
+              </Label>
+            </Disclosure>
             <View role="table" aria-label="Games" style={{ gap: 16 }}>
               {view.games.map((game) => (
                 <GameEditor
@@ -549,7 +572,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               >
                 {busy === "save" ? "Saving…" : "Save changes"}
               </Action>
-              <Pill tone="warning">
+              <Pill tone="primary">
                 {changed.length} {changed.length === 1 ? "game" : "games"} changed
               </Pill>
             </View>
@@ -909,7 +932,7 @@ function AddGame({
   ];
   return (
     <Card label="Add a game">
-      <Eyebrow>Add a game</Eyebrow>
+      <CardTitle>Add a game</CardTitle>
       <View style={{ flexDirection: "row", gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Select
@@ -1004,7 +1027,7 @@ function Announcement({
         <View
           role="region"
           aria-label="Final results"
-          style={{ gap: 8, borderRadius: 12, backgroundColor: `${colors.background}99`, padding: 12 }}
+          style={{ gap: 8, borderRadius: 12, backgroundColor: colors.field, padding: 12 }}
         >
           <Text accessibilityRole="header" aria-level={4} style={[s.text, { fontFamily: fonts.semibold }]}>
             Final results

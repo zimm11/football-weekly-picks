@@ -2,8 +2,8 @@ import { useFonts } from "expo-font";
 import { DarkTheme, type ErrorBoundaryProps, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { type ReactNode, useEffect, useRef } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Animated, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppHeader } from "../src/components/AppHeader";
 import { ErrorScreen } from "../src/components/ErrorScreen";
@@ -14,6 +14,7 @@ import { Splash } from "../src/components/Splash";
 import { colors, ErrorMessage, Screen } from "../src/components/ui";
 import { AuthProvider, useAuth } from "../src/lib/auth";
 import { DialogProvider } from "../src/lib/dialogs";
+import { duration, easing, nativeDriver, useReducedMotion } from "../src/lib/motion";
 import { NotificationBanner } from "../src/lib/notify";
 
 const web = Platform.OS === "web";
@@ -74,18 +75,37 @@ const fonts = {
  * session and profile are read for the first time, exactly where the font-loading splash was, so the wordmark
  * doesn't jump when the header arrives. Later waits (signing in, an emailed link) show inside the page, under
  * the header (`AuthGate`). The screens stay mounted underneath so the router is ready; they are hidden from
- * screen readers until the splash lifts.
+ * screen readers until opening ends. Then the splash fades away over the first screen, letting clicks through
+ * at once, and is gone (at once under reduced motion).
  */
 function Opening({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const opened = useRef(false);
   if (!auth.loading) opened.current = true;
   const opening = !opened.current;
+  const reduced = useReducedMotion();
+  const fade = useRef(new Animated.Value(1)).current;
+  const [faded, setFaded] = useState(false);
   useEffect(() => {
     if (!opening) return SplashScreen.hide();
     const timer = setTimeout(() => SplashScreen.hide(), LAUNCH_SCREEN_MAX_MS);
     return () => clearTimeout(timer);
   }, [opening]);
+  useEffect(() => {
+    if (opening) return;
+    if (reduced) {
+      setFaded(true);
+      return;
+    }
+    const timing = Animated.timing(fade, {
+      toValue: 0,
+      duration: duration.base,
+      easing: easing.in,
+      useNativeDriver: nativeDriver,
+    });
+    timing.start(() => setFaded(true));
+    return () => timing.stop();
+  }, [opening, reduced, fade]);
   return (
     <>
       <View
@@ -95,10 +115,15 @@ function Opening({ children }: { children: ReactNode }) {
       >
         {children}
       </View>
-      {opening && (
-        <View style={StyleSheet.absoluteFill}>
-          <Splash name={auth.me?.displayName ?? undefined} />
-        </View>
+      {!faded && (
+        <Animated.View
+          pointerEvents={opening ? "auto" : "none"}
+          aria-hidden={!opening}
+          importantForAccessibility={opening ? "auto" : "no-hide-descendants"}
+          style={[StyleSheet.absoluteFill, { opacity: fade }]}
+        >
+          <Splash name={auth.me?.displayName ?? undefined} status={!!auth.session} />
+        </Animated.View>
       )}
     </>
   );
@@ -121,7 +146,7 @@ export default function Layout() {
   if (!loaded)
     return (
       <SafeAreaProvider>
-        <Splash />
+        <Splash status={false} />
       </SafeAreaProvider>
     );
   return (

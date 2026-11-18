@@ -13,6 +13,7 @@ import { notifyDone } from "../lib/notify";
 import { AppLink } from "./AppLink";
 import { Icon } from "./Icon";
 import { hoverFill } from "./pressState";
+import { radius, space, type } from "./theme";
 import { Body, Button, colors, ErrorMessage, Field, fonts, Sheet } from "./ui";
 
 /** What a report is about, minus the reason and note the sheet asks for. */
@@ -122,7 +123,7 @@ export function ReportSheet({
       ) : (
         <>
           <Body muted>Reporting {subject}. Only the people who review reports see who sent it.</Body>
-          <View accessibilityRole="radiogroup" accessibilityLabel="Reason" style={{ gap: 4 }}>
+          <View accessibilityRole="radiogroup" accessibilityLabel="Reason" style={{ gap: space.xs }}>
             {REPORT_REASONS.map((value) => (
               <Pressable
                 key={value}
@@ -134,8 +135,8 @@ export function ReportSheet({
                 onPress={() => setReason(value)}
                 style={(state) => ({
                   minHeight: 44,
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
+                  borderRadius: radius.md,
+                  paddingHorizontal: space.lg,
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 10,
@@ -146,7 +147,7 @@ export function ReportSheet({
                   style={{
                     width: 20,
                     height: 20,
-                    borderRadius: 10,
+                    borderRadius: radius.full,
                     borderWidth: 2,
                     borderColor: reason === value ? colors.primary : colors.mutedForeground,
                     alignItems: "center",
@@ -155,15 +156,16 @@ export function ReportSheet({
                 >
                   {reason === value && (
                     <View
-                      style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary }}
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: radius.full,
+                        backgroundColor: colors.primary,
+                      }}
                     />
                   )}
                 </View>
-                <Text
-                  style={{ fontFamily: fonts.body, fontSize: 16, lineHeight: 22, color: colors.foreground }}
-                >
-                  {REPORT_REASON_LABELS[value]}
-                </Text>
+                <Text style={[type.body, { color: colors.foreground }]}>{REPORT_REASON_LABELS[value]}</Text>
               </Pressable>
             ))}
           </View>
@@ -250,9 +252,12 @@ export function TermsSummary() {
         automatically; what breaks these rules is refused or removed, and players who keep breaking them can't
         post.
       </Body>
-      <AppLink href="/terms" style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <AppLink
+        href="/terms"
+        style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: space.md }}
+      >
         <Icon name="document" size={18} color={colors.primary} />
-        <Text style={{ fontFamily: fonts.medium, fontSize: 16, color: colors.primary }}>
+        <Text style={[type.body, { fontFamily: fonts.medium, color: colors.primary }]}>
           Read the Terms of use
         </Text>
       </AppLink>

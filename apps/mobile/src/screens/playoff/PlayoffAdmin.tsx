@@ -13,6 +13,7 @@ import { Text, View } from "react-native";
 import { AppLink } from "../../components/AppLink";
 import { PreferenceToggle } from "../../components/PreferenceToggle";
 import { hoverFill, ringInside } from "../../components/pressState";
+import { type } from "../../components/theme";
 import { request } from "../../lib/api";
 import { notifyDone, notifyError } from "../../lib/notify";
 import { confirmDiscard } from "../../lib/unsaved";
@@ -21,13 +22,12 @@ import type { AdminToolsProps } from "../leagueTypeScreens";
 import {
   Action,
   Card,
+  CardTitle,
   colors,
   go,
-  Heading,
   Label,
   Pill,
   Select,
-  s,
   useEditsGuard,
   useLeagueLoad,
 } from "../leagueUi";
@@ -81,7 +81,7 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
   return (
     <>
       <Card label="Playoff season">
-        <Heading>{year} playoffs</Heading>
+        <CardTitle>{year} playoffs</CardTitle>
         <Label>
           Rounds set themselves up from the pro football schedule: the Wild Card round once the regular season
           ends, each round open as soon as every game has a line, final once every game has a result.
@@ -118,39 +118,43 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
         )}
       </Card>
       <Card label="Rounds">
-        <Heading>Rounds</Heading>
+        <CardTitle>Rounds</CardTitle>
         {league.weeks.length === 0 && (
           <Label>No round yet. The Wild Card round shows up once its games are scheduled.</Label>
         )}
-        <View>
-          {[...league.weeks]
-            .sort((a, b) => a.number - b.number)
-            .map((week) => (
-              <AppLink
-                key={week.id}
-                href={`/weeks/${week.id}/manage`}
-                accessibilityLabel={`Manage ${weekLabel(week.number)}`}
-                style={(state) => [
-                  {
-                    minHeight: 56,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: colors.border,
-                    backgroundColor: hoverFill(state),
-                  },
-                  ringInside,
-                ]}
-              >
-                <Text style={[s.subtitle, { fontSize: 20 }]}>{weekLabel(week.number)}</Text>
-                <Pill inline tone={week.status === "open" ? "primary" : "muted"}>
-                  {WEEK_PHASE_LABEL[week.phase]}
-                </Pill>
-              </AppLink>
-            ))}
-        </View>
+        {league.weeks.length > 0 && (
+          <View>
+            {[...league.weeks]
+              .sort((a, b) => a.number - b.number)
+              .map((week) => (
+                <AppLink
+                  key={week.id}
+                  href={`/weeks/${week.id}/manage`}
+                  accessibilityLabel={`Manage ${weekLabel(week.number)}`}
+                  style={(state) => [
+                    {
+                      minHeight: 56,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      borderTopWidth: 1,
+                      borderTopColor: colors.border,
+                      backgroundColor: hoverFill(state),
+                    },
+                    ringInside,
+                  ]}
+                >
+                  <Text style={[type.subheading, { color: colors.foreground }]}>
+                    {weekLabel(week.number)}
+                  </Text>
+                  <Pill inline tone={week.status === "open" ? "primary" : "muted"}>
+                    {WEEK_PHASE_LABEL[week.phase]}
+                  </Pill>
+                </AppLink>
+              ))}
+          </View>
+        )}
         <Label>
           If the schedule doesn't come through, create a round by hand and run it from its manage screen.
         </Label>

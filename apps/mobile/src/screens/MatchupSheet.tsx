@@ -8,11 +8,15 @@ import {
 } from "@picks/shared";
 import { type ReactNode, useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { FadeIn } from "../components/FadeIn";
 import { Icon } from "../components/Icon";
 import { hoverFill, pressState } from "../components/pressState";
+import { SkeletonBlock } from "../components/SkeletonBlock";
 import { TeamLogo } from "../components/TeamLogo";
+import { radius, tabular } from "../components/theme";
 import { colors, fonts, Sheet } from "../components/ui";
 import { request } from "../lib/api";
+import { sentenceCase } from "../lib/resultsPresentation";
 import { favoriteLine, kickoffDay, kickoffTime } from "../lib/weekPresentation";
 import { WeekAction, w } from "./weekUi";
 
@@ -28,6 +32,8 @@ export function MatchupSheet({
   const [state, setState] = useState<{ gameId: string; data?: GameInsights; error?: string }>();
   const [attempt, setAttempt] = useState(0);
   const [linkError, setLinkError] = useState<string>();
+  // The sheet's width (never its height): two columns of season leaders need room.
+  const [width, setWidth] = useState(0);
   const gameId = game?.id;
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt explicitly retries the same matchup.
   useEffect(() => {
@@ -65,7 +71,13 @@ export function MatchupSheet({
       title={game ? `${teamName(game.awayTeam)} at ${teamName(game.homeTeam)}` : "Matchup"}
     >
       {game && (
-        <>
+        <View
+          style={{ gap: 16 }}
+          onLayout={(event) => {
+            const next = event.nativeEvent.layout.width;
+            setWidth((prev) => (Math.abs(prev - next) < 1 ? prev : next));
+          }}
+        >
           <Text style={w.muted}>
             {kickoffDay(game.kickoff, timeZone)} · {kickoffTime(game.kickoff, timeZone)}
             {game.spread !== null ? ` · ${favoriteLine(game, game.spread)}` : ""}
@@ -78,13 +90,7 @@ export function MatchupSheet({
               <WeekAction label="Try again" secondary onPress={() => setAttempt((value) => value + 1)} />
             </View>
           )}
-          {!data && !shown?.error && (
-            <View accessibilityLabel="Loading matchup" accessibilityState={{ busy: true }} style={w.stack}>
-              {[48, 80, 128].map((height) => (
-                <View key={height} style={[s.placeholder, { height }]} />
-              ))}
-            </View>
-          )}
+          {!data && !shown?.error && <MatchupSkeleton />}
           {linkError && (
             <Text accessibilityRole="alert" style={s.error}>
               {linkError}
@@ -100,13 +106,73 @@ export function MatchupSheet({
               </Text>
             </View>
           )}
-          {data?.matchup?.prediction && <Prediction game={game} prediction={data.matchup.prediction} />}
           {data?.matchup && (
-            <Matchup game={game} data={data.matchup} timeZone={timeZone} openNews={openNews} />
+            <FadeIn style={{ gap: 16 }}>
+              {data.matchup.prediction && <Prediction game={game} prediction={data.matchup.prediction} />}
+              <Matchup
+                game={game}
+                data={data.matchup}
+                timeZone={timeZone}
+                openNews={openNews}
+                wide={width >= 480}
+              />
+            </FadeIn>
           )}
-        </>
+        </View>
       )}
     </Sheet>
+  );
+}
+/**
+ * The loading placeholder, shaped and sized like what loads (the win probability, the team stats' ten rows, the
+ * last five games), so the sheet opens at its final size instead of growing when the stats land: taller than a
+ * phone's or a dialog's cap, as the loaded sheet nearly always is.
+ */
+function MatchupSkeleton() {
+  return (
+    <View
+      accessible
+      accessibilityLabel="Loading matchup"
+      accessibilityState={{ busy: true }}
+      style={{ gap: 16 }}
+    >
+      <View style={{ gap: 10 }}>
+        <SkeletonBlock width={120} height={14} />
+        <View style={w.between}>
+          <SkeletonBlock width="30%" height={20} />
+          <SkeletonBlock width="30%" height={20} />
+        </View>
+        <SkeletonBlock width="100%" height={10} radius={3} />
+        <SkeletonBlock width="85%" height={14} />
+      </View>
+      <View style={{ gap: 10 }}>
+        <SkeletonBlock width={90} height={14} />
+        <View style={[w.between, { paddingBottom: 8 }]}>
+          <SkeletonBlock width="35%" height={24} />
+          <SkeletonBlock width="35%" height={24} />
+        </View>
+        {Array.from({ length: 10 }, (_, row) => (
+          <View key={`row-${row}`} style={[s.comparison, { justifyContent: "space-between" }]}>
+            <SkeletonBlock width={44} height={14} />
+            <SkeletonBlock width="30%" height={14} />
+            <SkeletonBlock width={44} height={14} />
+          </View>
+        ))}
+      </View>
+      <View style={{ gap: 10 }}>
+        <SkeletonBlock width={110} height={14} />
+        <View style={{ flexDirection: "row", gap: 16 }}>
+          {["away", "home"].map((side) => (
+            <View key={side} style={{ flex: 1, gap: 8 }}>
+              <SkeletonBlock width="70%" height={24} />
+              {Array.from({ length: 5 }, (_, row) => (
+                <SkeletonBlock key={`${side}-${row}`} width="90%" height={14} />
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
   );
 }
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -119,9 +185,25 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     </View>
   );
 }
-function TeamHeading({ team, reverse = false }: { team: string; reverse?: boolean }) {
+function TeamHeading({
+  team,
+  reverse = false,
+  grow = true,
+}: {
+  team: string;
+  reverse?: boolean;
+  /** False beside a form strip, where the heading keeps its own width. */
+  grow?: boolean;
+}) {
   return (
-    <View style={[w.row, { flex: 1, gap: 8 }, reverse && { flexDirection: "row-reverse" }]}>
+    <View
+      style={[
+        w.row,
+        { gap: 8, minWidth: 0 },
+        grow ? { flex: 1 } : { flexShrink: 1 },
+        reverse && { flexDirection: "row-reverse" },
+      ]}
+    >
       <TeamLogo team={team} size={24} />
       <Text numberOfLines={2} style={[s.teamHeading, { flexShrink: 1 }]}>
         {teamName(team)}
@@ -138,11 +220,11 @@ function Prediction({ game, prediction }: { game: Game; prediction: { home: numb
     <Section title="Win probability">
       <View style={{ gap: 6 }}>
         <View style={w.between}>
-          <Text style={[s.predictionTeam, { flex: 1 }]}>
+          <Text style={[s.predictionTeam, tabular, { flex: 1 }]}>
             {away.toUpperCase()} {awayPct}%
           </Text>
           <Text style={w.small}>To win</Text>
-          <Text style={[s.predictionTeam, { flex: 1, textAlign: "right" }]}>
+          <Text style={[s.predictionTeam, tabular, { flex: 1, textAlign: "right" }]}>
             {homePct}% {home.toUpperCase()}
           </Text>
         </View>
@@ -164,21 +246,55 @@ function Prediction({ game, prediction }: { game: Game; prediction: { home: numb
     </Section>
   );
 }
+/**
+ * Something for each team: in two columns under the teams' names, away on the left and home on the right, as
+ * the team stats are; stacked, away first, when `columns` is false. `aside` sits beside a team's name.
+ */
 function PerTeam({
   game,
   data,
+  columns = true,
+  aside,
   children,
 }: {
   game: Game;
   data: MatchupInsights;
+  columns?: boolean;
+  aside?: (team: TeamInsights) => ReactNode;
   children: (team: TeamInsights) => ReactNode;
 }) {
   return (
-    <View style={{ gap: 16 }}>
+    <View style={columns ? { flexDirection: "row", gap: 16 } : { gap: 16 }}>
       {(["away", "home"] as const).map((side) => (
-        <View key={side} style={{ gap: 6 }}>
-          <TeamHeading team={side === "home" ? game.homeTeam : game.awayTeam} />
+        <View key={side} style={[{ gap: 8, minWidth: 0 }, columns && { flex: 1 }]}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            <TeamHeading team={side === "home" ? game.homeTeam : game.awayTeam} grow={!aside} />
+            {aside?.(data[side])}
+          </View>
           {children(data[side])}
+        </View>
+      ))}
+    </View>
+  );
+}
+/** A team's last five results as five squares, latest first: the letter and its fill, never color alone. */
+function FormStrip({ results }: { results: TeamInsights["lastFive"] }) {
+  if (!results.length) return null;
+  const latestFirst = [...results].reverse();
+  return (
+    <View
+      accessible
+      accessibilityLabel={`Form, latest first: ${latestFirst.map((r) => r.result).join(", ")}`}
+      style={{ flexDirection: "row", gap: 3 }}
+    >
+      {latestFirst.map((result, index) => (
+        <View
+          key={`${result.opponent}-${index}`}
+          style={[s.form, { backgroundColor: result.result === "W" ? colors.winTint : colors.raised }]}
+        >
+          <Text style={[s.formText, { color: result.result === "W" ? colors.win : colors.mutedForeground }]}>
+            {result.result}
+          </Text>
         </View>
       ))}
     </View>
@@ -189,16 +305,20 @@ function Matchup({
   data,
   timeZone,
   openNews,
+  wide,
 }: {
   game: Game;
   data: MatchupInsights;
   timeZone: string;
   openNews: (url: string) => Promise<void>;
+  /** The sheet has room (480px) for the season leaders in two columns. */
+  wide: boolean;
 }) {
   const comparison = [
     { label: "Record", away: data.away.record, home: data.home.record },
     { label: "Road / home", away: data.away.venueRecord, home: data.home.venueRecord },
-    ...data.stats,
+    // The feed names its stats in Title Case: drawn in sentence case, as the app writes.
+    ...data.stats.map((row) => ({ ...row, label: sentenceCase(row.label) })),
   ].filter((row) => row.away !== null && row.home !== null);
   const has = (pick: (team: TeamInsights) => unknown[]) =>
     pick(data.home).length > 0 || pick(data.away).length > 0;
@@ -219,7 +339,8 @@ function Matchup({
     <>
       {comparison.length > 0 && (
         <Section title="Team stats">
-          <View>
+          {/* In a wide sheet the two columns stay close enough to read across. */}
+          <View style={{ width: "100%", maxWidth: 440, alignSelf: "center" }}>
             <View style={[w.row, { paddingBottom: 8 }]}>
               <TeamHeading team={game.awayTeam} />
               <View style={{ width: 32 }} />
@@ -243,7 +364,7 @@ function Matchup({
       )}
       {has((team) => team.lastFive) && (
         <Section title="Last five games">
-          <PerTeam game={game} data={data}>
+          <PerTeam game={game} data={data} aside={(team) => <FormStrip results={team.lastFive} />}>
             {(team) => (
               <View style={{ gap: 4 }}>
                 {team.lastFive.length === 0 && <Text style={w.muted}>No games yet.</Text>}
@@ -302,7 +423,7 @@ function Matchup({
       )}
       {has((team) => team.leaders) && (
         <Section title="Season leaders">
-          <PerTeam game={game} data={data}>
+          <PerTeam game={game} data={data} columns={wide}>
             {(team) => (
               <View style={{ gap: 6 }}>
                 {team.leaders.map((leader) => (
@@ -390,7 +511,8 @@ const s = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   error: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.destructive },
-  placeholder: { backgroundColor: colors.raised, borderRadius: 12 },
+  form: { width: 20, height: 20, borderRadius: radius.xs, alignItems: "center", justifyContent: "center" },
+  formText: { fontFamily: fonts.bold, fontSize: 11, lineHeight: 14 },
   empty: { alignItems: "center", gap: 8, paddingVertical: 32, paddingHorizontal: 16 },
   emptyTitle: { fontFamily: fonts.semibold, fontSize: 16, color: colors.foreground, textAlign: "center" },
 });

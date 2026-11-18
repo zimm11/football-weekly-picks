@@ -16,6 +16,7 @@ import {
   cryptoRandom,
   currentSquare,
   drawDigits,
+  latestPeriodScore,
   MODERATION_MESSAGES,
   type RandomSource,
   SQUARE_PERIOD_LABEL,
@@ -210,7 +211,15 @@ async function scoresOf(db: Store, boardIds: string[]): Promise<ScoreRow[]> {
   return db.select().from(squareScores).where(inArray(squareScores.boardId, boardIds));
 }
 
-function summaryOf(board: BoardRow, claims: ClaimRow[], scores: ScoreRow[], userId: string, now: Date) {
+function summaryOf(
+  board: BoardRow,
+  claims: ClaimRow[],
+  scores: ScoreRow[],
+  userId: string,
+  now: Date,
+): BoardSummary {
+  // The stored scores only: the list never asks the feed, so a game on now shows its latest scored period.
+  const latest = latestPeriodScore(scores);
   return {
     id: board.id,
     homeTeam: board.homeTeam,
@@ -220,7 +229,10 @@ function summaryOf(board: BoardRow, claims: ClaimRow[], scores: ScoreRow[], user
     claimed: claims.length,
     mine: claims.filter((c) => c.userId === userId).length,
     maxPerPlayer: board.maxPerPlayer,
-  } satisfies BoardSummary;
+    ...(latest && {
+      latestScore: { period: latest.period, away: latest.awayScore, home: latest.homeScore },
+    }),
+  };
 }
 
 const owner = (c: Named) => ({

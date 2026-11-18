@@ -8,9 +8,11 @@ import {
   openingThursday,
   preferredSeasonYear,
   seasonYear,
+  suggestedWeekNumber,
   weekLabel,
   weekPhase,
   weekPickAvailability,
+  weekPlayedByCalendar,
 } from "./seasons";
 
 const now = new Date("2026-11-15T12:00:00Z"); // Sunday, 7am Eastern.
@@ -162,5 +164,32 @@ describe("the season calendar", () => {
     // Monday night of Week 10: Week 11 is next.
     expect(nextStartWeek(2026, new Date("2026-11-17T01:00:00Z"))).toBe(11);
     expect(nextStartWeek(2026, new Date("2027-01-10T00:00:00Z"))).toBeNull();
+  });
+});
+
+describe("the week Set up a week suggests", () => {
+  it("is the coming week by the calendar in this season before any week exists", () => {
+    // August: the season hasn't begun.
+    expect(suggestedWeekNumber([], 2026, new Date("2026-08-15T12:00:00Z"), 18)).toBe(1);
+    // Mid-November (Tuesday of Week 11): Week 11's Thursday is still to come.
+    expect(suggestedWeekNumber([], 2026, new Date("2026-11-17T15:00:00Z"), 18)).toBe(11);
+    // After Week 18 has begun (January): the last week.
+    expect(suggestedWeekNumber([], 2026, new Date("2027-01-12T15:00:00Z"), 18)).toBe(18);
+  });
+  it("continues after the prepared weeks, and keeps Week 1 for another season", () => {
+    const at = new Date("2026-11-17T15:00:00Z");
+    expect(suggestedWeekNumber([{ number: 3 }], 2026, at, 18)).toBe(4);
+    expect(suggestedWeekNumber([], 2027, at, 18)).toBe(1);
+    expect(suggestedWeekNumber([], 2025, at, 18)).toBe(1);
+  });
+});
+
+describe("weekPlayedByCalendar", () => {
+  it("says a week is played from the Tuesday morning after it, once Monday night is over", () => {
+    // Week 10's Thursday is Nov 12; its Monday night game ends early on Tuesday, Nov 17 (UTC).
+    expect(weekPlayedByCalendar(2026, 10, new Date("2026-11-17T03:00:00Z"))).toBe(false);
+    expect(weekPlayedByCalendar(2026, 10, new Date("2026-11-17T15:00:00Z"))).toBe(true);
+    expect(weekPlayedByCalendar(2026, 9, new Date("2026-11-17T15:00:00Z"))).toBe(true);
+    expect(weekPlayedByCalendar(2026, 11, new Date("2026-11-17T15:00:00Z"))).toBe(false);
   });
 });

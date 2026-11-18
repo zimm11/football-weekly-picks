@@ -50,7 +50,7 @@ test("a Guillotine playoff league runs from Wild Card to champion by itself", as
   await openNewLeague(page);
   await page.getByRole("radio", { name: "Playoff pick'em" }).click();
   await page.getByLabel("League name").fill("Bracket Busters");
-  await page.getByRole("combobox", { name: "Format", exact: true }).selectOption("guillotine");
+  await page.getByRole("radio", { name: "Guillotine", exact: true }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("combobox", { name: "Season", exact: true })).toHaveValue("2027");
   const leagueUrl = page.url().replace(/\/league$/, "");

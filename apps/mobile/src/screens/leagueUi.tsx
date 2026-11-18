@@ -12,64 +12,68 @@ import {
 } from "react";
 import {
   AppState,
-  Platform,
   Pressable,
   type PressableStateCallbackType,
+  type StyleProp,
   StyleSheet,
   Text,
-  TextInput,
+  type TextInput,
   type TextInputProps,
   View,
   type ViewStyle,
 } from "react-native";
 import { AppLink, type LinkHow } from "../components/AppLink";
 import { BottomSheet } from "../components/BottomSheet";
-import { Icon } from "../components/Icon";
+import { FadeIn } from "../components/FadeIn";
+import { Icon, type IconName } from "../components/Icon";
 import { Menu, MenuItem, useAnchor } from "../components/Popover";
-import { atRest, busyProps, hoverFill, pressState } from "../components/pressState";
-import { colors, fonts } from "../components/ui";
+import { disabledOpacity, hoverFill, pressState } from "../components/pressState";
+import { SkeletonBlock } from "../components/SkeletonBlock";
+import { corner, elevation, layout, radius, space, type, widths } from "../components/theme";
+import {
+  Badge,
+  Button,
+  CardTitle,
+  colors,
+  ErrorMessage,
+  Field,
+  fonts,
+  styles as uiStyles,
+} from "../components/ui";
 import { WebSelect } from "../components/WebSelect";
 import { statusOf } from "../lib/api";
 import { showConfirm } from "../lib/dialogs";
-import { fieldDefaults } from "../lib/fieldProps";
 import { dropLoadCache, loadCacheGeneration, readLoadCache, writeLoadCache } from "../lib/loadCache";
+import { duration, webTransition } from "../lib/motion";
 import { confirmDiscard, hasUnsavedWork, useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
 
-export { colors };
+export { CardTitle, colors };
 export const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    gap: 24,
-    paddingBottom: 36,
+    paddingHorizontal: layout.pageX,
+    paddingTop: layout.pageTop,
+    gap: layout.pageGap,
+    paddingBottom: layout.pageBottom,
     width: "100%",
-    maxWidth: 896,
+    maxWidth: widths.page,
     alignSelf: "center",
   },
-  card: { backgroundColor: colors.card, borderRadius: 16, padding: 16, gap: 12 },
+  card: {
+    backgroundColor: colors.card,
+    ...corner(radius.xl),
+    padding: layout.cardPad,
+    gap: layout.cardGap,
+    boxShadow: elevation.cardEdge,
+  },
   row: { flexDirection: "row", gap: 12, alignItems: "center", flexWrap: "wrap" },
-  text: { color: colors.foreground, fontFamily: fonts.body, fontSize: 16, lineHeight: 24 },
-  muted: { color: colors.mutedForeground, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
-  title: {
-    color: colors.foreground,
-    fontFamily: fonts.displayExtraBold,
-    fontSize: 36,
-    letterSpacing: 0.9,
-    lineHeight: 36,
-    textTransform: "uppercase",
-  },
-  subtitle: {
-    color: colors.foreground,
-    fontFamily: fonts.displayBold,
-    fontSize: 24,
-    letterSpacing: 0.6,
-    lineHeight: 28,
-    textTransform: "uppercase",
-  },
+  text: { ...type.body, color: colors.foreground },
+  muted: { ...type.small, color: colors.mutedForeground },
+  title: { ...type.title, color: colors.foreground },
+  subtitle: { ...type.heading, color: colors.foreground },
   button: {
     backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: radius.md,
     minHeight: 44,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -79,19 +83,17 @@ export const s = StyleSheet.create({
     gap: 8,
   },
   secondary: { backgroundColor: colors.raised },
-  buttonText: { color: colors.foreground, fontFamily: fonts.semibold, fontSize: 16, lineHeight: 24 },
+  buttonText: { ...type.body, fontFamily: fonts.semibold, color: colors.foreground },
   input: {
-    backgroundColor: `${colors.background}99`,
+    backgroundColor: colors.field,
     borderWidth: 1,
     borderColor: colors.input,
-    borderRadius: 10,
+    borderRadius: radius.md,
     minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 16,
-    lineHeight: 24,
+    ...type.body,
     color: colors.foreground,
-    fontFamily: fonts.body,
   },
   grow: { flex: 1 },
   divider: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
@@ -122,6 +124,7 @@ export function Heading({ children, level = 2 }: { children: ReactNode; level?: 
     </Text>
   );
 }
+/** The app's `Badge` (components/ui.tsx), under the league screens' name. */
 export function Pill({
   children,
   tone = "muted",
@@ -131,38 +134,18 @@ export function Pill({
   tone?: "muted" | "primary" | "win" | "pow" | "warning";
   inline?: boolean;
 }) {
-  const ink =
-    tone === "primary"
-      ? colors.primary
-      : tone === "win"
-        ? colors.win
-        : tone === "pow"
-          ? colors.powForeground
-          : tone === "warning"
-            ? colors.destructive
-            : colors.mutedForeground;
   return (
-    <View
-      style={{
-        alignSelf: inline ? "center" : "flex-start",
-        paddingHorizontal: 10,
-        paddingVertical: 3,
-        borderRadius: 100,
-        backgroundColor:
-          tone === "pow"
-            ? colors.pow
-            : tone === "primary"
-              ? `${colors.primary}20`
-              : tone === "win"
-                ? `${colors.win}18`
-                : colors.raised,
-      }}
-    >
-      <Text style={{ fontFamily: fonts.semibold, color: ink, fontSize: 12, lineHeight: 18 }}>{children}</Text>
-    </View>
+    <Badge tone={tone} inline={inline}>
+      {children}
+    </Badge>
   );
 }
-const ignore = () => {};
+/**
+ * The app's `Button` (components/ui.tsx), with the league screens' props: primary by default, `secondary`
+ * (the quiet raised button), `ghost`, `danger` (the coral destructive button; on a ghost, a coral label),
+ * `muted` (a muted label on a quiet button) and `compact` (small, as wide as its content). `label` is the
+ * accessible name when it should say more than the text.
+ */
 export function Action({
   children,
   onPress,
@@ -207,71 +190,23 @@ export function Action({
   href?: string;
   how?: LinkHow;
 }) {
-  const off = !!disabled || busy;
-  const shared = {
-    accessibilityLabel: label,
-    ...busyProps(disabled, busy, Platform.OS === "web"),
-    style: (state: PressableStateCallbackType) => {
-      const { pressed, hovered } = busy ? atRest : pressState(state);
-      return [
-        s.button,
-        secondary && s.secondary,
-        ghost && { backgroundColor: "transparent" },
-        compact && { alignSelf: "flex-start" as const, paddingHorizontal: 12 },
-        // Under the mouse: a filled button lightens, a secondary or ghost one takes the next layer up.
-        hovered &&
-          (ghost
-            ? { backgroundColor: colors.raised }
-            : secondary
-              ? { backgroundColor: colors.raisedHover }
-              : { opacity: 0.9 }),
-        off && { opacity: 0.45 },
-        busy && ({ cursor: "auto" } as const),
-        pressed && { opacity: 0.75 },
-        style,
-      ];
-    },
-  };
-  const content = (
-    <>
-      {icon && (
-        <Icon
-          name={icon}
-          size={18}
-          color={
-            danger
-              ? colors.destructive
-              : muted
-                ? colors.mutedForeground
-                : secondary || ghost
-                  ? colors.foreground
-                  : colors.primaryForeground
-          }
-        />
-      )}
-      <Text
-        style={[
-          s.buttonText,
-          { color: secondary || ghost ? colors.foreground : colors.primaryForeground },
-          compact && { fontSize: 14 },
-          muted && { color: colors.mutedForeground },
-          danger && { color: colors.destructive },
-        ]}
-      >
-        {children}
-      </Text>
-    </>
-  );
-  if (href !== undefined)
-    return (
-      <AppLink href={href} how={how} onPress={busy ? ignore : onPress} {...shared}>
-        {content}
-      </AppLink>
-    );
   return (
-    <Pressable accessibilityRole={link ? "link" : "button"} onPress={busy ? ignore : onPress} {...shared}>
-      {content}
-    </Pressable>
+    <Button
+      title={children}
+      onPress={onPress}
+      disabled={!!disabled}
+      busy={busy}
+      variant={ghost ? "ghost" : danger ? "destructive" : secondary ? "secondary" : "primary"}
+      labelTone={ghost && danger ? "destructive" : muted ? "muted" : undefined}
+      accessibilityLabel={label}
+      icon={icon}
+      small={!!compact}
+      fit={!!compact}
+      style={style}
+      link={!!link}
+      href={href}
+      how={how}
+    />
   );
 }
 export function IconButton({
@@ -296,15 +231,18 @@ export function IconButton({
       disabled={disabled}
       accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
-      style={(state) => ({
-        minWidth: 44,
-        minHeight: 44,
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 100,
-        backgroundColor: hoverFill(state),
-        opacity: disabled ? 0.4 : 1,
-      })}
+      style={(state) => [
+        webTransition(["background-color", "opacity"]),
+        {
+          minWidth: 44,
+          minHeight: 44,
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: radius.full,
+          backgroundColor: disabled ? "transparent" : hoverFill(state),
+          opacity: disabled ? disabledOpacity : 1,
+        },
+      ]}
     >
       <Icon name={name} size={24} color={colors.mutedForeground} />
     </Pressable>
@@ -334,9 +272,10 @@ export function RowLink({
   const shared = {
     accessibilityLabel: label,
     style: (state: PressableStateCallbackType) => [
+      webTransition(["background-color", "opacity"]),
       {
         backgroundColor: hoverFill(state, colors.card),
-        borderRadius: 16,
+        ...corner(radius.xl),
         minHeight: 64,
         flexDirection: "row" as const,
         alignItems: "center" as const,
@@ -366,78 +305,94 @@ export function RowLink({
   );
 }
 /**
- * A labelled text field. Beyond `TextInput`'s props:
+ * The app's `Field` (components/ui.tsx) under the league screens' name: a labelled text field. Beyond
+ * `TextInput`'s props:
  *
  * - `onSubmit` runs when the player presses Enter (or the keyboard's return key) in a single-line field:
  *   pass the form's submit, or focus the next field (`enterKeyHint="next"` with `ref` on the next one).
  *   The return key says "done" unless `enterKeyHint`/`returnKeyType` says otherwise.
  * - `ref` reaches the `TextInput` (`ref.current?.focus()`).
  * - A `secureTextEntry` field turns off capitalization, autocorrect and spell-check by itself.
+ * - `hint` is one muted line under the field; `reveal` adds a show-password eye to a `secureTextEntry` one.
  */
-export function Input({
-  label,
-  onSubmit,
-  ref,
-  ...props
-}: Omit<TextInputProps, "ref"> & {
-  label: string;
-  onSubmit?: () => void;
-  ref?: Ref<ComponentRef<typeof TextInput>>;
-}) {
-  const [focused, setFocused] = useState(false);
+export function Input(
+  props: Omit<TextInputProps, "ref"> & {
+    label: string;
+    onSubmit?: () => void;
+    ref?: Ref<ComponentRef<typeof TextInput>>;
+    hint?: string;
+    reveal?: boolean;
+  },
+) {
+  return <Field {...props} />;
+}
+/** Something didn't load: the message, and **Try again** with `retry`. The app's `ErrorMessage`, announced whole. */
+export function Failure({ message, retry }: { message?: string; retry?: () => void }) {
+  return <ErrorMessage message={message} onRetry={retry} announce="block" />;
+}
+/**
+ * The placeholder while a league screen loads: a title bar and three cards, pulsing gently. Named `label` and
+ * marked busy for screen readers. `bare` leaves out the page's own padding, for a tab that already has it.
+ */
+export function Skeleton({ label = "Loading league", bare = false }: { label?: string; bare?: boolean }) {
   return (
-    <View style={{ gap: 6 }}>
-      <Text
-        style={[
-          s.text,
-          { fontSize: 14, lineHeight: 20, fontFamily: fonts.medium, color: colors.mutedForeground },
-        ]}
-      >
-        {label}
-      </Text>
-      <TextInput
-        ref={ref}
-        accessibilityLabel={label}
-        placeholderTextColor={colors.mutedForeground}
-        selectionColor={colors.primary}
-        onSubmitEditing={onSubmit && !props.multiline ? () => onSubmit() : undefined}
-        {...fieldDefaults({ submits: !!onSubmit, ...props }, Platform.OS === "web")}
-        {...props}
-        onFocus={(event) => {
-          setFocused(true);
-          props.onFocus?.(event);
-        }}
-        onBlur={(event) => {
-          setFocused(false);
-          props.onBlur?.(event);
-        }}
-        style={[s.input, focused && { borderColor: colors.primary }, props.style]}
-      />
+    <View
+      accessible
+      accessibilityLabel={label}
+      accessibilityState={{ busy: true }}
+      style={bare ? { gap: layout.pageGap } : s.content}
+    >
+      <SkeletonBlock width={190} height={30} />
+      {[0, 1, 2].map((n) => (
+        <View key={n} style={[s.card, { height: n === 0 ? 64 : 120 }]}>
+          <SkeletonBlock width="40%" height={16} />
+          {n > 0 && <SkeletonBlock width="75%" height={16} />}
+        </View>
+      ))}
     </View>
   );
 }
-export function Failure({ message, retry }: { message?: string; retry?: () => void }) {
-  return message ? (
-    <View accessibilityRole="alert" style={{ gap: 8 }}>
-      <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-        <Icon name="warning" size={20} color={colors.destructive} />
-        <Text style={[s.text, { color: colors.destructive, flex: 1 }]}>{message}</Text>
-      </View>
-      {retry && (
-        <Action secondary compact onPress={retry} icon="refresh">
-          Try again
-        </Action>
-      )}
-    </View>
-  ) : null;
-}
-export function Skeleton({ label = "Loading league" }: { label?: string }) {
+/**
+ * "Nothing here yet", drawn the same on every screen: an icon in a disc, a title (a heading at `level`, 2 by
+ * default), one muted line (`detail` or `children`), and an optional `action` (a button) under it.
+ */
+export function EmptyState({
+  icon,
+  title,
+  detail,
+  children,
+  action,
+  level = 2,
+}: {
+  icon: IconName;
+  title: string;
+  detail?: string;
+  children?: ReactNode;
+  action?: ReactNode;
+  level?: 1 | 2 | 3 | 4;
+}) {
+  const line = children ?? detail;
   return (
-    <View accessible accessibilityLabel={label} accessibilityState={{ busy: true }} style={s.content}>
-      <View style={{ width: 190, height: 30, borderRadius: 6, backgroundColor: colors.raised }} />
-      {[0, 1, 2].map((n) => (
-        <View key={n} style={[s.card, { height: n === 0 ? 64 : 120 }]} />
-      ))}
+    <View style={[s.card, { padding: space["3xl"], alignItems: "center" }]}>
+      <View
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: radius.full,
+          backgroundColor: colors.raised,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name={icon} size={24} color={colors.mutedForeground} />
+      </View>
+      <View style={{ gap: space.xs, alignItems: "center" }}>
+        <CardTitle level={level} style={{ textAlign: "center" }}>
+          {title}
+        </CardTitle>
+        {line !== undefined && <Text style={[s.muted, { textAlign: "center" }]}>{line}</Text>}
+      </View>
+      {action}
     </View>
   );
 }
@@ -496,16 +451,7 @@ export function Select<T extends string | number>({
   const chosen = choices.find((c) => c.value === value)?.label ?? String(value);
   return (
     <View style={{ gap: 6, ...(compact ? { flexShrink: 1, minWidth: 0, maxWidth: "100%" } : {}) }}>
-      {!compact && (
-        <Text
-          style={[
-            s.text,
-            { fontFamily: fonts.medium, color: colors.mutedForeground, fontSize: 14, lineHeight: 20 },
-          ]}
-        >
-          {label}
-        </Text>
-      )}
+      {!compact && <Text style={uiStyles.label}>{label}</Text>}
       {WebSelect ? (
         <WebSelect
           label={label}
@@ -527,24 +473,26 @@ export function Select<T extends string | number>({
             accessibilityLabel={`${label}: ${chosen}`}
             disabled={disabled}
             onPress={menu.open}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              minWidth: compact ? compactWidth : undefined,
-              backgroundColor: compact
-                ? pressed
-                  ? colors.raisedHover
-                  : colors.raised
-                : `${colors.background}99`,
-              borderWidth: compact ? 0 : 1,
-              borderColor: pressed ? colors.primary : colors.input,
-              borderRadius: compact ? 100 : 10,
-              paddingHorizontal: compact ? 16 : 12,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              opacity: disabled ? 0.45 : 1,
-            })}
+            style={(state) => {
+              const { pressed } = pressState(state);
+              return [
+                webTransition(["background-color", "opacity"]),
+                {
+                  minHeight: 44,
+                  minWidth: compact ? compactWidth : undefined,
+                  backgroundColor: compact ? (pressed ? colors.raisedHover : colors.raised) : colors.field,
+                  borderWidth: compact ? 0 : 1,
+                  borderColor: pressed ? colors.primary : colors.input,
+                  borderRadius: compact ? radius.full : radius.md,
+                  paddingHorizontal: compact ? 16 : 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  opacity: disabled ? disabledOpacity : 1,
+                },
+              ];
+            }}
           >
             <Text
               numberOfLines={1}
@@ -553,6 +501,7 @@ export function Select<T extends string | number>({
                 {
                   fontFamily: compact ? fonts.semibold : fonts.body,
                   fontSize: compact ? 14 : 16,
+                  lineHeight: compact ? 20 : 24,
                   flexShrink: 1,
                 },
               ]}
@@ -586,34 +535,52 @@ export function Select<T extends string | number>({
     </View>
   );
 }
-/** `raised` inside a sheet or a card, where a tile in the card's own fill would disappear. */
+/**
+ * A labelled number. `raised` inside a sheet or a card, where a tile in the card's own fill would disappear
+ * (its corner is then the smaller 12, inside the card's 16). `tone` colors the value; `compact` is the
+ * smaller value for a row of several. It fills its share of a row (`flex: 1`) unless `grow` is false.
+ */
 export function StatTile({
   label,
   value,
   detail,
   raised = false,
+  tone,
+  compact = false,
+  grow = true,
+  style,
 }: {
   label: string;
   value: ReactNode;
   detail?: string;
   raised?: boolean;
+  tone?: string;
+  compact?: boolean;
+  grow?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
   return (
     <View
-      style={{
-        backgroundColor: raised ? colors.raised : colors.card,
-        borderRadius: 16,
-        padding: 12,
-        gap: 4,
-        minWidth: 0,
-        flex: 1,
-      }}
+      style={[
+        {
+          backgroundColor: raised ? colors.raised : colors.card,
+          ...corner(raised ? radius.lg : radius.xl),
+          padding: 12,
+          gap: space.xs,
+          minWidth: 0,
+        },
+        grow && { flex: 1 },
+        style,
+      ]}
     >
-      <Text style={[s.muted, { fontSize: 12, lineHeight: 16, fontFamily: fonts.medium }]}>{label}</Text>
-      <Text style={{ fontFamily: fonts.displayBold, fontSize: 30, lineHeight: 32, color: colors.foreground }}>
+      <Text style={[type.caption, { fontFamily: fonts.medium, color: colors.mutedForeground }]}>{label}</Text>
+      {/* One big value standing alone: proportional figures (see `tabular` in theme.ts). */}
+      <Text
+        style={[type.stat, { color: tone ?? colors.foreground }, compact && { fontSize: 24, lineHeight: 26 }]}
+      >
         {value}
       </Text>
-      {detail && <Text style={[s.muted, { fontSize: 14, lineHeight: 20 }]}>{detail}</Text>}
+      {detail && <Text style={[s.muted, compact && type.caption]}>{detail}</Text>}
     </View>
   );
 }
@@ -639,21 +606,36 @@ export function Disclosure({
         aria-expanded={open}
         onPress={() => setOpen(!open)}
         // The fill reaches 8px past the text on each side without moving it.
-        style={(state) => ({
-          minHeight: 44,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-          marginHorizontal: -8,
-          paddingHorizontal: 8,
-          borderRadius: 10,
-          backgroundColor: hoverFill(state),
-        })}
+        style={(state) => [
+          webTransition(["background-color"]),
+          {
+            minHeight: 44,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            marginHorizontal: -8,
+            paddingHorizontal: 8,
+            borderRadius: radius.md,
+            backgroundColor: hoverFill(state),
+          },
+        ]}
       >
-        <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+        {/* The chevron turns down when open (eased on the web). */}
+        <View
+          style={[
+            webTransition(["transform"], duration.base),
+            { transform: [{ rotate: open ? "90deg" : "0deg" }] },
+          ]}
+        >
+          <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+        </View>
         <Text style={[s.text, { fontFamily: fonts.medium }]}>{title}</Text>
       </Pressable>
-      {open && children}
+      {open && (
+        <FadeIn from={-4} style={{ gap: 12 }}>
+          {children}
+        </FadeIn>
+      )}
     </View>
   );
 }
