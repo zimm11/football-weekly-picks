@@ -203,6 +203,7 @@ test("a survivor admin removes a cancelled game and enters a pick for a player",
 
     // The Vikings game is cancelled: the admin removes it, and Pat's pick on it goes with it.
     await page.goto(`/leagues/${leagueId}/league`);
+    await page.getByRole("button", { name: "Games and scores" }).click();
     await page.getByRole("button", { name: "Options for Bears at Vikings" }).click();
     await page.getByRole("menuitem", { name: "Remove Bears at Vikings" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Remove game" }).click();
@@ -211,6 +212,7 @@ test("a survivor admin removes a cancelled game and enters a pick for a player",
     await expect(pat.getByText("No pick yet")).toBeVisible();
 
     // The admin enters Pat's pick; Pat is told an admin entered it.
+    await page.getByRole("button", { name: "Enter a pick for a player" }).click();
     await page.getByLabel("Player", { exact: true }).selectOption({ label: "Pat" });
     await page.getByLabel("Team", { exact: true }).selectOption({ label: "Chiefs (Raiders at Chiefs)" });
     await page.getByRole("button", { name: "Save pick for Pat" }).click();

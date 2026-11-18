@@ -10,9 +10,12 @@ import { Platform, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppLink, openPath } from "../components/AppLink";
 import { Icon } from "../components/Icon";
+import { pressState } from "../components/pressState";
+import { layout, type } from "../components/theme";
 import { colors, fonts } from "../components/ui";
 import { readLoadCache } from "../lib/loadCache";
 import { counted } from "../lib/messagePresentation";
+import { webTransition } from "../lib/motion";
 import { useLeagueTabsNav } from "./leagueContext";
 import { Select } from "./leagueUi";
 
@@ -56,15 +59,28 @@ export function LeagueHeader({
             gap: 4,
             alignItems: "center",
             opacity: pressed ? 0.7 : 1,
+            ...webTransition(["opacity"]),
           })}
         >
-          <Icon name="arrow-left" size={14} color={colors.mutedForeground} />
-          <Text
-            maxFontSizeMultiplier={CHROME_FONT_SCALE}
-            style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}
-          >
-            {back.label}
-          </Text>
+          {(state) => {
+            const ink = pressState(state).hovered ? colors.foreground : colors.mutedForeground;
+            return (
+              <>
+                <Icon name="arrow-left" size={14} color={ink} />
+                <Text
+                  maxFontSizeMultiplier={CHROME_FONT_SCALE}
+                  style={{
+                    fontFamily: fonts.medium,
+                    fontSize: 14,
+                    color: ink,
+                    ...webTransition(["color"]),
+                  }}
+                >
+                  {back.label}
+                </Text>
+              </>
+            );
+          }}
         </AppLink>
         {season !== undefined && onSeason && (
           <Select
@@ -77,21 +93,60 @@ export function LeagueHeader({
           />
         )}
       </View>
+      {/* Smaller than the page's own title under it, and allowed a second line so a long name can be read. */}
       <Text
         accessibilityRole="header"
-        numberOfLines={1}
+        numberOfLines={2}
         maxFontSizeMultiplier={CHROME_FONT_SCALE}
-        style={{
-          fontFamily: fonts.displayExtraBold,
-          fontSize: 30,
-          letterSpacing: 0.75,
-          lineHeight: 32,
-          textTransform: "uppercase",
-          color: colors.foreground,
-        }}
+        style={{ ...type.heading, fontFamily: fonts.displayExtraBold, color: colors.foreground }}
       >
         {leagueName}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * A league's frame at the top of any of its screens (a tab, a week, its manage screen, a board, the message
+ * board): the header (`LeagueHeader`) and, on wide screens, the tab row (`LeagueTabBar`) under it, always the
+ * same distance apart, so the tab row sits at the same height on every screen. Phones put the tabs in a bar
+ * along the bottom, which the screen draws itself.
+ */
+export function LeagueFrame({
+  leagueId,
+  leagueName,
+  season,
+  seasonChoices,
+  onSeason,
+  seasonWidth,
+  back,
+  type: leagueType,
+  active,
+  unreadCount,
+  reportsWaiting,
+}: Parameters<typeof LeagueHeader>[0] & Omit<Parameters<typeof LeagueTabBar>[0], "wide">) {
+  const wide = useWindowDimensions().width >= 768;
+  return (
+    <View style={{ gap: layout.pageGap }}>
+      <LeagueHeader
+        leagueId={leagueId}
+        leagueName={leagueName}
+        season={season}
+        seasonChoices={seasonChoices}
+        onSeason={onSeason}
+        seasonWidth={seasonWidth}
+        back={back}
+      />
+      {wide && (
+        <LeagueTabBar
+          wide
+          leagueId={leagueId}
+          type={leagueType}
+          active={active}
+          unreadCount={unreadCount}
+          reportsWaiting={reportsWaiting}
+        />
+      )}
     </View>
   );
 }
@@ -161,7 +216,6 @@ export function LeagueTabBar({
     >
       {tabs.map((item) => {
         const selected = item.id === active;
-        const ink = selected ? colors.primary : colors.mutedForeground;
         const badge = badges[item.id];
         return (
           <AppLink
@@ -172,45 +226,81 @@ export function LeagueTabBar({
             accessibilityState={{ selected }}
             aria-current={selected ? "page" : undefined}
             onPress={() => open(item.href, item.id)}
-            style={({ pressed }) => ({
-              flex: horizontal ? undefined : 1,
-              height: horizontal ? 44 : 64,
-              paddingHorizontal: horizontal ? 16 : 0,
-              flexDirection: horizontal ? "row" : "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: horizontal ? 8 : 4,
-              borderRadius: horizontal ? 100 : 0,
-              backgroundColor:
-                horizontal && selected ? `${colors.primary}20` : pressed ? colors.raised : "transparent",
-            })}
+            style={(state) => {
+              const { pressed, hovered } = pressState(state);
+              // The row at the top answers the mouse: an unselected tab takes the hover layer, the selected one
+              // a stronger tint. The phone's bar only shows a press.
+              const fill = horizontal
+                ? selected
+                  ? hovered || pressed
+                    ? colors.primaryTintStrong
+                    : colors.primaryTint
+                  : hovered || pressed
+                    ? colors.raised
+                    : "transparent"
+                : pressed
+                  ? colors.raised
+                  : "transparent";
+              return {
+                flex: horizontal ? undefined : 1,
+                height: horizontal ? 44 : 64,
+                paddingHorizontal: horizontal ? 16 : 0,
+                flexDirection: horizontal ? "row" : "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: horizontal ? 8 : 4,
+                borderRadius: horizontal ? 100 : 0,
+                backgroundColor: fill,
+                ...(horizontal ? webTransition(["background-color"]) : undefined),
+              };
+            }}
           >
-            <View>
-              <Icon name={item.icon} size={horizontal ? 20 : 24} filled={selected} color={ink} />
-              {badge && (
-                <View
-                  role="img"
-                  aria-label={badge}
-                  style={{
-                    position: "absolute",
-                    top: -2,
-                    right: -4,
-                    width: 10,
-                    height: 10,
-                    borderRadius: 10,
-                    backgroundColor: colors.primary,
-                    borderWidth: 2,
-                    borderColor: colors.chrome,
-                  }}
-                />
-              )}
-            </View>
-            <Text
-              maxFontSizeMultiplier={CHROME_FONT_SCALE}
-              style={{ fontFamily: fonts.medium, fontSize: horizontal ? 14 : 11, color: ink }}
-            >
-              {item.title}
-            </Text>
+            {(state) => {
+              const hovered = horizontal && pressState(state).hovered;
+              // On a tint, primary text falls under 4.5:1: the row's selected tab uses the lighter primaryText.
+              const ink = selected
+                ? horizontal
+                  ? colors.primaryText
+                  : colors.primary
+                : hovered
+                  ? colors.foreground
+                  : colors.mutedForeground;
+              return (
+                <>
+                  <View>
+                    <Icon name={item.icon} size={horizontal ? 20 : 24} filled={selected} color={ink} />
+                    {badge && (
+                      <View
+                        role="img"
+                        aria-label={badge}
+                        style={{
+                          position: "absolute",
+                          top: -2,
+                          right: -4,
+                          width: 10,
+                          height: 10,
+                          borderRadius: 10,
+                          backgroundColor: colors.primary,
+                          borderWidth: 2,
+                          borderColor: colors.chrome,
+                        }}
+                      />
+                    )}
+                  </View>
+                  <Text
+                    maxFontSizeMultiplier={CHROME_FONT_SCALE}
+                    style={{
+                      fontFamily: fonts.medium,
+                      fontSize: horizontal ? 14 : 11,
+                      color: ink,
+                      ...(horizontal ? webTransition(["color"]) : undefined),
+                    }}
+                  >
+                    {item.title}
+                  </Text>
+                </>
+              );
+            }}
           </AppLink>
         );
       })}

@@ -11,7 +11,8 @@ import { useState } from "react";
 import { Linking, Platform, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { BackLink } from "../components/BackLink";
 import { NotFound } from "../components/NotFound";
-import { colors, fonts } from "../components/ui";
+import { space, tabular, type } from "../components/theme";
+import { CardTitle, colors } from "../components/ui";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { notifyDone, notifyError } from "../lib/notify";
@@ -134,7 +135,9 @@ function OperatorDashboard() {
       }
     >
       <BackLink />
-      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+      <View
+        style={{ flexDirection: "row", justifyContent: "space-between", gap: space.lg, alignItems: "center" }}
+      >
         <Text accessibilityRole="header" style={s.title}>
           Operator
         </Text>
@@ -151,27 +154,27 @@ function OperatorDashboard() {
           <Label>
             Everything in the app, across every league. As of {new Date(data.generatedAt).toLocaleString()}.
           </Label>
-          <View role="region" aria-label="App totals" style={{ gap: 8 }}>
+          <View role="region" aria-label="App totals" style={{ gap: space.md }}>
             {Array.from({ length: Math.ceil(tiles.length / cols) }, (_, index) =>
               tiles.slice(index * cols, (index + 1) * cols),
             ).map((row) => (
-              <View key={row[0]?.label} style={{ flexDirection: "row", gap: 8 }}>
+              <View key={row[0]?.label} style={{ flexDirection: "row", gap: space.md }}>
                 {row.map((tile) => (
                   <StatTile key={tile.label} {...tile} />
                 ))}
               </View>
             ))}
           </View>
-          <View role="region" aria-label="Reports" style={{ gap: 12 }}>
+          <View role="region" aria-label="Reports" style={{ gap: space.lg }}>
             <Heading>Reports</Heading>
             <Label>Every league, oldest first. Act within 24 hours.</Label>
             <ReportsQueue path="/operator/reports" operator />
           </View>
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: space.lg }}>
             <Heading>Feedback</Heading>
             <Label>{data.openFeedback} open · newest first</Label>
             {open.length ? (
-              <View role="list" aria-label="Open feedback" style={{ gap: 12 }}>
+              <View role="list" aria-label="Open feedback" style={{ gap: space.lg }}>
                 {open.map((item) => (
                   <FeedbackCard
                     key={item.id}
@@ -193,7 +196,7 @@ function OperatorDashboard() {
             )}
             {done.length > 0 && (
               <Disclosure title={`Done (${done.length})`}>
-                <View role="list" aria-label="Finished feedback" style={{ gap: 8 }}>
+                <View role="list" aria-label="Finished feedback" style={{ gap: space.md }}>
                   {done.map((item) => (
                     <FeedbackCard
                       key={item.id}
@@ -212,31 +215,29 @@ function OperatorDashboard() {
               </Action>
             )}
           </View>
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: space.lg }}>
             <Heading>Week by week</Heading>
             <Label>Weeks run Monday to Sunday (UTC), newest first.</Label>
-            <View role="table" aria-label="Activity by week" style={{ gap: 12 }}>
+            <View role="table" aria-label="Activity by week" style={{ gap: space.lg }}>
               {data.weeks.map((week) => (
                 <View role="row" key={week.weekStart} style={s.card}>
-                  <Text role="cell" style={[s.subtitle, { fontSize: 18 }]}>
+                  <Text role="cell" style={[type.cardTitle, { color: colors.foreground }]}>
                     {new Date(`${week.weekStart}T00:00:00Z`).toLocaleDateString(undefined, {
                       month: "short",
                       day: "numeric",
                       timeZone: "UTC",
                     })}
                   </Text>
-                  <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flexDirection: "row", gap: space.md }}>
                     {[
                       { label: "Signups", value: week.signups },
                       { label: "Leagues", value: week.leaguesCreated },
                       { label: "Players", value: week.players },
                       { label: "Picks", value: week.picks },
                     ].map((item) => (
-                      <View role="cell" key={item.label} style={{ flex: 1, gap: 3 }}>
+                      <View role="cell" key={item.label} style={{ flex: 1, gap: space.xxs }}>
                         <Label>{item.label}</Label>
-                        <Text style={[s.text, { textAlign: "right", fontVariant: ["tabular-nums"] }]}>
-                          {item.value}
-                        </Text>
+                        <Text style={[s.text, tabular, { textAlign: "right" }]}>{item.value}</Text>
                       </View>
                     ))}
                   </View>
@@ -244,7 +245,7 @@ function OperatorDashboard() {
               ))}
             </View>
           </View>
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: space.lg }}>
             <Heading>Newest leagues</Heading>
             {!data.recentLeagues.length && (
               <Card>
@@ -253,8 +254,8 @@ function OperatorDashboard() {
             )}
             {data.recentLeagues.map((league) => (
               <Card key={league.id}>
-                <Text style={[s.text, { fontFamily: fonts.medium }]}>{league.name}</Text>
-                <View style={{ flexDirection: "row", gap: 12 }}>
+                <CardTitle level={3}>{league.name}</CardTitle>
+                <View style={{ flexDirection: "row", gap: space.lg }}>
                   <Metadata label="Created" value={date(league.createdAt)} />
                   <Metadata label="Players" value={String(league.members)} />
                   <Metadata label="Last pick" value={date(league.lastPickAt)} />
@@ -262,15 +263,17 @@ function OperatorDashboard() {
               </Card>
             ))}
           </View>
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: space.lg }}>
             <Heading>Newest accounts</Heading>
             {data.recentSignups.map((account) => (
               <Card key={`${account.email}-${account.createdAt}`}>
-                <Text style={[s.text, { fontFamily: fonts.medium }]}>
+                <CardTitle level={3}>
                   {account.displayName ?? "No name yet"}
-                  {account.email && <Text style={{ color: colors.mutedForeground }}> · {account.email}</Text>}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 12 }}>
+                  {account.email && (
+                    <Text style={[type.body, { color: colors.mutedForeground }]}> · {account.email}</Text>
+                  )}
+                </CardTitle>
+                <View style={{ flexDirection: "row", gap: space.lg }}>
                   <Metadata label="Signed up" value={date(account.createdAt)} />
                   <Metadata label="Last sign-in" value={date(account.lastSignInAt)} />
                   <Metadata label="Leagues" value={String(account.leagues)} />
@@ -285,9 +288,9 @@ function OperatorDashboard() {
 }
 function Metadata({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ flex: 1, gap: 4 }}>
+    <View style={{ flex: 1, gap: space.xs }}>
       <Label>{label}</Label>
-      <Text style={[s.text, { fontSize: 14, lineHeight: 20 }]}>{value}</Text>
+      <Text style={[s.text, type.small]}>{value}</Text>
     </View>
   );
 }
@@ -305,7 +308,7 @@ function FeedbackCard({
   const name = item.author ? (item.author.displayName ?? "No name yet") : "Deleted account";
   return (
     <View role="listitem" style={s.card}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
         <Pill tone={item.kind === "bug" ? "warning" : item.kind === "feature" ? "primary" : "muted"}>
           {FEEDBACK_KIND_LABELS[item.kind]}
         </Pill>
@@ -336,9 +339,7 @@ function FeedbackCard({
         )}
         {item.page && ` · sent from ${item.page}`}
       </Text>
-      {item.kind === "bug" && item.userAgent && (
-        <Text style={[s.muted, { fontSize: 12, lineHeight: 18 }]}>{item.userAgent}</Text>
-      )}
+      {item.kind === "bug" && item.userAgent && <Text style={[s.muted, type.caption]}>{item.userAgent}</Text>}
       <Action
         compact
         secondary

@@ -1,7 +1,10 @@
-import { Text, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 import { useAuth } from "../lib/auth";
+import { webTransition } from "../lib/motion";
 import { AppLink } from "./AppLink";
 import { Icon } from "./Icon";
+import { hoverFill } from "./pressState";
+import { space } from "./theme";
 import { Body, colors, fonts, Screen, Title } from "./ui";
 
 /**
@@ -12,33 +15,66 @@ import { Body, colors, fonts, Screen, Title } from "./ui";
  */
 export function NotFound({ title = "Page not found", detail }: { title?: string; detail?: string }) {
   const { session, loading } = useAuth();
+  const wide = useWindowDimensions().width >= 768;
   return (
-    <Screen>
-      {/* An alert, so a page that turns into this one (the league was just deleted) is announced. */}
-      <View accessibilityRole="alert" style={{ gap: 8 }}>
-        <Title>{title}</Title>
-        {!!detail && <Body muted>{detail}</Body>}
+    <Screen narrow>
+      <View
+        style={{
+          alignItems: "center",
+          gap: space["2xl"],
+          paddingTop: wide ? space["5xl"] + space["4xl"] : space["3xl"],
+        }}
+      >
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: colors.raised,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon name="football" size={28} color={colors.mutedForeground} />
+        </View>
+        {/* An alert, so a page that turns into this one (the league was just deleted) is announced. */}
+        <View accessibilityRole="alert" style={{ gap: space.md, alignItems: "center" }}>
+          <Title style={{ textAlign: "center" }}>{title}</Title>
+          {!!detail && (
+            <Body muted style={{ textAlign: "center" }}>
+              {detail}
+            </Body>
+          )}
+        </View>
+        <HomeLink label={session || loading ? "Your leagues" : "Home"} align="center" />
       </View>
-      <HomeLink label={session || loading ? "Your leagues" : "Home"} />
     </Screen>
   );
 }
 
 /** The way home from a dead end: a real link, replacing the page that has nothing to show. */
-export function HomeLink({ label = "Your leagues" }: { label?: string }) {
+export function HomeLink({
+  label = "Your leagues",
+  align = "start",
+}: {
+  label?: string;
+  /** Where it sits in its column: at the start (under a message), or centered (the not-found screen). */
+  align?: "start" | "center";
+}) {
   return (
     <AppLink
       href="/"
       how="replace"
-      style={({ pressed }) => ({
+      style={(state) => ({
         minHeight: 44,
-        alignSelf: "flex-start",
+        alignSelf: align === "center" ? "center" : "flex-start",
         flexDirection: "row",
         alignItems: "center",
         gap: 6,
         paddingHorizontal: 14,
         borderRadius: 10,
-        backgroundColor: pressed ? colors.raisedHover : colors.raised,
+        backgroundColor: hoverFill(state, colors.raised, colors.raisedHover),
+        ...webTransition(["background-color"]),
       })}
     >
       <Icon name="arrow-left" size={14} color={colors.foreground} />

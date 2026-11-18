@@ -28,7 +28,7 @@ import {
   threadCursor,
   threadListQuerySchema,
 } from "@picks/shared";
-import { and, asc, count, desc, eq, isNull, like, not, type SQL, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, like, not, or, type SQL, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, requireAuth } from "./auth";
@@ -67,6 +67,46 @@ async function accountCreatedAt(db: AppDeps["db"] | Tx, userId: string): Promise
   );
   const value = rows[0]?.created_at;
   return value ? new Date(value) : null;
+}
+
+/** SQL: threads this player sees on the board: not removed or hidden from them, not by a player they blocked. */
+const visibleTo = (userId: string, isAdmin: boolean) =>
+  and(not(openingPostGone(userId, isAdmin)), not(readerBlocked(userId, messageThreads.authorId)));
+
+/** The join from a thread to this player's read marker. */
+const readBy = (userId: string) =>
+  and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, userId));
+
+/**
+ * SQL, over threads left-joined to the player's read marker (`readBy`): a thread on their board with posts they
+ * haven't read. The Messages tab's count and Your leagues' dot are both this rule.
+ */
+const unreadBy = (userId: string, isAdmin: boolean) =>
+  and(visibleTo(userId, isAdmin), sql`coalesce(${messageReads.version}, 0) < ${messageThreads.version}`);
+
+/**
+ * Which of these leagues have a thread the player hasn't read, in one query whatever the number of leagues. Each
+ * league is judged with the player's own role in it (a league's admins also see threads hidden for review).
+ */
+export async function unreadLeagueIds(
+  db: AppDeps["db"],
+  userId: string,
+  memberships: { id: string; role: "admin" | "member" }[],
+): Promise<Set<string>> {
+  const ids = (role: "admin" | "member") => memberships.filter((m) => m.role === role).map((m) => m.id);
+  const scopes = (["admin", "member"] as const).flatMap((role) => {
+    const leagueIds = ids(role);
+    return leagueIds.length
+      ? [and(inArray(messageThreads.leagueId, leagueIds), unreadBy(userId, role === "admin"))]
+      : [];
+  });
+  if (!scopes.length) return new Set();
+  const rows = await db
+    .selectDistinct({ leagueId: messageThreads.leagueId })
+    .from(messageThreads)
+    .leftJoin(messageReads, readBy(userId))
+    .where(or(...scopes));
+  return new Set(rows.map((r) => r.leagueId));
 }
 
 export function messageRoutes({
@@ -131,9 +171,6 @@ export function messageRoutes({
   /** Threads newest first (pinned before the rest), each marked unread for this player or not. */
   /** `updated_at` to the microsecond, as the text a page cursor carries (a JS Date would drop the last digits). */
   const updatedAtMicros = sql<string>`(extract(epoch from ${messageThreads.updatedAt}) * 1000000)::bigint`;
-  /** SQL: threads this player sees on the board: not removed or hidden from them, not by a player they blocked. */
-  const visibleTo = (userId: string, isAdmin: boolean) =>
-    and(not(openingPostGone(userId, isAdmin)), not(readerBlocked(userId, messageThreads.authorId)));
   async function threadRows(userId: string, where: SQL | undefined, limit?: number) {
     const query = db
       .select({
@@ -179,17 +216,8 @@ export function messageRoutes({
     const [row] = await db
       .select({ n: count() })
       .from(messageThreads)
-      .leftJoin(
-        messageReads,
-        and(eq(messageReads.threadId, messageThreads.id), eq(messageReads.userId, userId)),
-      )
-      .where(
-        and(
-          eq(messageThreads.leagueId, leagueId),
-          visibleTo(userId, isAdmin),
-          sql`coalesce(${messageReads.version}, 0) < ${messageThreads.version}`,
-        ),
-      );
+      .leftJoin(messageReads, readBy(userId))
+      .where(and(eq(messageThreads.leagueId, leagueId), unreadBy(userId, isAdmin)));
     return row?.n ?? 0;
   }
   return new Hono<{ Variables: AuthVariables }>()

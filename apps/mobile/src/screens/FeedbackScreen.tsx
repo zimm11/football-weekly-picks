@@ -11,7 +11,8 @@ import { BackLink } from "../components/BackLink";
 import { Icon } from "../components/Icon";
 import { Menu, MenuItem, useAnchor } from "../components/Popover";
 import { hoverFill } from "../components/pressState";
-import { Body, Button, Card, colors, ErrorMessage, Field, fonts, Screen, Title } from "../components/ui";
+import { radius, space, widths } from "../components/theme";
+import { Body, Button, Card, colors, ErrorMessage, Field, Screen, styles, Title } from "../components/ui";
 import { WebSelect } from "../components/WebSelect";
 import { request } from "../lib/api";
 import { useDesktopFocus } from "../lib/desktopFocus";
@@ -49,17 +50,15 @@ export function FeedbackScreen() {
     else router.replace(from as Href);
   }, [sent, leaving, router, from]);
   return (
-    <Screen narrow contentStyle={{ paddingTop: 32 }}>
+    <Screen narrow contentStyle={{ maxWidth: widths.form, paddingTop: space["4xl"] }}>
       <BackLink />
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: space.md }}>
         <Title>Send feedback</Title>
         <Body muted>Found a bug or have an idea? It goes straight to the people who run POW Pick'em.</Body>
       </View>
       <Card>
-        <View style={{ gap: 6 }}>
-          <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}>
-            What kind of feedback?
-          </Text>
+        <View style={{ gap: space.sm }}>
+          <Text style={styles.label}>What kind of feedback?</Text>
           {WebSelect ? (
             <WebSelect
               label="What kind of feedback?"
@@ -77,11 +76,11 @@ export function FeedbackScreen() {
               onPress={choose.open}
               style={(state) => ({
                 minHeight: 44,
-                borderRadius: 10,
+                borderRadius: radius.md,
                 borderWidth: 1,
                 borderColor: colors.input,
-                padding: 12,
-                backgroundColor: hoverFill(state, colors.background),
+                paddingHorizontal: space.lg,
+                backgroundColor: hoverFill(state, colors.field),
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -104,7 +103,7 @@ export function FeedbackScreen() {
           editable={!action.busy}
         />
         <ErrorMessage message={action.error} />
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: space.md }}>
           <Button
             title={action.busy ? "Sending…" : "Send feedback"}
             busy={action.busy}

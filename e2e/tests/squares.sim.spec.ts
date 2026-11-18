@@ -33,9 +33,12 @@ async function newBoardPage(page: Page) {
   await page.getByLabel("League name").fill("Super Bowl Squares");
   await page.getByRole("button", { name: "Create league" }).click();
   await page.getByRole("link", { name: "Boards", exact: true }).click();
+  // The league's id, read while its own page is showing: New board's address carries it as a query instead.
+  await expect(page).toHaveURL(/\/leagues\/[^/?#]+$/);
+  const leagueId = leagueIdOf(page.url());
   await page.getByRole("link", { name: "New board", exact: true }).click();
   await expect(page.getByRole("heading", { name: "New board" })).toBeVisible();
-  return leagueIdOf(page.url());
+  return leagueId;
 }
 
 async function startBoard(page: Page) {
@@ -71,7 +74,9 @@ test("a board locks itself at kickoff and settles four quarters, an empty square
   // Kickoff, and nobody locked the board: reading it locks it and draws the numbers.
   await setClock(request, minutesAfterKickoff(1));
   await page.reload();
-  const mine = page.getByRole("button", { name: /^Your square, Seahawks \d, Bills \d$/ });
+  // In the grid: once drawn, "Your squares" lists the same square as a chip, named as its cell is.
+  const grid = page.getByRole("region", { name: "Squares board" });
+  const mine = grid.getByRole("button", { name: /^Your square, Seahawks \d, Bills \d$/ });
   await expect(mine).toBeVisible();
   await expect(page.getByText("Underway", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Claim a random square" })).toHaveCount(0);
@@ -111,7 +116,7 @@ test("a board locks itself at kickoff and settles four quarters, an empty square
       await expect(results).toContainText(`Q1BUF ${a} · SEA ${h}You won`);
       // The feed's live score heads the board, and the square it lands on says it would win now.
       const live = page.getByRole("region", { name: `Live score: Bills ${a}, Seahawks ${h}` });
-      const current = page.getByRole("button", { name: /won Q1, would win if the quarter ended now/ });
+      const current = grid.getByRole("button", { name: /won Q1, would win if the quarter ended now/ });
       await expect(current).toContainText(/Q1\s*Now/);
       await expect(live).toBeVisible();
       await page.getByRole("link", { name: "Manage board" }).click();
@@ -127,7 +132,7 @@ test("a board locks itself at kickoff and settles four quarters, an empty square
   );
   await expect(results).toContainText(`Q3BUF ${q3.away} · SEA ${q3.home}You won`);
   await expect(results).toContainText(`FinalBUF ${final.away} · SEA ${final.home}No winner: an empty square`);
-  await expect(page.getByRole("button", { name: /^Your square, / })).toHaveAccessibleName(
+  await expect(grid.getByRole("button", { name: /^Your square, / })).toHaveAccessibleName(
     `Your square, Seahawks ${h}, Bills ${a}, won Q1 and Q3`,
   );
 });

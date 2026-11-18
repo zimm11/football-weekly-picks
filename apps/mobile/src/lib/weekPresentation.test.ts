@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   favoriteLine,
   gameDays,
+  kickoffTime,
+  kickoffZone,
   lockedGameRow,
+  pickSheetLayout,
   pickStatus,
+  rowsOf,
   sheetEditable,
   weekHasPow,
   weekUnit,
@@ -210,5 +214,51 @@ describe("the compact row of a game the player can no longer change", () => {
     expect(
       lockedGameRow(final(10, 27), { sides: { g: "home" }, pow: "g" }, { hasPow: true, powBonus: 1 }).result,
     ).toBe("Won +3");
+  });
+});
+
+describe("the pick sheet's times and grid", () => {
+  it("says a kickoff's time with or without its zone, and the zone on its own", () => {
+    const kickoff = "2026-11-20T01:15:00Z";
+    expect(kickoffTime(kickoff, "America/New_York")).toBe("8:15 PM EST");
+    expect(kickoffTime(kickoff, "America/New_York", { zone: false })).toBe("8:15 PM");
+    expect(kickoffZone(kickoff, "America/New_York")).toBe("EST");
+    expect(kickoffZone("2026-09-14T00:20:00Z", "America/New_York")).toBe("EDT");
+    expect(kickoffZone(kickoff, "UTC")).toBe("UTC");
+  });
+  it("stacks the team buttons on every phone and lays them in a row once they are 160px wide", () => {
+    // The narrowest phone steps the name down a size.
+    expect(pickSheetLayout(320, true)).toMatchObject({
+      columns: 1,
+      teamWidth: 98,
+      team: "stack",
+      smallName: true,
+    });
+    expect(pickSheetLayout(390, true)).toMatchObject({
+      columns: 1,
+      teamWidth: 133,
+      team: "stack",
+      smallName: false,
+    });
+    expect(pickSheetLayout(430, true).team).toBe("stack");
+    expect(pickSheetLayout(390, true).cardInner).toBe(338);
+    // From 768px two columns, each still too narrow for a row until the page reaches its full width.
+    expect(pickSheetLayout(768, true)).toMatchObject({ columns: 2, team: "stack" });
+    expect(pickSheetLayout(1280, true)).toMatchObject({ columns: 2, teamWidth: 168, team: "row" });
+    // Without a POW (a playoff Super Bowl) the buttons share its room.
+    expect(pickSheetLayout(768, false).team).toBe("row");
+  });
+  it("cuts a day's games into rows, in order, the last one short", () => {
+    expect(rowsOf([1, 2, 3], 2)).toEqual([[1, 2], [3]]);
+    expect(rowsOf([1, 2], 1)).toEqual([[1], [2]]);
+    expect(rowsOf([], 2)).toEqual([]);
+  });
+  it("says which side covered, for the scoreboard row", () => {
+    const g = game("g");
+    expect(lockedGameRow(g, { sides: {}, pow: null }, { hasPow: true }).covered).toBeNull();
+    const won = { ...g, awayScore: 10, homeScore: 27 };
+    expect(lockedGameRow(won, { sides: {}, pow: null }, { hasPow: true }).covered).toBe("home");
+    const push = { ...g, spread: -3, awayScore: 17, homeScore: 20 };
+    expect(lockedGameRow(push, { sides: {}, pow: null }, { hasPow: true }).covered).toBe("push");
   });
 });

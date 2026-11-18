@@ -1,19 +1,32 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: SettingsHeading renders its children inside native Text.
 import { type AccountDeletionPreview, deleteAccountSchema, SUPPORT_EMAIL } from "@picks/shared";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { messageOf, request } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { webTransition } from "../lib/motion";
 import { notifyDone } from "../lib/notify";
 import { confirmDiscard } from "../lib/unsaved";
 import { AppLink, openPath } from "./AppLink";
 import { Icon } from "./Icon";
 import { hoverFill } from "./pressState";
-import { SettingsHeading } from "./SettingsHeading";
-import { Body, Button, Card, colors, ErrorMessage, Field, fonts, Sheet } from "./ui";
+import { SettingsRow } from "./SettingsRow";
+import { corner, radius, space, type } from "./theme";
+import { Body, Button, colors, ErrorMessage, Field, fonts, Sheet } from "./ui";
 
 const list = (leagues: { name: string }[]) => leagues.map((l) => l.name).join(", ");
+
+/**
+ * Which leagues the player leaves, for the sheet's first sentence. While some still need a new commissioner,
+ * those are named only in the list below it, so no league is named twice.
+ */
+function leavePhrase(preview: AccountDeletionPreview) {
+  const waiting = new Set(preview.soleAdmin.map((l) => l.id));
+  if (!waiting.size) return preview.leaving.length ? list(preview.leaving) : "your leagues";
+  const others = preview.leaving.filter((l) => !waiting.has(l.id));
+  const below = waiting.size === 1 ? "the league below" : "the leagues below";
+  return others.length ? `${list(others)} and ${below}` : below;
+}
 
 /**
  * Settings → Delete account (App Store guideline 5.1.1(v)). A sheet says what will happen, asks for the password,
@@ -68,14 +81,7 @@ export function DeleteAccount() {
   const blocked = !!preview?.soleAdmin.length;
   return (
     <>
-      <Card>
-        <SettingsHeading>Delete account</SettingsHeading>
-        <Body muted>
-          Deletes your email, name, devices and messages. Results from weeks already played stay, as Deleted
-          player.
-        </Body>
-        <Button title="Delete account" variant="destructive" onPress={() => void start()} />
-      </Card>
+      <SettingsRow icon="trash" label="Delete account" destructive onPress={() => void start()} />
       <Sheet visible={open} onClose={close} title="Delete your account?">
         {busy === "loading" && <Body muted>Checking your leagues…</Body>}
         {preview && !preview.available && (
@@ -88,8 +94,8 @@ export function DeleteAccount() {
           <>
             <Body>
               This can't be undone. Your email, name, notification settings, devices and messages are deleted,
-              and you leave {preview.leaving.length ? list(preview.leaving) : "your leagues"}. Picks from
-              weeks already played stay in the results as Deleted player, so nobody else's standings change.
+              and you leave {leavePhrase(preview)}. Picks from weeks already played stay in the results as
+              Deleted player, so nobody else's standings change.
             </Body>
             {auth.me?.isOperator && (
               <Body muted>You run the app: take your id out of OPERATOR_USER_IDS afterwards.</Body>
@@ -101,37 +107,55 @@ export function DeleteAccount() {
               </Body>
             )}
             {blocked ? (
-              <View style={{ gap: 8 }}>
+              // Each league named once: the ones that need a new commissioner only here, each a link to its League tab.
+              <View style={{ gap: space.md }}>
                 <Body>
-                  First make someone else a commissioner of {list(preview.soleAdmin)}, so{" "}
-                  {preview.soleAdmin.length === 1 ? "it keeps" : "they keep"} a commissioner.
+                  First make someone else a commissioner of{" "}
+                  {preview.soleAdmin.length === 1
+                    ? "this league, so it keeps"
+                    : "these leagues, so they keep"}{" "}
+                  a commissioner.
                 </Body>
-                {preview.soleAdmin.map((league) => (
-                  <AppLink
-                    key={league.id}
-                    href={`/leagues/${league.id}/league`}
-                    accessibilityLabel={`Open ${league.name}'s League tab`}
-                    onPress={() => {
-                      close();
-                      void openPath(`/leagues/${league.id}/league`);
-                    }}
-                    style={(state) => ({
-                      minHeight: 44,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      marginHorizontal: -8,
-                      paddingHorizontal: 8,
-                      borderRadius: 10,
-                      backgroundColor: hoverFill(state),
-                    })}
-                  >
-                    <Text style={{ flex: 1, fontFamily: fonts.medium, fontSize: 16, color: colors.primary }}>
-                      {league.name}
-                    </Text>
-                    <Icon name="chevron-right" size={18} color={colors.primary} />
-                  </AppLink>
-                ))}
+                <View role="list" style={{ backgroundColor: colors.raised, ...corner(radius.lg) }}>
+                  {preview.soleAdmin.map((league, index) => (
+                    <View
+                      key={league.id}
+                      role="listitem"
+                      style={index ? { borderTopWidth: 1, borderTopColor: colors.border } : undefined}
+                    >
+                      <AppLink
+                        href={`/leagues/${league.id}/league`}
+                        accessibilityLabel={`Open ${league.name}'s League tab`}
+                        onPress={() => {
+                          close();
+                          void openPath(`/leagues/${league.id}/league`);
+                        }}
+                        style={(state) => [
+                          webTransition(["background-color"]),
+                          {
+                            minHeight: 48,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: space.md,
+                            paddingHorizontal: space.lg,
+                            ...corner(radius.lg),
+                            backgroundColor: hoverFill(state, colors.raised, colors.raisedHover),
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            type.body,
+                            { flex: 1, fontFamily: fonts.medium, color: colors.primaryText },
+                          ]}
+                        >
+                          {league.name}
+                        </Text>
+                        <Icon name="chevron-right" size={16} color={colors.primaryText} />
+                      </AppLink>
+                    </View>
+                  ))}
+                </View>
               </View>
             ) : (
               <>

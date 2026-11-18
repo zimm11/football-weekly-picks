@@ -14,14 +14,14 @@ import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
 import { colors, fonts } from "../../components/ui";
 import { request } from "../../lib/api";
+import { haptics } from "../../lib/haptics";
+import { recapTitle } from "../../lib/resultsPresentation";
 import { LeagueTabScroll } from "../LeagueTabScroll";
 import type { LeagueTabProps } from "../leagueTypeScreens";
 import {
-  Action,
   Card,
   Eyebrow,
   Failure,
-  go,
   Heading,
   Label,
   Pill,
@@ -34,6 +34,8 @@ import {
 } from "../leagueUi";
 import { ordinal, record, StickyTable } from "../SeasonDashboard";
 import { WeekAwardCards } from "../WeekResults";
+import { RecapActions, RecapHeadline, useSelectedSeason } from "../weekly/WeeklyTabs";
+import { RoundStrip } from "./PlayoffWaiting";
 
 /*
  * Playoff pick'em's own tabs: Results (the finished rounds) and Standings (the overall table, with the
@@ -156,6 +158,7 @@ export function PlayoffResults({ league, header, reload }: LeagueTabProps) {
         </Text>
         {finished.length === 0 ? (
           <Card>
+            <RoundStrip weeks={league.weeks} />
             <Label>No round is final yet. Everyone's picks show up here once one is.</Label>
           </Card>
         ) : (
@@ -189,8 +192,9 @@ export function PlayoffRecap({
   userId: string;
   close: () => void;
 }) {
-  const week = useLeagueLoad(() => request<WeekView>(`/weeks/${weekId}`), weekId);
+  const week = useLeagueLoad(() => request<WeekView>(`/weeks/${weekId}`), `/weeks/${weekId}`);
   const view = week.data;
+  const selectedYear = useSelectedSeason();
   const standings = useLeagueLoad(
     () =>
       view
@@ -198,10 +202,16 @@ export function PlayoffRecap({
         : Promise.resolve(null),
     `${weekId}:${view?.leagueId ?? ""}`,
   );
-  const shown = view?.status === "final" && !!view.results && !!standings.data;
+  // Only from the server's own answer: a remembered copy (the pick sheet's, Manage's) may be from before a reopen.
+  const shown = week.fresh && view?.status === "final" && !!view.results && !!standings.data;
+  const champion = !!standings.data?.entries.find((e) => e.userId === userId)?.champion;
   useEffect(() => {
     if (shown) void request(`/weeks/${weekId}/recap/seen`, { method: "POST" }).catch(() => {});
   }, [shown, weekId]);
+  // Felt once, as the sheet comes up on the player's title.
+  useEffect(() => {
+    if (shown && champion) haptics.success();
+  }, [shown, champion]);
   if (!shown || !view?.results || !standings.data) return null;
   const mine = view.results.entries.find((e) => e.userId === userId);
   const overall = standings.data.entries.find((e) => e.userId === userId);
@@ -224,8 +234,8 @@ export function PlayoffRecap({
         ? `You're ${ordinal(overall.rank)} of ${standings.data.entries.length} overall.`
         : "The round is final.";
   return (
-    <Sheet title={`${weekLabel(view.number)} is final`} close={close} closeButton={false}>
-      <Label>{headline}</Label>
+    <Sheet title={recapTitle(view.number, view.year, selectedYear)} close={close} closeButton={false}>
+      <RecapHeadline text={headline} mood={superBowl && overall?.champion ? "won" : null} />
       {mine && overall && (
         <View style={{ flexDirection: "row", gap: 8 }}>
           <StatTile raised label="This round" value={mine.points} detail={record(mine)} />
@@ -248,20 +258,9 @@ export function PlayoffRecap({
         </View>
       )}
       {awards.perfectWeeks.length + awards.bullseyes.length + awards.loneWolves.length > 0 && (
-        <WeekAwardCards view={view} />
+        <WeekAwardCards view={view} raised />
       )}
-      <Action
-        href={`/weeks/${weekId}`}
-        onPress={() => {
-          close();
-          void go(`/weeks/${weekId}`);
-        }}
-      >
-        See everyone's picks
-      </Action>
-      <Action secondary onPress={close}>
-        Close
-      </Action>
+      <RecapActions weekId={weekId} close={close} />
     </Sheet>
   );
 }

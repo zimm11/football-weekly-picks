@@ -207,12 +207,16 @@ export function currentSquare(
   live: { homeScore: number; awayScore: number } | null,
 ): { row: number; col: number } | null {
   if (scores.some((s) => s.period === "final")) return null;
-  const latest = [...SQUARE_PERIODS]
+  const score = live ?? latestPeriodScore(scores);
+  return score ? winningSquare(digits, score) : null;
+}
+
+/** The latest period that has a score (final, else Q3, half, Q1), or undefined before any is scored. */
+export function latestPeriodScore<S extends { period: SquarePeriod }>(scores: S[]): S | undefined {
+  return [...SQUARE_PERIODS]
     .reverse()
     .map((period) => scores.find((s) => s.period === period))
-    .find(Boolean);
-  const score = live ?? latest;
-  return score ? winningSquare(digits, score) : null;
+    .find((s): s is S => s !== undefined);
 }
 
 // ---------- Requests ----------
@@ -292,6 +296,11 @@ export type BoardSummary = {
   /** Squares the reader holds. */
   mine: number;
   maxPerPlayer: number;
+  /**
+   * The latest period scored on the board (cumulative scores, as stored), from the database only: never the
+   * feed's live score. Absent before any period is scored.
+   */
+  latestScore?: { period: SquarePeriod; away: number; home: number };
 };
 
 export type BoardSquare = {

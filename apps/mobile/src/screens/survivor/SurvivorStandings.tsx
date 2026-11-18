@@ -1,15 +1,17 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Heading and Label render native Text.
 import { type SurvivorView, weekLabel } from "@picks/shared";
-import { type ComponentRef, type ReactNode, useRef } from "react";
+import { type ComponentRef, Fragment, type ReactNode, useRef, useState } from "react";
 import { Platform, ScrollView, Text, useWindowDimensions, View, type ViewStyle } from "react-native";
 import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
 import { TeamLogo } from "../../components/TeamLogo";
+import { corner, layout, radius, type, widths } from "../../components/theme";
 import { colors, fonts } from "../../components/ui";
 import {
   aliveCount,
   type GridCell,
   gridCell,
+  gridLayout,
   gridWeeks,
   listNames,
   playerStatus,
@@ -19,20 +21,31 @@ import {
 } from "../../lib/survivor";
 import { LeagueTabScroll } from "../LeagueTabScroll";
 import type { LeagueTabProps } from "../leagueTypeScreens";
-import { Card, Failure, Heading, Label, s } from "../leagueUi";
+import { Card, EmptyState, Failure, Heading, Label, s } from "../leagueUi";
+import { LivesPips } from "./LivesPips";
 import { SurvivorSkeleton, useSurvivor } from "./useSurvivor";
 
-/** The web build's first column stays put while the weeks scroll sideways. */
-const stickyFirst = { position: "sticky", left: 0, zIndex: 1 } as unknown as ViewStyle;
+/** The web build's pinned columns (the player, then Lives) stay put while the weeks scroll sideways. */
+const sticky = (left: number) => ({ position: "sticky", left, zIndex: 1 }) as unknown as ViewStyle;
+/** The web build's scroller snaps to whole week columns, which start just right of the pinned ones. */
+const snapScroller = (pinned: number) =>
+  Platform.OS === "web"
+    ? ({ scrollSnapType: "x mandatory", scrollPaddingLeft: pinned } as unknown as ViewStyle)
+    : undefined;
+const snapCell = Platform.OS === "web" ? ({ scrollSnapAlign: "start" } as unknown as ViewStyle) : undefined;
 const ROW = 60;
+/** The out group's label row. */
+const GROUP_ROW = 32;
+/** The Lives column: up to three pips. */
+const LIVES = 72;
 
 /**
  * Starts a sideways scroller at its far end, once per `columns` count: the newest week is the one players
  * come for, and the earlier ones are a swipe back. After that the player's own scrolling is left alone.
  */
-function useStartAtEnd(columns: number) {
+function useStartAtEnd(columns: string) {
   const ref = useRef<ComponentRef<typeof ScrollView>>(null);
-  const placed = useRef(-1);
+  const placed = useRef("");
   const onContentSizeChange = () => {
     if (placed.current === columns) return;
     placed.current = columns;
@@ -88,13 +101,15 @@ function SurvivorBoard({ view, userId }: { view: SurvivorView; userId: string })
         </Card>
       )}
       {view.players.length === 0 ? (
-        <Card>
-          <Label>
-            {view.settings
+        <EmptyState
+          icon="trophy"
+          title={view.settings ? "No standings yet" : "No pool this season"}
+          detail={
+            view.settings
               ? "The grid fills in as the pool's weeks are played."
-              : "There's no pool this season yet."}
-          </Label>
-        </Card>
+              : "There's no pool this season yet."
+          }
+        />
       ) : (
         <Grid view={view} weeks={weeks} userId={userId} />
       )}
@@ -155,13 +170,21 @@ function CellContent({ cell }: { cell: GridCell }) {
 }
 
 function PlayerName({ view, player, mine }: { view: SurvivorView; player: SurvivorPlayer; mine: boolean }) {
+  // A player who is out steps back: avatar and name faded, the reason in full.
+  const faded = !player.alive && { opacity: 0.6 };
   return (
     <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flex: 1 }}>
-      <Avatar avatarId={player.avatarId} name={player.displayName} size={28} />
+      <View style={faded}>
+        <Avatar avatarId={player.avatarId} name={player.displayName} size={28} />
+      </View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text
           numberOfLines={1}
-          style={[s.text, { fontSize: 14, lineHeight: 18, fontFamily: mine ? fonts.semibold : fonts.medium }]}
+          style={[
+            s.text,
+            { fontSize: 14, lineHeight: 18, fontFamily: mine ? fonts.semibold : fonts.medium },
+            faded,
+          ]}
         >
           {player.displayName}
           {mine ? " (you)" : ""}
@@ -190,34 +213,40 @@ function PlayerName({ view, player, mine }: { view: SurvivorView; player: Surviv
 }
 
 function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek[]; userId: string }) {
-  const { width } = useWindowDimensions();
-  // A phone keeps as many weeks in view as it can: a narrower player column and cells, and no Lives column
-  // (the line under each name already says "Alive · 1 of 2 lives").
-  const phone = width < 560;
-  const nameWidth = phone ? 148 : 210;
-  const CELL = phone ? 56 : 64;
-  const lives = !phone && (view.settings?.lives ?? 1) > 1;
-  const columns: { key: string; title: string; label: string; cell: (p: SurvivorPlayer) => ReactNode }[] = [
-    ...(lives
-      ? [
-          {
-            key: "lives",
-            title: "Lives",
-            label: "Lives left",
-            cell: (p: SurvivorPlayer) => (
-              <Text accessibilityLabel={`${p.livesLeft} lives left`} style={[s.text, { fontSize: 14 }]}>
-                {p.livesLeft}
-              </Text>
-            ),
-          },
-        ]
-      : []),
-    ...weeks.map((week) => ({
+  const { width: windowWidth } = useWindowDimensions();
+  // The card's own width, once laid out (the page's width less its padding until then). Set only when it
+  // changes, and nothing inside the card decides it, so this can't loop.
+  const [measured, setMeasured] = useState<number | null>(null);
+  // A phone keeps as many weeks in view as it can: a narrower player column, and no Lives column (the line
+  // under each name already says "Alive · 1 of 2 lives").
+  const phone = windowWidth < 560;
+  const showLives = !phone && (view.settings?.lives ?? 1) > 1;
+  const fixed = showLives ? LIVES : 0;
+  const cardWidth = measured ?? Math.min(windowWidth, widths.page) - 2 * layout.pageX;
+  // Whole week columns always: the slack goes to the player column, then (wider screens) to the cells.
+  const { name: nameWidth, cell: CELL } = gridLayout({
+    width: cardWidth,
+    weeks: weeks.length,
+    name: phone ? 148 : 210,
+    fixed,
+    maxCell: phone ? 56 : 96,
+  });
+  const pinned = nameWidth + fixed;
+  const columns: { key: string; title: string; label: string; cell: (p: SurvivorPlayer) => ReactNode }[] =
+    weeks.map((week) => ({
       key: week.id,
       title: weekShort(week.number),
       label: weekLabel(week.number),
       cell: (p: SurvivorPlayer) => <CellContent cell={gridCell(view, p, week)} />,
-    })),
+    }));
+  const lives = view.settings?.lives ?? 1;
+  const livesCell = (p: SurvivorPlayer) => <LivesPips left={p.livesLeft} lives={lives} size={14} />;
+  const alive = view.players.filter((p) => p.alive);
+  const out = view.players.filter((p) => !p.alive);
+  // Between the last player still in and the first one out, a row naming the group.
+  const groups = [
+    { key: "alive", label: null, players: alive },
+    { key: "out", label: alive.length && out.length ? `Out (${out.length})` : null, players: out },
   ];
   const header = {
     height: 40,
@@ -233,24 +262,36 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
     borderTopWidth: 1,
     borderTopColor: colors.border,
   };
+  const group = {
+    height: GROUP_ROW,
+    justifyContent: "center" as const,
+    paddingHorizontal: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  };
+  // The pinned columns end in a hairline, so they read as a pane the weeks slide under.
+  const edge = { borderRightWidth: 1, borderRightColor: colors.border };
   const headerText = [s.muted, { fontSize: 12, fontFamily: fonts.medium }];
+  const groupText = [type.caption, { fontFamily: fonts.semibold, color: colors.mutedForeground }];
   // Takes up the rest of a row wider than its columns, so the row's divider runs to the card's edge.
   const filler = <View aria-hidden style={[cell, { flexGrow: 1, paddingHorizontal: 0 }]} />;
   const label = `Survivor grid: ${view.players.length} players, ${weeks.length} weeks`;
   // Opens on the newest weeks; the player column stays pinned as the older ones scroll in.
-  const scroller = useStartAtEnd(columns.length);
+  const scroller = useStartAtEnd(`${columns.length}:${CELL}`);
+  const frame = { ...corner(radius.xl), overflow: "hidden" as const, backgroundColor: colors.card };
+  const onLayout = (e: { nativeEvent: { layout: { width: number } } }) => {
+    const width = Math.round(e.nativeEvent.layout.width);
+    if (width !== measured) setMeasured(width);
+  };
   if (Platform.OS === "web")
     return (
-      <View
-        role="table"
-        aria-label={label}
-        style={{ borderRadius: 16, overflow: "hidden", backgroundColor: colors.card }}
-      >
+      <View role="table" aria-label={label} onLayout={onLayout} style={frame}>
         <ScrollView
           ref={scroller.ref}
           onContentSizeChange={scroller.onContentSizeChange}
           horizontal
           showsHorizontalScrollIndicator
+          style={snapScroller(pinned)}
           contentContainerStyle={{ flexGrow: 1 }}
         >
           <View style={{ flexGrow: 1 }}>
@@ -259,76 +300,127 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
                 role="columnheader"
                 style={[
                   header,
-                  stickyFirst,
+                  sticky(0),
                   { width: nameWidth, alignItems: "flex-start", backgroundColor: colors.card },
+                  !showLives && edge,
                 ]}
               >
                 <Text style={headerText}>Player</Text>
               </View>
+              {showLives && (
+                <View
+                  role="columnheader"
+                  aria-label="Lives left"
+                  style={[header, sticky(nameWidth), { width: fixed, backgroundColor: colors.card }, edge]}
+                >
+                  <Text style={headerText}>Lives</Text>
+                </View>
+              )}
               {columns.map((col) => (
                 <View
                   role="columnheader"
                   key={col.key}
                   aria-label={col.label}
-                  style={[header, { width: CELL }]}
+                  style={[header, snapCell, { width: CELL }]}
                 >
                   <Text style={headerText}>{col.title}</Text>
                 </View>
               ))}
             </View>
-            {view.players.map((player) => {
-              const mine = player.userId === userId;
-              const fill = mine ? colors.raised : colors.card;
-              return (
-                <View
-                  role="row"
-                  key={player.userId}
-                  {...({ dataSet: { me: mine ? "true" : undefined } } as object)}
-                  style={{ flexDirection: "row", backgroundColor: fill }}
-                >
-                  <View
-                    role="rowheader"
-                    style={[
-                      cell,
-                      stickyFirst,
-                      { width: nameWidth, alignItems: "stretch", backgroundColor: fill },
-                    ]}
-                  >
-                    <PlayerName view={view} player={player} mine={mine} />
-                  </View>
-                  {columns.map((col) => (
-                    <View role="cell" key={col.key} style={[cell, { width: CELL }]}>
-                      {col.cell(player)}
+            {groups.map((g) => (
+              <Fragment key={g.key}>
+                {g.label && (
+                  <View role="row" style={{ flexDirection: "row", backgroundColor: colors.card }}>
+                    <View
+                      role="cell"
+                      style={[group, sticky(0), { width: pinned, backgroundColor: colors.card }]}
+                    >
+                      <Text style={groupText}>{g.label}</Text>
                     </View>
-                  ))}
-                  {filler}
-                </View>
-              );
-            })}
+                    <View aria-hidden style={[group, { flexGrow: 1 }]} />
+                  </View>
+                )}
+                {g.players.map((player) => {
+                  const mine = player.userId === userId;
+                  const fill = mine ? colors.raised : colors.card;
+                  return (
+                    <View
+                      role="row"
+                      key={player.userId}
+                      {...({ dataSet: { me: mine ? "true" : undefined } } as object)}
+                      style={{ flexDirection: "row", backgroundColor: fill }}
+                    >
+                      <View
+                        role="rowheader"
+                        style={[
+                          cell,
+                          sticky(0),
+                          { width: nameWidth, alignItems: "stretch", backgroundColor: fill },
+                          !showLives && edge,
+                        ]}
+                      >
+                        <PlayerName view={view} player={player} mine={mine} />
+                      </View>
+                      {showLives && (
+                        <View
+                          role="cell"
+                          style={[cell, sticky(nameWidth), { width: fixed, backgroundColor: fill }, edge]}
+                        >
+                          {livesCell(player)}
+                        </View>
+                      )}
+                      {columns.map((col) => (
+                        <View role="cell" key={col.key} style={[cell, { width: CELL }]}>
+                          {col.cell(player)}
+                        </View>
+                      ))}
+                      {filler}
+                    </View>
+                  );
+                })}
+              </Fragment>
+            ))}
           </View>
         </ScrollView>
       </View>
     );
+  // iPhone: the pinned columns and the weeks are two views side by side, each drawing every row (the group
+  // row too), so their rows stay the same height.
   return (
-    <View
-      accessibilityLabel={label}
-      style={{ borderRadius: 16, overflow: "hidden", backgroundColor: colors.card, flexDirection: "row" }}
-    >
-      <View style={{ width: nameWidth, zIndex: 1 }}>
-        <View style={[header, { alignItems: "flex-start" }]}>
-          <Text style={headerText}>Player</Text>
-        </View>
-        {view.players.map((player) => (
-          <View
-            key={player.userId}
-            style={[
-              cell,
-              { alignItems: "stretch" },
-              player.userId === userId && { backgroundColor: colors.raised },
-            ]}
-          >
-            <PlayerName view={view} player={player} mine={player.userId === userId} />
+    <View accessibilityLabel={label} onLayout={onLayout} style={[frame, { flexDirection: "row" }]}>
+      <View style={[{ width: pinned, zIndex: 1 }, edge]}>
+        <View style={{ flexDirection: "row" }}>
+          <View style={[header, { width: nameWidth, alignItems: "flex-start" }]}>
+            <Text style={headerText}>Player</Text>
           </View>
+          {showLives && (
+            <View accessibilityLabel="Lives left" style={[header, { width: fixed }]}>
+              <Text style={headerText}>Lives</Text>
+            </View>
+          )}
+        </View>
+        {groups.map((g) => (
+          <Fragment key={g.key}>
+            {g.label && (
+              <View style={group}>
+                <Text style={groupText}>{g.label}</Text>
+              </View>
+            )}
+            {g.players.map((player) => (
+              <View
+                key={player.userId}
+                style={[
+                  { flexDirection: "row" },
+                  player.userId === userId && { backgroundColor: colors.raised },
+                ]}
+              >
+                <View style={[cell, { width: nameWidth, alignItems: "stretch" }]}>
+                  <PlayerName view={view} player={player} mine={player.userId === userId} />
+                </View>
+                {showLives && <View style={[cell, { width: fixed }]}>{livesCell(player)}</View>}
+              </View>
+            ))}
+          </Fragment>
         ))}
       </View>
       <ScrollView
@@ -336,6 +428,8 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
         onContentSizeChange={scroller.onContentSizeChange}
         horizontal
         showsHorizontalScrollIndicator
+        snapToInterval={CELL}
+        decelerationRate="fast"
         accessibilityLabel="Weeks, scroll horizontally"
         contentContainerStyle={{ flexGrow: 1 }}
       >
@@ -347,21 +441,26 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
               </View>
             ))}
           </View>
-          {view.players.map((player) => (
-            <View
-              key={player.userId}
-              style={{
-                flexDirection: "row",
-                backgroundColor: player.userId === userId ? colors.raised : colors.card,
-              }}
-            >
-              {columns.map((col) => (
-                <View key={col.key} style={[cell, { width: CELL }]}>
-                  {col.cell(player)}
+          {groups.map((g) => (
+            <Fragment key={g.key}>
+              {g.label && <View aria-hidden style={group} />}
+              {g.players.map((player) => (
+                <View
+                  key={player.userId}
+                  style={{
+                    flexDirection: "row",
+                    backgroundColor: player.userId === userId ? colors.raised : colors.card,
+                  }}
+                >
+                  {columns.map((col) => (
+                    <View key={col.key} style={[cell, { width: CELL }]}>
+                      {col.cell(player)}
+                    </View>
+                  ))}
+                  {filler}
                 </View>
               ))}
-              {filler}
-            </View>
+            </Fragment>
           ))}
         </View>
       </ScrollView>

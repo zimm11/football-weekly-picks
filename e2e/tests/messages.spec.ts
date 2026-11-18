@@ -196,7 +196,7 @@ test("admins confirm thread deletion, keep drafts on failure, and return to the 
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Old discussion/ })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByText("No threads yet. Start the conversation.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No threads yet" })).toBeVisible();
   await page.goto(threadUrl);
   await expect(page.getByRole("alert")).toContainText("Thread not found. It may have been deleted.");
   await expect(page.getByRole("link", { name: "See all threads" })).toBeVisible();

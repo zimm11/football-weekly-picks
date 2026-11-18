@@ -1,27 +1,15 @@
 import type { ReactNode } from "react";
-import {
-  Platform,
-  Pressable,
-  type PressableStateCallbackType,
-  type StyleProp,
-  StyleSheet,
-  Text,
-  View,
-  type ViewStyle,
-} from "react-native";
-import { AppLink, type LinkHow } from "../components/AppLink";
-import { Icon } from "../components/Icon";
-import { atRest, busyProps, pressState } from "../components/pressState";
-import { colors, fonts } from "../components/ui";
+import { type StyleProp, StyleSheet, Text, type ViewStyle } from "react-native";
+import type { LinkHow } from "../components/AppLink";
+import { corner, elevation, layout, radius, type } from "../components/theme";
+import { Badge, Button, colors, fonts } from "../components/ui";
+import { StatTile } from "./leagueUi";
 
 export type WeekTone = "primary" | "win" | "pow" | "loss" | "outline";
-const tones = {
-  primary: colors.primary,
-  win: colors.win,
-  pow: colors.pow,
-  loss: colors.destructive,
-  outline: colors.mutedForeground,
-};
+/**
+ * The app's `Badge` (components/ui.tsx) with the week screens' tones. `outline`, the default, is the quiet
+ * `raised` pill (the badge's `muted`).
+ */
 export function WeekBadge({
   children,
   tone = "outline",
@@ -34,30 +22,12 @@ export function WeekBadge({
   small?: boolean;
 }) {
   return (
-    <View
-      style={[
-        w.badge,
-        {
-          backgroundColor:
-            tone === "outline" ? colors.raised : tone === "pow" ? colors.pow : `${tones[tone]}26`,
-        },
-        small && w.badgeSmall,
-      ]}
-    >
-      {icon && <Icon name={icon} size={12} color={tones[tone]} weight={icon === "lock" ? "fill" : "bold"} />}
-      <Text
-        style={[
-          w.badgeText,
-          { color: tone === "pow" ? colors.powForeground : tones[tone] },
-          small && { fontSize: 12, lineHeight: 14 },
-        ]}
-      >
-        {children}
-      </Text>
-    </View>
+    <Badge tone={tone === "outline" ? "muted" : tone} icon={icon} small={small}>
+      {children}
+    </Badge>
   );
 }
-const ignore = () => {};
+/** The app's `Button` (components/ui.tsx) with the week screens' props: `secondary` is the quiet raised one. */
 export function WeekAction({
   label,
   onPress,
@@ -91,42 +61,19 @@ export function WeekAction({
   href?: string;
   how?: LinkHow;
 }) {
-  const off = disabled || busy;
-  const shared = {
-    ...busyProps(disabled, busy, Platform.OS === "web"),
-    style: (state: PressableStateCallbackType) => {
-      const { pressed, hovered } = busy ? atRest : pressState(state);
-      return [
-        w.action,
-        secondary && w.secondary,
-        compact && w.compact,
-        compact &&
-          secondary && { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border },
-        // Under the mouse: a filled button lightens, a secondary one takes the next layer up.
-        hovered &&
-          (secondary ? { backgroundColor: compact ? colors.raised : colors.raisedHover } : { opacity: 0.9 }),
-        style,
-        off && { opacity: 0.5 },
-        busy && ({ cursor: "auto" } as const),
-        pressed && { opacity: 0.8 },
-      ];
-    },
-  };
-  const content = (
-    <Text style={[w.actionText, secondary && { color: colors.foreground }, compact && { fontSize: 14 }]}>
-      {label}
-    </Text>
-  );
-  if (href !== undefined)
-    return (
-      <AppLink href={href} how={how} onPress={busy ? ignore : onPress} {...shared}>
-        {content}
-      </AppLink>
-    );
   return (
-    <Pressable accessibilityRole={link ? "link" : "button"} onPress={busy ? ignore : onPress} {...shared}>
-      {content}
-    </Pressable>
+    <Button
+      title={label}
+      onPress={onPress}
+      disabled={disabled}
+      busy={busy}
+      secondary={secondary}
+      small={compact}
+      style={style}
+      link={link}
+      href={href}
+      how={how}
+    />
   );
 }
 export function WeekCaption({ children }: { children: ReactNode }) {
@@ -136,6 +83,7 @@ export function WeekCaption({ children }: { children: ReactNode }) {
     </Text>
   );
 }
+/** The league screens' `StatTile`, sized by its `style` rather than filling its share of the row. */
 export function WeekStat({
   label,
   value,
@@ -152,15 +100,15 @@ export function WeekStat({
   compact?: boolean;
 }) {
   return (
-    <View style={[w.stat, style]}>
-      <Text style={w.statLabel}>{label}</Text>
-      <Text
-        style={[w.statValue, compact && { fontSize: 24, lineHeight: 26 }, tone ? { color: tone } : undefined]}
-      >
-        {value}
-      </Text>
-      {detail && <Text style={w.muted}>{detail}</Text>}
-    </View>
+    <StatTile
+      label={label}
+      value={value}
+      detail={detail}
+      tone={tone}
+      compact={compact}
+      grow={false}
+      style={style}
+    />
   );
 }
 export const w = StyleSheet.create({
@@ -168,48 +116,16 @@ export const w = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   grow: { flex: 1 },
-  body: { fontFamily: fonts.body, fontSize: 16, lineHeight: 22, color: colors.foreground },
-  muted: { fontFamily: fonts.body, fontSize: 14, lineHeight: 19, color: colors.mutedForeground },
-  small: { fontFamily: fonts.body, fontSize: 12, lineHeight: 16, color: colors.mutedForeground },
-  card: { backgroundColor: colors.card, borderRadius: 16, padding: 12, gap: 8 },
-  caption: { fontFamily: fonts.semibold, fontSize: 14, color: colors.mutedForeground },
-  badge: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    gap: 4,
-    alignItems: "center",
-    borderRadius: 999,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    minHeight: 24,
+  body: { ...type.body, color: colors.foreground },
+  muted: { ...type.small, color: colors.mutedForeground },
+  small: { ...type.caption, color: colors.mutedForeground },
+  card: {
+    backgroundColor: colors.card,
+    ...corner(radius.xl),
+    padding: layout.cardPad,
+    gap: layout.cardGap,
+    boxShadow: elevation.cardEdge,
   },
-  badgeSmall: { minHeight: 16, paddingVertical: 0, paddingHorizontal: 4 },
-  badgeText: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
-  action: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondary: { backgroundColor: colors.raised },
-  compact: { paddingHorizontal: 12 },
-  actionText: { fontFamily: fonts.semibold, fontSize: 16, color: colors.primaryForeground },
-  stat: { backgroundColor: colors.card, borderRadius: 16, padding: 12, gap: 4 },
-  statLabel: {
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.mutedForeground,
-  },
-  statValue: {
-    fontFamily: fonts.displayBold,
-    fontSize: 30,
-    lineHeight: 32,
-    color: colors.foreground,
-    fontVariant: ["tabular-nums"],
-  },
+  caption: { ...type.small, fontFamily: fonts.semibold, color: colors.mutedForeground },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
 });

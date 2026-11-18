@@ -4,9 +4,13 @@ import {
   aliveCount,
   draftChanged,
   gridCell,
+  gridLayout,
   gridWeeks,
+  kickoffWhen,
+  livesLeftLabel,
   nextSurvivorWeek,
   outLine,
+  pickBanner,
   pickHeadline,
   playerStatus,
   recapSummary,
@@ -362,11 +366,13 @@ describe("survivor presentation", () => {
       wentOut: "Cat went out.",
       left: 2,
       total: 3,
+      lives: { left: 1, of: 1 },
       winners: [],
     });
     expect(recapSummary(v, "w11", "cat")).toMatchObject({
       headline: "You went out: Bears lost.",
       wentOut: null,
+      lives: null,
     });
     expect(recapSummary(v, "w12", "ann")).toBeNull();
     const cancelled = view({
@@ -375,5 +381,186 @@ describe("survivor presentation", () => {
     expect(recapSummary(cancelled, "w11", "ann")?.wentOut).toBe(
       "Week 11 would have put out everyone still in, so nobody went out.",
     );
+  });
+
+  describe("the pick status banner", () => {
+    const current = (v: SurvivorView, myPick: NonNullable<SurvivorView["current"]>["myPick"]) =>
+      view({ current: { ...(v.current as NonNullable<SurvivorView["current"]>), myPick } });
+    // Thursday, Nov 19, noon in New York: the week's games are on Sunday.
+    const thursday = new Date("2026-11-19T17:00:00Z");
+
+    it("asks for a pick, naming the first kickoff still open", () => {
+      expect(pickBanner(view(), "ann", thursday)).toEqual({
+        kind: "needs",
+        title: "Pick a team for Week 12",
+        detail: "First kickoff Sunday at 1:00 PM EST.",
+      });
+      // Once a game has kicked off, the next one that can still be picked.
+      expect(pickBanner(view(), "ann", after)?.detail).toBe("Next kickoff today at 8:20 PM EST.");
+    });
+
+    it("says the player is all set once a pick is saved, and until when it can change", () => {
+      const v = current(view(), { gameId: "g3", side: "away", byAdmin: false });
+      expect(pickBanner(v, "ann", thursday)).toEqual({
+        kind: "set",
+        title: "You're all set for Week 12",
+        detail: "You picked the Lions. You can change it until they kick off Sunday at 8:20 PM EST.",
+      });
+      expect(pickBanner(v, "ann", before)?.detail).toMatch(/until they kick off today at 8:20 PM EST\.$/);
+    });
+
+    it("says the pick is in once its game kicks off, then how it went", () => {
+      const v = current(view(), { gameId: "g2", side: "home", byAdmin: false });
+      expect(pickBanner(v, "ann", after)).toEqual({
+        kind: "locked",
+        title: "Your pick is in: Chiefs",
+        detail: "Their game is under way.",
+      });
+      const scored = (home: number, away: number, lives = 1) =>
+        view({
+          ...v,
+          players: v.players.map((p) => (p.userId === "ann" ? { ...p, livesLeft: lives } : p)),
+          weeks: v.weeks.map((w) =>
+            w.id === "w12"
+              ? {
+                  ...w,
+                  games: w.games.map((g) => (g.id === "g2" ? { ...g, homeScore: home, awayScore: away } : g)),
+                }
+              : w,
+          ),
+        });
+      // Won: through. A next week is named only when someone else is sure to stay in too, since otherwise
+      // this week could end the pool.
+      expect(pickBanner(scored(27, 20), "ann", after)).toEqual({
+        kind: "won",
+        title: "Chiefs won: you're through",
+        detail: "Final: Chiefs 27, Raiders 20.",
+      });
+      const bobSpare = (w: SurvivorView) =>
+        view({ ...w, players: w.players.map((p) => (p.userId === "bob" ? { ...p, livesLeft: 2 } : p)) });
+      expect(pickBanner(bobSpare(scored(27, 20)), "ann", after)?.title).toBe(
+        "Chiefs won: you're through to Week 13",
+      );
+      const bobWon = (w: SurvivorView) =>
+        view({
+          ...w,
+          picks: [
+            ...w.picks,
+            { userId: "bob", weekId: "w12", gameId: "g2", side: "home", team: "KC", outcome: "won" },
+          ],
+        });
+      expect(pickBanner(bobWon(scored(27, 20)), "ann", after)?.title).toBe(
+        "Chiefs won: you're through to Week 13",
+      );
+      // A pick still to play, or lost, says nothing about whether Bob stays in.
+      const bobLost = view({
+        ...scored(27, 20),
+        picks: [{ userId: "bob", weekId: "w12", gameId: "g2", side: "away", team: "LV", outcome: "lost" }],
+      });
+      expect(pickBanner(bobLost, "ann", after)?.title).toBe("Chiefs won: you're through");
+      // The Super Bowl has no week after it.
+      const superBowl = bobSpare(
+        view({
+          ...scored(27, 20),
+          weeks: scored(27, 20).weeks.map((w) => (w.id === "w12" ? { ...w, number: 22 } : w)),
+        }),
+      );
+      expect(pickBanner(superBowl, "ann", after)?.title).toBe("Chiefs won: you're through");
+
+      // Lost with a life to spare: a strike for certain (the player stays in, so the week can't be cancelled).
+      expect(pickBanner(scored(17, 20, 2), "ann", after)).toEqual({
+        kind: "lost",
+        title: "Chiefs lost: that's a strike",
+        detail: "Chiefs 17, Raiders 20. You'll have 1 life left once the week is final.",
+      });
+      expect(pickBanner(scored(17, 20, 3), "ann", after)?.detail).toBe(
+        "Chiefs 17, Raiders 20. You'll have 2 lives left once the week is final.",
+      );
+      // On the last life: never "you're out" before the week is final.
+      expect(pickBanner(scored(17, 20), "ann", after)).toEqual({
+        kind: "lost",
+        title: "Chiefs lost on your last life",
+        detail: "You're out when the week is final, unless everyone still in goes out too.",
+      });
+      // A tie counts as a loss, both ways.
+      expect(pickBanner(scored(20, 20, 2), "ann", after)).toMatchObject({
+        kind: "lost",
+        title: "Chiefs tied: that's a strike",
+      });
+      expect(pickBanner(scored(20, 20), "ann", after)?.title).toBe("Chiefs tied on your last life");
+      for (const b of [scored(17, 20), scored(20, 20), scored(17, 20, 2)].map((w) =>
+        pickBanner(w, "ann", after),
+      )) {
+        expect(`${b?.title} ${b?.detail}`).not.toMatch(/you're out(?! when the week is final)/i);
+      }
+    });
+
+    it("leaves a final week to the status card", () => {
+      const v = current(view(), { gameId: "g2", side: "home", byAdmin: false });
+      const final = view({
+        ...v,
+        weeks: v.weeks.map((w) => (w.id === "w12" ? { ...w, status: "final" } : w)),
+      });
+      expect(pickBanner(final, "ann", after)).toBeNull();
+    });
+
+    it("names the next round in the playoffs", () => {
+      const v = view({
+        weeks: [{ ...(view().weeks[1] as SurvivorView["weeks"][number]), number: 19 }],
+        current: { ...(view().current as NonNullable<SurvivorView["current"]>), number: 19 },
+      });
+      expect(pickBanner(v, "ann", thursday)?.title).toBe("Pick a team for the Wild Card round");
+    });
+
+    it("says when no team is left to pick", () => {
+      const late = new Date("2026-11-23T02:00:00Z");
+      expect(pickBanner(view(), "ann", late)).toEqual({
+        kind: "missed",
+        title: "No pick for Week 12 on your last life",
+        detail: "You're out when the week is final, unless everyone still in goes out too.",
+      });
+      const spare = view({
+        players: view().players.map((p) => (p.userId === "ann" ? { ...p, livesLeft: 2 } : p)),
+      });
+      expect(pickBanner(spare, "ann", late)).toEqual({
+        kind: "missed",
+        title: "No pick for Week 12: that's a strike",
+        detail: "No team is left for you to pick. You'll have 1 life left once the week is final.",
+      });
+    });
+
+    it("shows nothing for a player with no pick to make", () => {
+      expect(pickBanner(view(), "cat", thursday)).toBeNull();
+      expect(pickBanner(view({ watching: true }), "dan", thursday)).toBeNull();
+      expect(pickBanner(view({ over: true }), "ann", thursday)).toBeNull();
+      expect(pickBanner(view({ current: null }), "ann", thursday)).toBeNull();
+    });
+  });
+
+  it("words a kickoff in the league's time zone", () => {
+    const tz = "America/New_York";
+    const at = new Date("2026-11-19T17:00:00Z");
+    expect(kickoffWhen("2026-11-20T01:15:00Z", tz, at)).toBe("today at 8:15 PM EST");
+    expect(kickoffWhen("2026-11-20T18:00:00Z", tz, at)).toBe("tomorrow at 1:00 PM EST");
+    expect(kickoffWhen("2026-11-24T01:15:00Z", tz, at)).toBe("Monday at 8:15 PM EST");
+    expect(kickoffWhen("2026-11-27T01:20:00Z", tz, at)).toBe("Thursday, Nov 26 at 8:20 PM EST");
+    expect(livesLeftLabel(1, 2)).toBe("1 of 2 lives left");
+    expect(livesLeftLabel(1, 1)).toBe("1 of 1 life left");
+  });
+
+  it("lays the grid out in whole columns", () => {
+    // A phone, many weeks: whole 56px-or-wider cells in view, none cut.
+    const phone = gridLayout({ width: 358, weeks: 10, name: 148, fixed: 0 });
+    expect(phone.visible).toBe(3);
+    expect(phone.cell * phone.visible + phone.name).toBeCloseTo(358);
+    // One week: the name column takes the slack, up to 320.
+    expect(gridLayout({ width: 358, weeks: 1, name: 148, fixed: 0 })).toEqual({
+      name: 302,
+      cell: 56,
+      visible: 1,
+    });
+    // A desktop card with a few weeks: the name column caps at 320 and the cells grow, to 96 at most.
+    const desktop = gridLayout({ width: 864, weeks: 4, name: 210, fixed: 72, maxCell: 96 });
+    expect(desktop).toEqual({ name: 320, cell: 96, visible: 4 });
   });
 });

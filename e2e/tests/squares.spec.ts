@@ -123,7 +123,10 @@ test("players claim squares up to the limit on a typed-in board, and a typed sco
     await expect(player.getByLabel(/^Seahawks \d$/)).toHaveCount(10);
     await expect(player.getByLabel(/^Bills \d$/)).toHaveCount(10);
     await expect(player.getByRole("button", { name: "Claim a random square" })).toHaveCount(0);
-    const square = player.getByRole("button", { name: /^Your square, / });
+    // In the grid: once drawn, "Your squares" lists the same square as a chip, named as its cell is.
+    const square = player
+      .getByRole("region", { name: "Squares board" })
+      .getByRole("button", { name: /^Your square, / });
     await expect(square).toHaveAccessibleName(/^Your square, Seahawks \d, Bills \d$/);
     const [, home, away] =
       /Seahawks (\d), Bills (\d)/.exec((await square.getAttribute("aria-label")) ?? "") ?? [];

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { disabledOpacity } from "./pressState";
 import { colors, fonts } from "./theme";
 import type { WebSelectProps } from "./WebSelect";
 
@@ -27,7 +28,7 @@ export function WebSelect({ label, value, choices, onChange, disabled, compact, 
         position: "relative",
         display: "flex",
         minWidth: 0,
-        opacity: disabled ? 0.45 : 1,
+        opacity: disabled ? disabledOpacity : 1,
         ...(compact ? { overflow: "hidden", borderRadius: 100 } : null),
       }}
     >
@@ -62,7 +63,7 @@ export function WebSelect({ label, value, choices, onChange, disabled, compact, 
           textOverflow: "ellipsis",
           borderRadius: compact ? 100 : 10,
           border: compact ? "none" : `1px solid ${colors.input}`,
-          backgroundColor: compact ? colors.raised : `${colors.background}99`,
+          backgroundColor: compact ? colors.raised : colors.field,
           color: colors.foreground,
           cursor: disabled ? "default" : "pointer",
           colorScheme: "dark",

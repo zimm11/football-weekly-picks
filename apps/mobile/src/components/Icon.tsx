@@ -3,21 +3,27 @@
 import type { IconWeight, Icon as PhosphorIcon } from "phosphor-react-native";
 import { ArrowBendUpLeftIcon } from "phosphor-react-native/src/icons/ArrowBendUpLeft";
 import { ArrowCounterClockwiseIcon } from "phosphor-react-native/src/icons/ArrowCounterClockwise";
+import { ArrowRightIcon } from "phosphor-react-native/src/icons/ArrowRight";
 import { ArrowSquareOutIcon } from "phosphor-react-native/src/icons/ArrowSquareOut";
 import { ArrowsClockwiseIcon } from "phosphor-react-native/src/icons/ArrowsClockwise";
 import { BellIcon } from "phosphor-react-native/src/icons/Bell";
+import { CalendarBlankIcon } from "phosphor-react-native/src/icons/CalendarBlank";
 import { CaretDownIcon } from "phosphor-react-native/src/icons/CaretDown";
 import { CaretLeftIcon } from "phosphor-react-native/src/icons/CaretLeft";
 import { CaretRightIcon } from "phosphor-react-native/src/icons/CaretRight";
+import { CaretUpIcon } from "phosphor-react-native/src/icons/CaretUp";
 import { ChartBarIcon } from "phosphor-react-native/src/icons/ChartBar";
 import { ChatCircleIcon } from "phosphor-react-native/src/icons/ChatCircle";
 import { CheckIcon } from "phosphor-react-native/src/icons/Check";
 import { CheckCircleIcon } from "phosphor-react-native/src/icons/CheckCircle";
+import { CircleIcon } from "phosphor-react-native/src/icons/Circle";
+import { ClockIcon } from "phosphor-react-native/src/icons/Clock";
 import { CopyIcon } from "phosphor-react-native/src/icons/Copy";
 import { DotsThreeIcon } from "phosphor-react-native/src/icons/DotsThree";
 import { EnvelopeSimpleIcon } from "phosphor-react-native/src/icons/EnvelopeSimple";
 import { EqualsIcon } from "phosphor-react-native/src/icons/Equals";
 import { EyeIcon } from "phosphor-react-native/src/icons/Eye";
+import { EyeSlashIcon } from "phosphor-react-native/src/icons/EyeSlash";
 import { FileTextIcon } from "phosphor-react-native/src/icons/FileText";
 import { FlagIcon } from "phosphor-react-native/src/icons/Flag";
 import { FootballIcon } from "phosphor-react-native/src/icons/Football";
@@ -27,12 +33,14 @@ import { HeartIcon } from "phosphor-react-native/src/icons/Heart";
 import { InfoIcon } from "phosphor-react-native/src/icons/Info";
 import { ListChecksIcon } from "phosphor-react-native/src/icons/ListChecks";
 import { LockIcon } from "phosphor-react-native/src/icons/Lock";
+import { MinusIcon } from "phosphor-react-native/src/icons/Minus";
 import { PaperPlaneRightIcon } from "phosphor-react-native/src/icons/PaperPlaneRight";
 import { PawPrintIcon } from "phosphor-react-native/src/icons/PawPrint";
 import { PencilSimpleLineIcon } from "phosphor-react-native/src/icons/PencilSimpleLine";
 import { PlusIcon } from "phosphor-react-native/src/icons/Plus";
 import { ProhibitIcon } from "phosphor-react-native/src/icons/Prohibit";
 import { PushPinIcon } from "phosphor-react-native/src/icons/PushPin";
+import { QuestionIcon } from "phosphor-react-native/src/icons/Question";
 import { QuotesIcon } from "phosphor-react-native/src/icons/Quotes";
 import { ShareNetworkIcon } from "phosphor-react-native/src/icons/ShareNetwork";
 import { ShieldIcon } from "phosphor-react-native/src/icons/Shield";
@@ -44,13 +52,17 @@ import { StarIcon } from "phosphor-react-native/src/icons/Star";
 import { TargetIcon } from "phosphor-react-native/src/icons/Target";
 import { TrashIcon } from "phosphor-react-native/src/icons/Trash";
 import { TrophyIcon } from "phosphor-react-native/src/icons/Trophy";
+import { UserCircleIcon } from "phosphor-react-native/src/icons/UserCircle";
 import { UserMinusIcon } from "phosphor-react-native/src/icons/UserMinus";
 import { UsersThreeIcon } from "phosphor-react-native/src/icons/UsersThree";
 import { WarningCircleIcon } from "phosphor-react-native/src/icons/WarningCircle";
 import { XIcon } from "phosphor-react-native/src/icons/X";
 import { colors } from "./theme";
 
-/** Each name maps to one Phosphor icon and the weight it usually takes. */
+/**
+ * Each name maps to one Phosphor icon and the weight it usually takes. With no weight of its own, an icon of
+ * 16px or less draws bold, so a small one beside text doesn't look thin.
+ */
 const ICONS = {
   football: [FootballIcon],
   bell: [BellIcon],
@@ -99,6 +111,16 @@ const ICONS = {
   email: [EnvelopeSimpleIcon],
   eye: [EyeIcon],
   document: [FileTextIcon],
+  user: [UserCircleIcon],
+  circle: [CircleIcon],
+  "caret-up": [CaretUpIcon],
+  "caret-down": [CaretDownIcon],
+  "eye-slash": [EyeSlashIcon],
+  "arrow-right": [ArrowRightIcon],
+  clock: [ClockIcon],
+  calendar: [CalendarBlankIcon],
+  minus: [MinusIcon],
+  question: [QuestionIcon],
 } satisfies Record<string, [PhosphorIcon, IconWeight?]>;
 
 export type IconName = keyof typeof ICONS;
@@ -118,6 +140,6 @@ export function Icon({
   filled?: boolean;
   weight?: IconWeight;
 }) {
-  const [Glyph, usual = "regular"] = ICONS[name] as [PhosphorIcon, IconWeight?];
+  const [Glyph, usual = size <= 16 ? "bold" : "regular"] = ICONS[name] as [PhosphorIcon, IconWeight?];
   return <Glyph size={size} color={color} weight={weight ?? (filled ? "fill" : usual)} />;
 }

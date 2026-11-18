@@ -8,7 +8,9 @@
  * the root element fills the page.
  *
  * The colors below repeat tokens from src/components/theme.ts (a stylesheet can't import them): primary
- * #4d7cff, foreground #f1f4fb, raised #17234a, and the fill of a text field on a card, #0a1127.
+ * #4d7cff (and its 40% alpha, #4d7cff66, for selected text; at 8% and 4%, #4d7cff14 and #4d7cff0a, for the
+ * wash of light on wide windows), foreground #f1f4fb, input #94a0bd4d (the scrollbar thumb), and the fill of a
+ * text field on a card, #0a1127.
  */
 html {
   background: #030817;
@@ -23,11 +25,44 @@ body {
 }
 body {
   overflow: hidden;
+  /* react-native-web's own reset does this once the app runs; before then the boot mark must not sit 8px low. */
+  margin: 0;
 }
 #root {
   display: flex;
   height: 100%;
   flex: 1;
+}
+/*
+ * Until the app's scripts have run, the empty page shows the splash's POW mark (boot-mark.png, drawn from
+ * src/components/Splash.tsx by `node scripts/icons.mjs boot-mark`) on the same pixels the splash draws it: the
+ * 240 by 192px image is centered 41px above the middle, as the splash centers the mark with its 82px of status
+ * lines below. Change the splash, redraw the image and check this still lines up.
+ */
+#root:empty {
+  background: url(/boot-mark.png) center calc(50% - 41px) / 240px 192px no-repeat;
+}
+
+/*
+ * A soft wash of light from the top of a wide window, so the page's column doesn't sit in a flat navy field. A
+ * fixed layer over the app (never under it), so the cards near the top are lit as much as the page between them
+ * and keep their separation; it takes no clicks. The app is isolated into one layer under it, and sheets, dialogs
+ * and menus (react-native-web puts each Modal outside #root, far above) stay clear of it. Phones and narrow
+ * windows are untouched.
+ */
+@media (min-width: 1024px) {
+  #root {
+    isolation: isolate;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: 480px;
+    background: radial-gradient(ellipse 70% 100% at 50% 0%, #4d7cff14 0%, #4d7cff0a 45%, #4d7cff00 100%);
+    pointer-events: none;
+    z-index: 1;
+  }
 }
 
 /*
@@ -90,6 +125,29 @@ select:-webkit-autofill {
 @media (hover: hover) and (pointer: fine) {
   * {
     scrollbar-width: thin;
-    scrollbar-color: #17234a transparent;
+    /* The field border's color: the raised fill this used before couldn't be seen on the page. */
+    scrollbar-color: #94a0bd4d transparent;
+  }
+}
+
+/* Selected text: a primary tint the page's text stays readable on. */
+::selection {
+  background: #4d7cff66;
+  color: #f1f4fb;
+}
+
+/*
+ * The browser's "reduce motion" setting stops every CSS transition and animation (webTransition and the
+ * skeleton pulse in src/lib/motion.ts and src/components/SkeletonBlock.tsx), so no caller has to check it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  /* !important: react-native-web sets transitions as inline styles, which only !important outranks. */
+  * {
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank inline styles */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank inline styles */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank inline styles */
+    animation-iteration-count: 1 !important;
   }
 }

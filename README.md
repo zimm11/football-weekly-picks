@@ -151,8 +151,9 @@ opens the league.
 
 Local sign-up needs no email confirmation. You can create an account with a made-up email address and
 a password of at least six characters. To join the seeded league, open `/join/local-invite` on your web
-URL, sign in, and press **Join league**. In the main checkout, that URL is
-`http://localhost:8081/join/local-invite`.
+URL, create an account (or switch the card to **Sign in** for a seeded one), and press **Join league**. In the
+main checkout, that URL is `http://localhost:8081/join/local-invite`. The invite names the kind of league and
+how many players are in it.
 
 [`supabase/seeds/squares.sql`](supabase/seeds/squares.sql) adds **Squares Crew** (`/join/local-squares`; Commish is
 its commissioner, Pat and Sam are members, Alex isn't): an open board on the Super Bowl, typed in for 2027-02-14, with
@@ -233,13 +234,17 @@ This walks through Weekly pick'em, the main game. The other games each have a se
 [Test accounts](#test-accounts)) and a section under [League types](#league-types); in the app, How to play has a
 tab for each.
 
-1. Sign in as `admin@example.com` and open **Sunday Crew**. The league has five tabs: **Picks**,
+1. Sign in as `admin@example.com` (the home page's card opens on **Create account**: switch it to **Sign in**,
+   or open `/login`). Your leagues shows what is waiting in each league (picks due and when they lock) and a dot for
+   unread messages. Open **Sunday Crew**. The league has five tabs: **Picks**,
    **Results**, **Standings**, **Messages**, and **League**. The **Season** selector applies to every tab
    except Messages, which is league-wide. Sunday Crew is a Hands-on league: an Automatic one does steps 2, 3, 5
    and 6 by itself (see "Automatic weekly pick'em" under League types).
-2. Open **League**, select an unused week, and press **Create week**. To prepare another year, choose
-   **Start a new season** in the season selector; the season is created with its first week. Existing
-   weeks open with **Manage week**. With **Auto-fill games and spreads** checked, creation
+2. Open **League**, select an unused week, and press **Create week**. The week list shows each week's state
+   and marks weeks the calendar says are **Already played**; in the current season before any week exists,
+   it suggests the coming week (Week 1 before the season starts, Week 18 once the last week has begun). To
+   prepare another year, choose **Start a new season** in the season selector; the season is created with its
+   first week. Existing weeks open with **Manage week**. With **Auto-fill games and spreads** checked, creation
    fetches the slate from ESPN and opens the draft's management screen. Imports need internet access.
 3. Review kickoffs, spreads, point values, and the tiebreaker game. Add or remove games as needed and
    press **Save changes** after edits. Kickoffs you type are in the league's time zone, and a game whose
@@ -247,13 +252,13 @@ tab for each.
    before you can press **Open week for picks**. After the week opens, the app offers to post a league
    message announcing it; you can edit the draft or skip it.
 4. Follow **Make your own picks**, or open **Picks**. Select teams, mark one POW, enter a guess for the
-   tiebreaker game's combined score, and press **Save picks**. A partial sheet can be saved and completed
-   later. **Stats & news** on a game opens its matchup sheet. Then try the player account. The
+   tiebreaker game's combined score in that game's card, and press **Save picks**. A partial sheet can be
+   saved and completed later; the status card at the top says what is saved and what is left. **Stats & news** on a game opens its matchup sheet. Then try the player account. The
    commissioner's management screen shows submission counts and whether a POW was chosen; other players'
    choices remain private.
 5. As each game ends, its result fills in on its own from ESPN the next time anyone opens the week
    (checked at most once a minute), and each player's sheet marks their pick **Won** (with the points
-   earned), **Lost**, or **Push** and keeps a **Your week so far** tally. On the sheet a game that has
+   earned), **Lost**, or **Push**, and its status card keeps a tally of points, record, POW and picks still to play. On the sheet a game that has
    kicked off (or has a result) shrinks to one row with the player's pick and how it did; tap it for the
    full card. Games already locked when the sheet opens fold behind **N games locked** while there is still
    something to pick, so the games to pick come first. An open pick sheet refreshes
@@ -301,9 +306,13 @@ into the new one as members, each told once (a league event); anyone already in 
 
 A **Squares** league holds boards, each a 10 by 10 grid on one NFL game (the Super Bowl by default once ESPN
 lists it, any game from the feed, or teams and a kickoff typed in). The **Boards** tab lists the league's boards,
-the ones still to finish first, each with its phase, kickoff, claimed squares and your count; tap one to open it.
-A commissioner sets one up under **Boards → New board** and lands on it. On a board, the home team's name and
-numbers run across the top and the away team's up the left side. Once there is a score, a scoreboard row above
+the ones still to finish first, each with its phase, kickoff, claimed squares (a meter while it is open), your
+count and its latest quarter score; tap one to open it. A commissioner sets one up under **Boards → New board**
+and lands on it. On a board, the home team's name and numbers run across the top and the away team's up the left
+side; from 1024px wide the grid sits on the left, fitted to the window, with the rest beside it. Your squares are
+solid blue and winning squares green; everyone else's are a tint of their avatar color, and the **Players** card
+is the legend: tap a name to pick out that player's squares. After the draw, **Your squares** lists your number
+pairs. Once there is a score, a scoreboard row above
 the grid shows it: live for a game from the feed (refreshed every minute), else the latest quarter entered; the
 square that would win on that score is marked **Now**. Players tap an open square to claim it (the
 cell fills at once and rolls back if the API refuses) and tap theirs to give it back, up to the board's limit
@@ -364,7 +373,10 @@ the next cron run) imports its slate from ESPN and opens it: there are no spread
 1. **Pick:** each week a player still in taps one team to win outright and presses **Save pick**. A team picked
    earlier in the season is disabled ("Used in Week 3"); the used teams reset at the Wild Card round, and a
    player with no unused team left on a playoff slate may pick any. A pick can change until its team kicks off,
-   and only to a team still to kick off. Above the cards: lives left and teams used.
+   and only to a team still to kick off. Above the cards, a status card says whether anything is needed (pick a
+   team, all set, the pick is in, how it went; until the week is final it says only what is certain), then
+   lives left as hearts and teams used. A player who is out, or watching, sees the week as one-line rows with a
+   link to Standings.
 2. **Reveal:** nobody else, commissioners included, learns anything about a pick (not even that one exists) until its
    team's game kicks off. Then it shows on **Standings**, the survivor grid.
 3. **Strikes:** a loss, a tie, or no pick when the week's last game kicks off is a strike; a player is out when
@@ -378,7 +390,7 @@ the next cron run) imports its slate from ESPN and opens it: there are no spread
 5. **The end:** one player left after a final week wins (a "pool over" league event). With several still in
    after Week 18 the pool plays on through the playoffs; several still in after the Super Bowl share the title.
 
-Commissioners, in the League tab, can enter a pick for a player (it records that a commissioner did), correct a score at any
+Commissioners, in the League tab (**Enter a pick for a player** and **Games and scores**, folded until opened), can enter a pick for a player (it records that a commissioner did), correct a score at any
 time (everyone's status is worked out again; nothing is stored), and remove a cancelled game, which deletes the
 picks on it so those players can pick again. Reminders at 7pm the evening before a game day go to players still
 in with no pick yet.
@@ -394,14 +406,19 @@ account can be in at most 25 leagues; removed and departed members don't count t
 
 ### Accounts and passwords
 
-**Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
+The sign-in card has two modes, **Sign in** and **Create account**, each with a switch to the other that keeps
+what was typed. It opens on Create account on the home page, on an invite and with `?mode=signup`, and on Sign
+in everywhere else (`/login`, a page that needs an account); an email that already has an account turns it to
+Sign in. **Forgot password?** on the sign-in form emails a link that signs the player in and asks for a new
 password; it works in any browser, not only the one that asked (see "Links in sign-in emails"). Locally, that
 email arrives in the test inbox listed by `pnpm ports`. A signed-in player can
 use **Change password** or **Name and picture** from the account menu in the header; **Name and picture**
-(`/change-name`) changes the display name and lets you choose one of 100 profile logos or return to your initials. **Settings**
-(`/account`) holds notifications (by email and on this device: new threads, pick reminders, and results and
-updates), the home-screen app help, and the email
-address (a change is confirmed from both the old and the new address).
+(`/change-name`) changes the display name and lets you choose one of 100 profile logos or return to your initials,
+with a preview of how the league will see you. **Settings** (`/account`) has three groups: **Notifications** (by
+email and on this device: new threads, pick reminders, and results and updates), **Account** (name and picture,
+the email address, whose change is confirmed from both the old and the new address, password, account deletion
+and blocked players) and **Help** (the home-screen app help, support, the Terms, the Privacy policy and How to
+play).
 
 ### Deleting an account
 

@@ -63,6 +63,8 @@ import {
   weekParticipants,
 } from "./context";
 import { deliverLeagueEventsSoon, queueLeagueEvent } from "./leagueEvents";
+import { leagueTodos } from "./leagueTodos";
+import { unreadLeagueIds } from "./messages";
 import { blockedBy, openReportCount, requireNotSuspended, screen } from "./moderation";
 import type { AppServices } from "./services";
 import { startSurvivorSeason } from "./survivor";
@@ -159,8 +161,14 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
 
   return (
     new Hono<{ Variables: AuthVariables }>()
+      /**
+       * Your leagues, each with what is waiting for you in it (`todo`) and whether its board has a thread you
+       * haven't read. A constant number of queries however many leagues; no feed call and no automation (the
+       * league's own screens advance it when opened).
+       */
       .get("/leagues", auth, async (c) => {
-        const rows: LeagueSummary[] = await db
+        const userId = c.var.user.id;
+        const rows = await db
           .select({
             id: leagues.id,
             name: leagues.name,
@@ -170,9 +178,17 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
           })
           .from(leagueMembers)
           .innerJoin(leagues, eq(leagues.id, leagueMembers.leagueId))
-          .where(and(eq(leagueMembers.userId, c.var.user.id), isNull(leagueMembers.removedAt)))
+          .where(and(eq(leagueMembers.userId, userId), isNull(leagueMembers.removedAt)))
           .orderBy(asc(leagues.createdAt));
-        return c.json(rows);
+        const [todos, unread] = await Promise.all([
+          leagueTodos(db, userId, rows, now()),
+          unreadLeagueIds(db, userId, rows),
+        ]);
+        const summaries: LeagueSummary[] = rows.map((league) => {
+          const todo = todos.get(league.id);
+          return { ...league, ...(todo && { todo }), unread: unread.has(league.id) };
+        });
+        return c.json(summaries);
       })
       /**
        * Creates a league of any type, its creator as admin. `copyMembersFrom` names a league the creator is an
@@ -475,13 +491,14 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
               isNull(leagueMembers.removedAt),
             ),
           );
+        const memberCount = await countMemberships(db, eq(leagueMembers.leagueId, league.id));
         const preview: InvitePreview = {
           leagueId: league.id,
           leagueName: league.name,
           alreadyMember: !!member,
-          full:
-            !member &&
-            (await countMemberships(db, eq(leagueMembers.leagueId, league.id))) >= limits.membersPerLeague,
+          full: !member && memberCount >= limits.membersPerLeague,
+          type: league.type,
+          memberCount,
         };
         return c.json(preview);
       })

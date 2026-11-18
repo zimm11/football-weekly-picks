@@ -9,6 +9,7 @@ import {
   cryptoRandom,
   currentSquare,
   drawDigits,
+  latestPeriodScore,
   type RandomSource,
   squareWinners,
   updateBoardSchema,
@@ -188,6 +189,17 @@ describe("squareWinners", () => {
     expect(currentSquare(digits, [q1], { homeScore: 14, awayScore: 3 })).toEqual({ row: 5, col: 4 });
     expect(currentSquare(digits, [{ ...q1, period: "final" }], { homeScore: 1, awayScore: 1 })).toBeNull();
     expect(currentSquare(digits, [], null)).toBeNull();
+  });
+
+  it("finds the latest scored period whatever order the rows come in", () => {
+    const q1 = { period: "q1" as const, homeScore: 7, awayScore: 3 };
+    const half = { period: "half" as const, homeScore: 14, awayScore: 10 };
+    const final = { period: "final" as const, homeScore: 24, awayScore: 20 };
+    expect(latestPeriodScore([])).toBeUndefined();
+    expect(latestPeriodScore([q1])).toBe(q1);
+    expect(latestPeriodScore([half, q1])).toBe(half);
+    // A final typed in before the third quarter still counts as the latest.
+    expect(latestPeriodScore([q1, final, half])).toBe(final);
   });
 });
 

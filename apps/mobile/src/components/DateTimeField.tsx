@@ -61,7 +61,7 @@ export function DateTimeField({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
-          backgroundColor: `${colors.background}99`,
+          backgroundColor: colors.field,
           borderWidth: 1,
           borderColor: focused ? colors.primary : colors.input,
           borderRadius: 10,

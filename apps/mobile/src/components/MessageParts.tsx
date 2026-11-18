@@ -17,32 +17,38 @@ import { AppLink, type LinkHow, openPath } from "./AppLink";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { hoverFill, pressState, ringInside } from "./pressState";
-import { colors, fonts } from "./ui";
+import { corner, layout, radius, space, type } from "./theme";
+import { Badge, colors, fonts } from "./ui";
 
 /** The app's own addresses: a link to one opens inside the app. */
 const APP_ORIGINS = [pageOrigin(), "https://www.pow-pickem.com"];
 
+/** When a message was posted. `compact` is a board row's; `unread` marks it in the primary color. */
 export function MessageTimestamp({
   value,
   now,
   compact = false,
+  unread = false,
 }: {
   value: string;
   now: Date;
   compact?: boolean;
+  unread?: boolean;
 }) {
   return (
-    <Text accessibilityLabel={new Date(value).toLocaleString()} style={[p.meta, compact && p.time]}>
+    <Text
+      accessibilityLabel={new Date(value).toLocaleString()}
+      style={[p.meta, compact && p.time, unread && p.unreadText]}
+    >
       {messageTime(value, now)}
     </Text>
   );
 }
 export function PinnedBadge() {
   return (
-    <View style={p.badge}>
-      <Icon name="pin" size={12} color={colors.primary} filled />
-      <Text style={p.badgeText}>Pinned announcement</Text>
-    </View>
+    <Badge tone="primary" icon="pin">
+      Pinned announcement
+    </Badge>
   );
 }
 /** The board's threads, each a link to its thread (`hrefOf(id)`). */
@@ -70,25 +76,33 @@ export function BoardRows({
             ringInside,
           ]}
         >
+          {/* Unread: a dot in the row's leading edge, level with the title's first line. */}
+          {thread.unread && <View style={p.dot} />}
           <Avatar avatarId={thread.avatarId} name={thread.authorName} />
           <View style={p.boardContent}>
-            <View style={p.titleRow}>
-              <Text style={[p.rowTitle, { fontFamily: thread.unread ? fonts.semibold : fonts.medium }]}>
-                {thread.title}
-              </Text>
-              {thread.unread && (
-                <View style={p.unread}>
-                  <View style={p.dot} />
-                  <Text style={p.unreadText}>Unread</Text>
-                </View>
-              )}
-            </View>
-            <Text style={p.meta}>
-              {thread.authorName} · {counted(thread.version - 1, "reply", "replies")}
+            <Text
+              numberOfLines={2}
+              style={[p.rowTitle, { fontFamily: thread.unread ? fonts.semibold : fonts.medium }]}
+            >
+              {thread.title}
             </Text>
-            {thread.pinned && <PinnedBadge />}
+            <Text style={p.meta}>
+              {thread.unread && (
+                <>
+                  <Text style={p.unreadText}>Unread</Text>
+                  {" · "}
+                </>
+              )}
+              {thread.authorName} ·{" "}
+              {thread.version > 1 ? counted(thread.version - 1, "reply", "replies") : "No replies yet"}
+            </Text>
+            {thread.pinned && (
+              <View style={p.pinned}>
+                <PinnedBadge />
+              </View>
+            )}
           </View>
-          <MessageTimestamp value={thread.updatedAt} now={now} compact />
+          <MessageTimestamp value={thread.updatedAt} now={now} compact unread={thread.unread} />
         </AppLink>
       ))}
     </View>
@@ -143,15 +157,26 @@ export function QuotedMessage({
   return (
     <View accessibilityLabel={`Quoted message from ${quote.authorName}`} style={p.quote}>
       <View style={p.quoteLabel}>
-        <Icon name="quote" size={16} color={colors.primary} filled />
-        <Text style={p.quoteAuthor}>{quote.authorName} wrote:</Text>
+        <Icon name="quote" size={14} color={colors.primaryText} filled />
+        <Text numberOfLines={1} style={p.quoteAuthor}>
+          {quote.authorName} wrote:
+        </Text>
+        {/* 44px to touch through its padding, without making the quote taller. */}
+        <AppLink
+          href={href}
+          onPress={onOriginal}
+          style={(state) => [p.original, { opacity: pressState(state).pressed ? 0.7 : 1 }]}
+        >
+          {(state) => (
+            <Text style={[p.link, pressState(state).hovered && { textDecorationLine: "underline" }]}>
+              View original
+            </Text>
+          )}
+        </AppLink>
       </View>
-      <Text style={p.quoteBody} numberOfLines={3}>
+      <Text style={p.quoteBody} numberOfLines={2}>
         {quote.body}
       </Text>
-      <AppLink href={href} onPress={onOriginal} style={p.original}>
-        <Text style={p.link}>View original</Text>
-      </AppLink>
     </View>
   );
 }
@@ -217,37 +242,53 @@ export function MessageBody({
   );
 }
 const p = StyleSheet.create({
-  board: { backgroundColor: colors.card, borderRadius: 16, overflow: "hidden" },
-  boardRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 16, minHeight: 88 },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  boardContent: { flex: 1, gap: 2, minWidth: 0 },
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  rowTitle: { fontSize: 16, lineHeight: 22, color: colors.foreground, flexShrink: 1 },
-  unread: { flexDirection: "row", gap: 4, alignItems: "center" },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
-  unreadText: { color: colors.primary, fontFamily: fonts.semibold, fontSize: 12 },
-  meta: { color: colors.mutedForeground, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
-  time: { fontSize: 12, flexShrink: 0, maxWidth: 90, lineHeight: 16 },
-  badge: {
-    alignSelf: "flex-start",
+  board: { backgroundColor: colors.card, ...corner(radius.xl), overflow: "hidden" },
+  boardRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: `${colors.primary}26`,
-    marginTop: 4,
+    alignItems: "flex-start",
+    gap: space.lg,
+    paddingHorizontal: layout.cardPad,
+    paddingVertical: 14,
+    minHeight: 64,
   },
-  badgeText: { fontFamily: fonts.medium, color: colors.foreground, fontSize: 12, lineHeight: 16 },
-  back: { flexDirection: "row", gap: 4, alignItems: "center", alignSelf: "flex-start", minHeight: 44 },
-  backCompact: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22 },
-  backText: { fontFamily: fonts.medium, color: colors.mutedForeground, fontSize: 14 },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  boardContent: { flex: 1, gap: space.xxs, minWidth: 0 },
+  rowTitle: { ...type.body, lineHeight: 22, color: colors.foreground },
+  // In the row's 16px leading edge, centered on the title's first 22px line.
+  dot: {
+    position: "absolute",
+    left: space.xs,
+    top: 14 + 7,
+    width: 8,
+    height: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+  },
+  unreadText: { color: colors.primaryText, fontFamily: fonts.semibold },
+  meta: { ...type.small, color: colors.mutedForeground },
+  time: { ...type.caption, flexShrink: 0, maxWidth: 90, marginTop: 3 },
+  pinned: { marginTop: space.xs },
+  back: { flexDirection: "row", gap: space.xs, alignItems: "center", alignSelf: "flex-start", minHeight: 44 },
+  backCompact: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+  },
+  backText: { ...type.small, fontFamily: fonts.medium, color: colors.mutedForeground },
   bodyLink: { color: colors.primary, textDecorationLine: "underline" },
-  quote: { borderRadius: 12, backgroundColor: `${colors.primary}1a`, padding: 12, gap: 8 },
-  quoteLabel: { flexDirection: "row", gap: 6, alignItems: "center" },
-  quoteAuthor: { fontFamily: fonts.semibold, color: colors.foreground, fontSize: 14, flexShrink: 1 },
-  quoteBody: { fontFamily: fonts.body, color: colors.mutedForeground, fontSize: 16, lineHeight: 23 },
-  original: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center" },
-  link: { color: colors.primary, fontFamily: fonts.body, fontSize: 14 },
+  quote: {
+    ...corner(radius.lg),
+    backgroundColor: colors.primaryTint,
+    paddingHorizontal: space.lg,
+    paddingVertical: 10,
+    gap: space.xxs,
+    marginVertical: space.xxs,
+  },
+  quoteLabel: { flexDirection: "row", gap: space.sm, alignItems: "center" },
+  quoteAuthor: { ...type.small, fontFamily: fonts.semibold, color: colors.foreground, flex: 1, minWidth: 0 },
+  quoteBody: { ...type.small, color: colors.mutedForeground },
+  original: { paddingVertical: space.lg, marginVertical: -space.lg, paddingLeft: space.md, flexShrink: 0 },
+  link: { ...type.small, fontFamily: fonts.medium, color: colors.primaryText },
 });

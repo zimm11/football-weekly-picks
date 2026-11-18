@@ -1,4 +1,4 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, Heading, Eyebrow and Action render native Text.
+// biome-ignore-all lint/correctness/noReactNativeRawText: Label, Pill, CardTitle, Eyebrow and Action render native Text.
 import {
   BOARD_SIZE,
   type BoardSquare,
@@ -12,7 +12,8 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { HomeLink } from "../../components/NotFound";
-import { Body, colors, fonts, Screen, Title } from "../../components/ui";
+import { space } from "../../components/theme";
+import { Badge, Body, colors, fonts, Screen, Title } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { notifyDone, notifyError } from "../../lib/notify";
@@ -21,11 +22,11 @@ import { boardTitle, type GameDraft, gameFromDraft, withPending } from "../../li
 import {
   Action,
   Card,
+  CardTitle,
   confirm,
   Disclosure,
   Eyebrow,
   Failure,
-  Heading,
   Input,
   Label,
   Pill,
@@ -37,7 +38,7 @@ import { BoardHeading, BoardPanel, GameScore, SquareSheet, useBoard, useSquareCh
 import { leagueOfBoard } from "./boardLeague";
 import { GameChooser } from "./GameChooser";
 import { newGameDraft, parseLimit } from "./NewBoard";
-import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
+import { BoardSkeleton, RAIL_GAP, RAIL_WIDTH, SquaresGrid, useBoardColumns } from "./SquaresGrid";
 
 /**
  * A board link that leads nowhere: the board was deleted, or it isn't in one of the player's leagues. The
@@ -114,7 +115,7 @@ export function ManageBoardScreen({ boardId }: { boardId: string }) {
         )
       ) : view.role !== "admin" ? (
         <Card>
-          <Heading>Board management</Heading>
+          <CardTitle>Board management</CardTitle>
           <Label>Only league commissioners can manage a board.</Label>
           <Action href={`/boards/${boardId}`} how="replace">
             Go to the board
@@ -145,6 +146,7 @@ function ManageBoard({
   const [editingGame, setEditingGame] = useState(false);
   const [sheet, setSheet] = useState<{ row: number; col: number } | null>(null);
   const changes = useSquareChanges(view.id, board.setData, board.reload);
+  const columns = useBoardColumns();
   const open = view.phase === "open";
   const limitDirty = open && limit !== String(view.maxPerPlayer);
   // Neither the limit nor the game can change once the board is locked, so nothing typed there is left to save.
@@ -223,79 +225,95 @@ function ManageBoard({
     setSheet({ row, col });
   }
   const shown = sheet ? squares.find((sq) => sq.row === sheet.row && sq.col === sheet.col) : undefined;
-  return (
+  const guestName = guest.trim();
+  // In one column the field is above the grid, out of sight once the commissioner scrolls to it: the card says
+  // who taps now claim for. From 1024px the field sits beside the grid, and the grid keeps its whole height.
+  const claimingFor =
+    open && guestName && !columns.wide ? (
+      <Badge tone="primary" icon="user">
+        {`Claiming for ${guestName}`}
+      </Badge>
+    ) : undefined;
+  const lockCard = open && (
+    <Card label="Lock and draw">
+      <CardTitle>Lock and draw</CardTitle>
+      <Label>
+        {openSquares} of 100 squares are open. The board locks itself at kickoff if nobody locks it first.
+      </Label>
+      <Action
+        disabled={!!busy && busy !== "lock"}
+        busy={busy === "lock"}
+        icon="lock"
+        onPress={() =>
+          confirm(
+            "Lock the board and draw the numbers?",
+            `${openSquares} ${openSquares === 1 ? "square is" : "squares are"} still open. Once the numbers are drawn, nobody can claim or give back a square.`,
+            "Lock and draw",
+            () =>
+              void run(
+                "lock",
+                () => request<BoardView>(`/boards/${view.id}/lock`, { method: "POST" }),
+                "The numbers are drawn.",
+              ),
+          )
+        }
+      >
+        {busy === "lock" ? "Drawing…" : "Lock and draw"}
+      </Action>
+    </Card>
+  );
+  const guestCard = open && (
+    <Card label="Guest squares">
+      <CardTitle>Guest squares</CardTitle>
+      <Input
+        label="Guest's name"
+        value={guest}
+        onChangeText={setGuest}
+        maxLength={40}
+        placeholder="Someone without an account"
+      />
+      <Label>
+        Then tap open squares to claim them for this guest. Guest squares count against nobody's limit.
+      </Label>
+    </Card>
+  );
+  const grid = (
+    <SquaresGrid
+      view={view}
+      squares={squares}
+      userId={userId}
+      onPress={tap}
+      fit={columns.fit}
+      badge={claimingFor}
+    />
+  );
+  const squareSheet = sheet && (
+    <SquareSheet view={view} row={sheet.row} col={sheet.col} square={shown} close={() => setSheet(null)}>
+      {open && shown && (
+        <Action
+          secondary
+          danger
+          icon="trash"
+          onPress={() => {
+            setSheet(null);
+            changes.send({
+              row: shown.row,
+              col: shown.col,
+              claim: false,
+              name: shown.name,
+              userId: shown.userId,
+            });
+          }}
+        >
+          {`Give back ${shown.name}'s square`}
+        </Action>
+      )}
+    </SquareSheet>
+  );
+  const tools = (
     <>
-      <BoardHeading view={view} admin manage />
-      <GameScore view={view} />
-      {open && (
-        <Card label="Lock and draw">
-          <Heading>Lock and draw</Heading>
-          <Label>
-            {openSquares} of 100 squares are open. The board locks itself at kickoff if nobody locks it first.
-          </Label>
-          <Action
-            disabled={!!busy && busy !== "lock"}
-            busy={busy === "lock"}
-            icon="lock"
-            onPress={() =>
-              confirm(
-                "Lock the board and draw the numbers?",
-                `${openSquares} ${openSquares === 1 ? "square is" : "squares are"} still open. Once the numbers are drawn, nobody can claim or give back a square.`,
-                "Lock and draw",
-                () =>
-                  void run(
-                    "lock",
-                    () => request<BoardView>(`/boards/${view.id}/lock`, { method: "POST" }),
-                    "The numbers are drawn.",
-                  ),
-              )
-            }
-          >
-            {busy === "lock" ? "Drawing…" : "Lock and draw"}
-          </Action>
-        </Card>
-      )}
-      {open && (
-        <Card label="Guest squares">
-          <Heading>Guest squares</Heading>
-          <Input
-            label="Guest's name"
-            value={guest}
-            onChangeText={setGuest}
-            maxLength={40}
-            placeholder="Someone without an account"
-          />
-          <Label>
-            Then tap open squares to claim them for this guest. Guest squares count against nobody's limit.
-          </Label>
-        </Card>
-      )}
-      <SquaresGrid view={view} squares={squares} userId={userId} onPress={tap} />
-      {sheet && (
-        <SquareSheet view={view} row={sheet.row} col={sheet.col} square={shown} close={() => setSheet(null)}>
-          {open && shown && (
-            <Action
-              secondary
-              danger
-              icon="trash"
-              onPress={() => {
-                setSheet(null);
-                changes.send({
-                  row: shown.row,
-                  col: shown.col,
-                  claim: false,
-                  name: shown.name,
-                  userId: shown.userId,
-                });
-              }}
-            >
-              {`Give back ${shown.name}'s square`}
-            </Action>
-          )}
-        </SquareSheet>
-      )}
       <Card label="Squares per player">
-        <Heading>Squares per player</Heading>
+        <CardTitle>Squares per player</CardTitle>
         {open ? (
           <>
             <Input
@@ -323,7 +341,7 @@ function ManageBoard({
       </Card>
       {open && (
         <Card label="Game">
-          <Heading>Game</Heading>
+          <CardTitle>Game</CardTitle>
           <Text style={s.text}>{boardTitle(view, view.timeZone)}</Text>
           <Label>
             {view.externalId
@@ -372,7 +390,7 @@ function ManageBoard({
       )}
       {view.drawnAt && <ScoreCorrections view={view} busy={busy} run={run} />}
       <Card label="Delete board">
-        <Heading>Delete board</Heading>
+        <CardTitle>Delete board</CardTitle>
         <Label>
           {squares.length
             ? `The board goes for everyone, with its ${squares.length} claimed ${squares.length === 1 ? "square" : "squares"}${view.drawnAt ? ", its numbers and its results" : ""}.`
@@ -397,6 +415,36 @@ function ManageBoard({
           {busy === "delete" ? "Deleting…" : "Delete board"}
         </Action>
       </Card>
+    </>
+  );
+  // From 1024px: the grid on the left, the tools in a rail beside it, so the guest's name sits by the grid.
+  if (columns.wide) {
+    return (
+      <View
+        onLayout={columns.onLayout}
+        style={{ flexDirection: "row", alignItems: "flex-start", gap: RAIL_GAP }}
+      >
+        <View style={{ flexShrink: 0, width: columns.gridWidth }}>{grid}</View>
+        <View style={{ flex: 1, minWidth: RAIL_WIDTH, gap: space.lg }}>
+          <BoardHeading view={view} admin manage rail />
+          <GameScore view={view} compact />
+          {lockCard}
+          {guestCard}
+          {tools}
+        </View>
+        {squareSheet}
+      </View>
+    );
+  }
+  return (
+    <>
+      <BoardHeading view={view} admin manage />
+      <GameScore view={view} />
+      {lockCard}
+      {guestCard}
+      {grid}
+      {squareSheet}
+      {tools}
     </>
   );
 }
@@ -441,7 +489,7 @@ function ScoreCorrections({
     );
   return (
     <Card label="Scores">
-      <Heading>Scores</Heading>
+      <CardTitle>Scores</CardTitle>
       <Disclosure title="How scores work">
         <Label>
           Scores are the totals so far, overtime included in the final. A game from the schedule fills them in

@@ -1,13 +1,15 @@
 import type { ReactNode } from "react";
 import { RefreshControl, ScrollView } from "react-native";
+import { layout } from "../components/theme";
 import { colors } from "../components/ui";
 import { usePullRefresh } from "../lib/pullRefresh";
 import { useScrollRestore } from "../lib/scrollRestore";
 import { s } from "./leagueUi";
 
 /**
- * A league tab's scrolling page: the header, then the tab's content, with pull to refresh. The spinner stays
- * from the player's pull until `reload` settles when it returns a promise (`refresh` from `useLeagueLoad`).
+ * A league tab's scrolling page: the header (a `LeagueFrame`, with anything the tab adds under it), then the
+ * tab's content, with pull to refresh. The spinner stays from the player's pull until `reload` settles when it
+ * returns a promise (`refresh` from `useLeagueLoad`).
  * In a browser, Back and Forward return to where the page was scrolled.
  */
 export function LeagueTabScroll({
@@ -29,7 +31,7 @@ export function LeagueTabScroll({
       automaticallyAdjustKeyboardInsets
       keyboardDismissMode="interactive"
       refreshControl={<RefreshControl {...pull} tintColor={colors.foreground} />}
-      contentContainerStyle={[s.content, { gap: 20 }]}
+      contentContainerStyle={[s.content, { gap: layout.pageGap }]}
     >
       {header}
       {children}

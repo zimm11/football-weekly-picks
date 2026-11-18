@@ -1,4 +1,4 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: Heading, Label and Action render native Text.
+// biome-ignore-all lint/correctness/noReactNativeRawText: CardTitle, Label and Action render native Text.
 import {
   estimatedWeekStart,
   MAX_SURVIVOR_LIVES,
@@ -21,9 +21,10 @@ import type { AdminToolsProps } from "../leagueTypeScreens";
 import {
   Action,
   Card,
+  CardTitle,
   confirm,
+  Disclosure,
   Failure,
-  Heading,
   IconButton,
   Input,
   Label,
@@ -82,7 +83,7 @@ function PoolSettings({ view, year, onSaved }: { view: SurvivorView; year: numbe
   if (view.started) {
     return (
       <Card label="Survivor pool">
-        <Heading>Survivor pool</Heading>
+        <CardTitle>Survivor pool</CardTitle>
         <Label>
           {view.settings?.lives === 1 ? "One life" : `${view.settings?.lives} lives`}, from{" "}
           {weekLabel(view.settings?.startWeek ?? 1)}. They're fixed now that the start week has kicked off.
@@ -115,7 +116,7 @@ function PoolSettings({ view, year, onSaved }: { view: SurvivorView; year: numbe
   }
   return (
     <Card label="Start season">
-      <Heading>{view.settings ? "Survivor pool" : "Start season"}</Heading>
+      <CardTitle>{view.settings ? "Survivor pool" : "Start season"}</CardTitle>
       <Label>
         {view.settings
           ? `Starts ${weekLabel(view.settings.startWeek ?? 1)}. You can change these until its first game kicks off.`
@@ -190,35 +191,37 @@ function EnterPick({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
   }
   return (
     <Card label="Enter a pick for a player">
-      <Heading>Enter a pick for a player</Heading>
-      <Label>
-        For {weekLabel(week.number)}. It replaces any pick of theirs whose game hasn't kicked off, and they're
-        told a commissioner entered it.
-      </Label>
-      <Select
-        label="Player"
-        value={userId}
-        disabled={busy}
-        onChange={(id) => {
-          setUserId(id);
-          setChoice("");
-        }}
-        choices={alive.map((p) => ({ value: p.userId, label: p.displayName }))}
-      />
-      <Select
-        label="Team"
-        value={choice}
-        disabled={busy || teams.length === 0}
-        onChange={setChoice}
-        choices={[
-          { value: "", label: teams.length ? "Choose a team" : "Every game has kicked off" },
-          ...teams,
-        ]}
-      />
-      <Failure message={error} />
-      <Action disabled={!choice && !busy} busy={busy} onPress={() => void save()}>
-        {busy ? "Saving…" : `Save pick for ${player?.displayName ?? "player"}`}
-      </Action>
+      {/* Folded until needed, so the week's games and the rest of the League tab stay in reach. */}
+      <Disclosure title="Enter a pick for a player">
+        <Label>
+          For {weekLabel(week.number)}. It replaces any pick of theirs whose game hasn't kicked off, and
+          they're told a commissioner entered it.
+        </Label>
+        <Select
+          label="Player"
+          value={userId}
+          disabled={busy}
+          onChange={(id) => {
+            setUserId(id);
+            setChoice("");
+          }}
+          choices={alive.map((p) => ({ value: p.userId, label: p.displayName }))}
+        />
+        <Select
+          label="Team"
+          value={choice}
+          disabled={busy || teams.length === 0}
+          onChange={setChoice}
+          choices={[
+            { value: "", label: teams.length ? "Choose a team" : "Every game has kicked off" },
+            ...teams,
+          ]}
+        />
+        <Failure message={error} />
+        <Action disabled={!choice && !busy} busy={busy} onPress={() => void save()}>
+          {busy ? "Saving…" : `Save pick for ${player?.displayName ?? "player"}`}
+        </Action>
+      </Disclosure>
     </Card>
   );
 }
@@ -247,39 +250,40 @@ function WeekGames({ view, onSaved }: { view: SurvivorView; onSaved: () => void 
   }
   return (
     <Card label="Week's games">
-      <Heading>Games</Heading>
-      <Label>
-        Scores fill in automatically and never replace one you type. Remove a game only if it's cancelled.
-      </Label>
-      {withGames.length > 1 && (
-        <Select
-          label="Week"
-          value={week.id}
-          onChange={setWeekId}
-          choices={withGames.map((w) => ({ value: w.id, label: weekLabel(w.number) }))}
-        />
-      )}
-      <View style={{ gap: 4 }}>
-        {week.games.map((game) => (
-          <GameRow
-            key={game.id}
-            game={game}
-            timeZone={view.timeZone}
-            final={week.status === "final"}
-            typed={typed[game.id]}
-            onScore={() => setScoring(game)}
-            onRemove={() =>
-              confirm(
-                `Remove ${survivorMatchup(game)}?`,
-                "Picks on it are deleted, and those players can pick again.",
-                "Remove game",
-                () => void remove(game),
-                true,
-              )
-            }
+      <Disclosure title="Games and scores">
+        <Label>
+          Scores fill in automatically and never replace one you type. Remove a game only if it's cancelled.
+        </Label>
+        {withGames.length > 1 && (
+          <Select
+            label="Week"
+            value={week.id}
+            onChange={setWeekId}
+            choices={withGames.map((w) => ({ value: w.id, label: weekLabel(w.number) }))}
           />
-        ))}
-      </View>
+        )}
+        <View style={{ gap: 4 }}>
+          {week.games.map((game) => (
+            <GameRow
+              key={game.id}
+              game={game}
+              timeZone={view.timeZone}
+              final={week.status === "final"}
+              typed={typed[game.id]}
+              onScore={() => setScoring(game)}
+              onRemove={() =>
+                confirm(
+                  `Remove ${survivorMatchup(game)}?`,
+                  "Picks on it are deleted, and those players can pick again.",
+                  "Remove game",
+                  () => void remove(game),
+                  true,
+                )
+              }
+            />
+          ))}
+        </View>
+      </Disclosure>
       {scoring && (
         <ScoreSheet
           key={scoring.id}

@@ -6,7 +6,7 @@ import { request } from "../../lib/api";
 import { onlyDigits } from "../../lib/leagueLogic";
 import { notifyDone, notifyError } from "../../lib/notify";
 import { weekUnit } from "../../lib/weekPresentation";
-import { Action, Card, Heading, Input, Label, s, useEditsGuard } from "../leagueUi";
+import { Action, Card, CardTitle, Input, Label, s, useEditsGuard } from "../leagueUi";
 
 /**
  * A final week's score corrections in a league that runs itself: the week stays final, the results and standings
@@ -23,7 +23,7 @@ export function ScoreCorrection({
 }) {
   return (
     <Card label="Correct a score">
-      <Heading>Correct a score</Heading>
+      <CardTitle>Correct a score</CardTitle>
       <Label>Change a final score and save it. The {weekUnit(view)} stays final.</Label>
       {view.games.map((game) => (
         <ScoreRow

@@ -1,18 +1,20 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: Heading, Label, Pill and Action render native Text.
+// biome-ignore-all lint/correctness/noReactNativeRawText: Title, Label, Pill and Action render native Text.
 import { BOARD_PHASE_LABEL, type BoardSummary, teamName } from "@picks/shared";
 import { useEffect } from "react";
 import { Text, View } from "react-native";
 import { AppLink } from "../../components/AppLink";
 import { Icon } from "../../components/Icon";
 import { hoverFill } from "../../components/pressState";
+import { SkeletonBlock } from "../../components/SkeletonBlock";
 import { TeamLogo } from "../../components/TeamLogo";
-import { colors } from "../../components/ui";
+import { radius, space, tabular } from "../../components/theme";
+import { colors, fonts, Title } from "../../components/ui";
 import { request } from "../../lib/api";
-import { boardsInOrder, boardTitle } from "../../lib/squaresBoard";
+import { boardsInOrder, boardTitle, scoreStatus } from "../../lib/squaresBoard";
 import { kickoffDay, kickoffTime } from "../../lib/weekPresentation";
 import { LeagueTabScroll } from "../LeagueTabScroll";
 import type { LeagueTabProps, LeagueTypeScreens } from "../leagueTypeScreens";
-import { Action, Card, Failure, Heading, Label, Pill, s, useLeagueLoad } from "../leagueUi";
+import { Action, EmptyState, Failure, Label, Pill, s, useLeagueLoad } from "../leagueUi";
 import { rememberBoardLeague } from "./boardLeague";
 
 /**
@@ -27,15 +29,18 @@ export function SquaresBoardTab({ league, header, reload }: LeagueTabProps) {
     for (const board of boards.data ?? []) rememberBoardLeague(board.id, league.id);
   }, [boards.data, league.id]);
   const admin = league.role === "admin";
+  const empty = boards.data?.length === 0;
+  const newBoard = (
+    <Action compact icon="plus" href={`/boards/new?league=${league.id}`}>
+      New board
+    </Action>
+  );
   return (
     <LeagueTabScroll header={header} reload={() => Promise.all([boards.refresh(), reload()])}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <Heading>Boards</Heading>
-        {admin && (
-          <Action compact icon="plus" href={`/boards/new?league=${league.id}`}>
-            New board
-          </Action>
-        )}
+        <Title level={2}>Boards</Title>
+        {/* Once the list is in: an empty league offers New board in its empty state instead, so it is one link. */}
+        {admin && boards.data && !empty && newBoard}
       </View>
       <Failure message={boards.error} retry={boards.reload} />
       {!boards.data && !boards.error && (
@@ -45,20 +50,33 @@ export function SquaresBoardTab({ league, header, reload }: LeagueTabProps) {
           accessibilityState={{ busy: true }}
           style={s.card}
         >
-          <View style={{ width: 96, height: 18, borderRadius: 9, backgroundColor: colors.raised }} />
-          <View style={{ width: 220, height: 26, borderRadius: 6, backgroundColor: colors.raised }} />
-          <View style={{ width: 160, height: 16, borderRadius: 6, backgroundColor: colors.raised }} />
+          <SkeletonBlock width={96} height={18} radius={radius.full} />
+          <SkeletonBlock width={220} height={26} />
+          <SkeletonBlock width={160} height={16} />
         </View>
       )}
-      {boards.data?.length === 0 && (
-        <Card>
-          <Heading>No boards yet</Heading>
-          <Label>
-            {admin
+      {empty && (
+        <EmptyState
+          icon="grid"
+          title="No boards yet"
+          detail={
+            admin
               ? "Set up the first board: the Super Bowl, any game, or one you type in."
-              : "A commissioner will set up a board. You'll claim squares here."}
-          </Label>
-        </Card>
+              : "A commissioner will set up a board. You'll claim squares here."
+          }
+          action={
+            admin ? (
+              <Action
+                compact
+                icon="plus"
+                href={`/boards/new?league=${league.id}`}
+                style={{ alignSelf: "center" }}
+              >
+                New board
+              </Action>
+            ) : undefined
+          }
+        />
       )}
       {boardsInOrder(boards.data ?? []).map((board) => (
         <BoardCard key={board.id} board={board} timeZone={league.timeZone} />
@@ -99,10 +117,45 @@ function BoardCard({ board, timeZone }: { board: BoardSummary; timeZone: string 
             {board.claimed} of 100 claimed
             {board.mine > 0 ? ` · ${board.mine} yours` : board.phase === "open" ? " · none yours yet" : ""}
           </Label>
+          {board.phase === "open" && <ClaimMeter claimed={board.claimed} />}
+          {board.latestScore && (
+            <Text style={[s.muted, tabular]}>
+              <Text style={{ fontFamily: fonts.semibold, color: colors.foreground }}>
+                {scoreStatus(board.latestScore.period).status}
+              </Text>
+              {`  ${board.awayTeam} ${board.latestScore.away} · ${board.homeTeam} ${board.latestScore.home}`}
+            </Text>
+          )}
         </View>
         <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
       </View>
     </AppLink>
+  );
+}
+
+/** How full an open board is: a thin bar under its count, decorative (the count says it in words). */
+function ClaimMeter({ claimed }: { claimed: number }) {
+  return (
+    <View
+      accessible={false}
+      aria-hidden
+      style={{
+        height: 4,
+        marginTop: space.xs,
+        borderRadius: radius.full,
+        backgroundColor: colors.raised,
+        overflow: "hidden",
+      }}
+    >
+      <View
+        style={{
+          width: `${Math.min(100, Math.max(0, claimed))}%`,
+          height: "100%",
+          borderRadius: radius.full,
+          backgroundColor: colors.primary,
+        }}
+      />
+    </View>
   );
 }
 

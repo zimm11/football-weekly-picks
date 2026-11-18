@@ -9,19 +9,31 @@ import {
   teamName,
   type WeekView,
 } from "@picks/shared";
+import { layout, widths } from "../components/theme";
 import { gameLocked, matchup, type PickDraft, savedDraft } from "./pickDraft";
 
 export const kickoffDay = (iso: string, timeZone: string) =>
   new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long", month: "short", day: "numeric" }).format(
     new Date(iso),
   );
-export const kickoffTime = (iso: string, timeZone: string) =>
+/**
+ * A kickoff's time of day in the league's time zone: "8:15 PM EST", or "8:15 PM" with `zone: false` where the
+ * zone is said once nearby (the pick sheet's day heading, `kickoffZone`).
+ */
+export const kickoffTime = (iso: string, timeZone: string, { zone = true }: { zone?: boolean } = {}) =>
   new Intl.DateTimeFormat("en-US", {
     timeZone,
     hour: "numeric",
     minute: "2-digit",
-    timeZoneName: "short",
+    ...(zone ? { timeZoneName: "short" as const } : {}),
   }).format(new Date(iso));
+/** The league time zone's short name at a kickoff ("EST", "EDT", "UTC"), as `kickoffTime` would say it. */
+export function kickoffZone(iso: string, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" }).formatToParts(
+    new Date(iso),
+  );
+  return parts.find((part) => part.type === "timeZoneName")?.value ?? "";
+}
 export function gameDays(games: Game[], timeZone: string) {
   const groups: { day: string; games: Game[] }[] = [];
   for (const game of games) {
@@ -32,6 +44,47 @@ export function gameDays(games: Game[], timeZone: string) {
   }
   return groups;
 }
+/** The pick sheet's grid: the gap between cards and between a card's buttons, a card's padding, the POW's width. */
+export const PICK_GRID = {
+  gap: 8,
+  cardPad: 10,
+  powWidth: 56,
+  rowTeamWidth: 160,
+  twoColumnsFrom: 768,
+  /** Under this a stacked button's name steps down a size, so "Commanders" fits a 320px phone. */
+  smallNameUnder: 104,
+} as const;
+
+/**
+ * How the pick sheet lays out its games for a window this wide: one column, or two from 768px; and each team
+ * button stacked (badge over name over line) or, once it is at least 160px wide, a row (badge beside them),
+ * with a smaller name on the narrowest phones (`smallName`). Worked out from the window and the page's
+ * paddings rather than measured, so nothing is fed back into state.
+ */
+export function pickSheetLayout(windowWidth: number, hasPow: boolean) {
+  const { gap, cardPad, powWidth, rowTeamWidth, twoColumnsFrom, smallNameUnder } = PICK_GRID;
+  const columns = windowWidth >= twoColumnsFrom ? 2 : 1;
+  const content = Math.min(windowWidth, widths.page) - 2 * layout.pageX;
+  const card = (content - (columns - 1) * gap) / columns;
+  const teamWidth = (card - 2 * cardPad - (hasPow ? powWidth + 2 * gap : gap)) / 2;
+  const team = teamWidth >= rowTeamWidth ? ("row" as const) : ("stack" as const);
+  return {
+    columns,
+    /** The room inside a card, for its Stats & news row. */
+    cardInner: card - 2 * cardPad,
+    teamWidth,
+    team,
+    smallName: team === "stack" && teamWidth < smallNameUnder,
+  };
+}
+
+/** Items in rows of `size`, in order, the last row short: a grid read row by row keeps kickoff and tab order. */
+export function rowsOf<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += Math.max(1, size)) rows.push(items.slice(i, i + Math.max(1, size)));
+  return rows;
+}
+
 /** What the league calls one of its weeks in running text: "week", or "round" in a playoff league. */
 export const weekUnit = (view: Pick<WeekView, "leagueType">): "week" | "round" =>
   LEAGUE_TYPE_INFO[view.leagueType ?? "weekly"].unit === "round" ? "round" : "week";
@@ -123,5 +176,6 @@ export function lockedGameRow(
   // The line in brackets ("Chiefs (-3.5)"), so the row's name never contains a team button's ("Chiefs -3.5").
   const named = team && `${teamName(team)} (${line === 0 ? "PK" : `${line > 0 ? "+" : ""}${line}`})`;
   const label = `${matchup(game)}, ${score ? `final ${score}` : "locked"}, ${named ? `your pick: ${named}${pow ? ", POW" : ""}` : "no pick"}${said}`;
-  return { team, pick, pow, outcome, earned, score, result, label };
+  // The scoreboard line: which side covered (each side's score in full ink), "push", or null before a result.
+  return { team, pick, pow, outcome, earned, score, result, label, covered };
 }

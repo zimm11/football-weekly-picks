@@ -1,20 +1,17 @@
+// biome-ignore-all lint/correctness/noReactNativeRawText: the Guide parts (GuideTitle, GuideNote, GuideItem) render their children inside native Text.
 import { DEFAULT_SQUARES_PER_PLAYER, MAX_SQUARES_PER_PLAYER } from "@picks/shared";
 import { View } from "react-native";
-import { Icon } from "../../components/Icon";
-import { Body, Card, colors, fonts, Title } from "../../components/ui";
+import { GuideHeading, GuideNote, GuideTitle } from "../../components/Guide";
+import { space } from "../../components/theme";
+import { Body, Card } from "../../components/ui";
 
 /** How to play's Squares section (`/how-to-play?section=squares`). */
 export function HowToPlaySquares() {
   return (
-    <View style={{ gap: 20 }}>
-      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-        <Icon name="grid" size={28} color={colors.primary} />
-        <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
-          Squares
-        </Title>
-      </View>
+    <View style={{ gap: space.xl }}>
+      <GuideHeading title="Squares" icon="grid" />
       <Card>
-        <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>A 10 by 10 board on one game</Body>
+        <GuideTitle>A 10 by 10 board on one game</GuideTitle>
         <Body muted>
           A squares league holds boards, each on one pro football game: the Super Bowl by default, or any
           game. The Boards tab lists them; tap one to open it. The home team runs across the top and the away
@@ -24,7 +21,7 @@ export function HowToPlaySquares() {
         </Body>
       </Card>
       <Card>
-        <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>The draw</Body>
+        <GuideTitle>The draw</GuideTitle>
         <Body muted>
           The numbers read ? until the board locks: when a commissioner presses Lock and draw, or at kickoff
           if nobody has. Then each row and column gets a random number from 0 to 9, drawn once and never
@@ -32,7 +29,7 @@ export function HowToPlaySquares() {
         </Body>
       </Card>
       <Card>
-        <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>Four winners</Body>
+        <GuideTitle>Four winners</GuideTitle>
         <Body muted>
           At the end of Q1, at halftime, at the end of Q3 and at the final (overtime included), the winning
           square is the one whose numbers match the last digit of each team's score so far. If nobody holds
@@ -40,13 +37,13 @@ export function HowToPlaySquares() {
           win if the quarter ended now. Scores fill in automatically; a commissioner can correct one, and a
           corrected score stays.
         </Body>
-        <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+        <GuideNote>
           Everyone in the league sees the whole board. Tap a taken square to see whose it is, its numbers and
-          what it has won.
-        </Body>
+          what it has won. Tap a name under Players to find their squares.
+        </GuideNote>
       </Card>
       <Card>
-        <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>For commissioners</Body>
+        <GuideTitle>For commissioners</GuideTitle>
         <Body muted>
           Set up a board with New board on the Boards tab, then open Manage board from the board: change the
           game or raise the limit before the lock (it is never lowered), claim squares for a guest without an
@@ -55,10 +52,10 @@ export function HowToPlaySquares() {
           the board locks at the new kickoff. A player who leaves before the lock gives their squares back;
           after it, they stay.
         </Body>
-        <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
+        <GuideNote>
           Players without a square get a reminder at 7pm the evening before kickoff. Everyone hears when the
           numbers are drawn, and each quarter's result comes as a notification on their devices.
-        </Body>
+        </GuideNote>
       </Card>
     </View>
   );

@@ -11,7 +11,9 @@ import {
 import { type ComponentRef, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { type Anchor, Menu, MenuItem } from "../components/Popover";
-import { colors, fonts } from "../components/ui";
+import { SkeletonBlock } from "../components/SkeletonBlock";
+import { corner, radius, space, type } from "../components/theme";
+import { CardTitle, colors, fonts } from "../components/ui";
 import { request } from "../lib/api";
 import { now } from "../lib/clock";
 import { showConfirm } from "../lib/dialogs";
@@ -126,9 +128,14 @@ export function ReportsQueue({
   if (queue.error && !queue.data) return <Failure message={queue.error} retry={queue.reload} />;
   if (!queue.data)
     return (
-      <View accessibilityRole="progressbar" accessibilityLabel="Loading reports" style={{ gap: 8 }}>
-        <View style={{ height: 18, width: "60%", borderRadius: 6, backgroundColor: colors.raised }} />
-        <View style={{ height: 18, width: "85%", borderRadius: 6, backgroundColor: colors.raised }} />
+      <View
+        accessibilityRole="progressbar"
+        accessibilityLabel="Loading reports"
+        accessibilityState={{ busy: true }}
+        style={{ gap: space.md }}
+      >
+        <SkeletonBlock width="60%" height={18} />
+        <SkeletonBlock width="85%" height={18} />
       </View>
     );
   const groups = groupReports(queue.data.items);
@@ -148,7 +155,10 @@ export function ReportsQueue({
           >
             <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={[s.text, { fontFamily: fonts.semibold }]}>{headline}</Text>
+                {/* Each report's title, under the Reports card's own (16px: a part of that card, not a card). */}
+                <CardTitle level={3} style={[type.body, { fontFamily: fonts.semibold }]}>
+                  {headline}
+                </CardTitle>
                 <Label>
                   {[
                     operator && item.league?.name,
@@ -178,15 +188,24 @@ export function ReportsQueue({
               />
             </View>
             {item.post && (
-              <View style={{ gap: 6, padding: 12, borderRadius: 10, backgroundColor: colors.raised }}>
+              <View
+                style={{
+                  gap: space.sm,
+                  padding: space.lg,
+                  ...corner(radius.lg),
+                  backgroundColor: colors.raised,
+                }}
+              >
                 <Label>In “{item.post.threadTitle}”</Label>
                 <Text selectable style={s.text}>
                   {item.post.body || "(text cleared)"}
                 </Text>
-                <View style={{ flexDirection: "row", gap: 6 }}>
-                  {item.post.hidden && <Pill>Hidden</Pill>}
-                  {item.post.removed && <Pill tone="warning">Removed</Pill>}
-                </View>
+                {(item.post.hidden || item.post.removed) && (
+                  <View style={{ flexDirection: "row", gap: space.sm }}>
+                    {item.post.hidden && <Pill>Hidden</Pill>}
+                    {item.post.removed && <Pill tone="warning">Removed</Pill>}
+                  </View>
+                )}
               </View>
             )}
             {several ? (

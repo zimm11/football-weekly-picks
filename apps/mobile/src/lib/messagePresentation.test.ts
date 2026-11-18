@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { counted, inAppPath, linkParts, messageTime, threadArrival } from "./messagePresentation";
+import {
+  counted,
+  groupsWithPrevious,
+  inAppPath,
+  linkParts,
+  messageTime,
+  postShortcut,
+  threadArrival,
+  toggledReactions,
+} from "./messagePresentation";
 
 describe("message timestamps match the web's day-sensitive wording", () => {
   const now = new Date(2026, 10, 16, 15, 42);
@@ -159,5 +168,60 @@ describe("where a thread opens", () => {
       reason: "linked",
     });
     expect(threadArrival({ version: 4, readVersion: 4, posts }, "gone")).toEqual({ at: "end" });
+  });
+});
+
+describe("a reply joins the message above it", () => {
+  const at = (minutes: number) => new Date(2026, 10, 16, 15, minutes).toISOString();
+  const post = (position: number, authorId: string, minutes: number, placeholder = false) => ({
+    position,
+    authorId,
+    createdAt: at(minutes),
+    placeholder,
+  });
+  it("from the same author within five minutes", () => {
+    expect(groupsWithPrevious(post(2, "a", 0), post(3, "a", 4))).toBe(true);
+    expect(groupsWithPrevious(post(2, "a", 0), post(3, "a", 5))).toBe(false);
+    expect(groupsWithPrevious(post(2, "a", 0), post(3, "b", 1))).toBe(false);
+  });
+  it("never the first message, the topic in its own card", () => {
+    expect(groupsWithPrevious(undefined, post(1, "a", 0))).toBe(false);
+    expect(groupsWithPrevious(post(1, "a", 0), post(2, "a", 1))).toBe(false);
+  });
+  it("not across the New line, nor beside a placeholder", () => {
+    expect(groupsWithPrevious(post(2, "a", 0), post(3, "a", 1), true)).toBe(false);
+    expect(groupsWithPrevious(post(2, "a", 0, true), post(3, "a", 1))).toBe(false);
+    expect(groupsWithPrevious(post(2, "a", 0), post(3, "a", 1, true))).toBe(false);
+  });
+  it("not when the later one says it came first", () => {
+    expect(groupsWithPrevious(post(2, "a", 4), post(3, "a", 0))).toBe(false);
+  });
+});
+
+describe("a reaction shows at once", () => {
+  const like = { emoji: "👍", count: 2, reacted: false };
+  const laugh = { emoji: "😂", count: 1, reacted: true };
+  it("adds yours to a count, or takes it off", () => {
+    expect(toggledReactions([like], "👍", true)).toEqual([{ emoji: "👍", count: 3, reacted: true }]);
+    expect(toggledReactions([laugh, like], "😂", false)).toEqual([like]);
+    expect(toggledReactions([{ ...like, reacted: true }], "👍", false)).toEqual([
+      { emoji: "👍", count: 1, reacted: false },
+    ]);
+  });
+  it("starts a new one at the end", () => {
+    expect(toggledReactions([like], "🔥", true)).toEqual([like, { emoji: "🔥", count: 1, reacted: true }]);
+  });
+  it("changes nothing when it is already that way", () => {
+    expect(toggledReactions([like], "👍", false)).toEqual([like]);
+    expect(toggledReactions([laugh], "😂", true)).toEqual([laugh]);
+    expect(toggledReactions([like], "🔥", false)).toEqual([like]);
+  });
+});
+
+describe("the reply box says how to post from the keyboard", () => {
+  it("names the Mac's key on a Mac and Ctrl elsewhere", () => {
+    expect(postShortcut("MacIntel")).toBe("⌘↩ to post");
+    expect(postShortcut("Win32")).toBe("Ctrl+↩ to post");
+    expect(postShortcut(undefined)).toBe("Ctrl+↩ to post");
   });
 });

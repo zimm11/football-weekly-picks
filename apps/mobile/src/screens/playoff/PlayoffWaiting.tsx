@@ -1,9 +1,13 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: Action, Heading and Label render native Text.
+// biome-ignore-all lint/correctness/noReactNativeRawText: Action, CardTitle and Label render native Text.
 import { type LeagueDetail, type PlayoffStandingsView, weekLabel } from "@picks/shared";
-import { View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
+import type { IconName } from "../../components/Icon";
+import { type } from "../../components/theme";
+import { Badge, type BadgeTone, colors, fonts } from "../../components/ui";
 import { request } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import { Action, Card, Heading, Label, useLeagueLoad } from "../leagueUi";
+import { playoffRoundSteps, type RoundStep } from "../../lib/resultsPresentation";
+import { Action, Card, CardTitle, Label, useLeagueLoad } from "../leagueUi";
 import { GuillotineStatusCard } from "./PlayoffStatus";
 import { guillotineBetweenRounds, playoffWaiting } from "./playoffLines";
 
@@ -31,7 +35,8 @@ export function PlayoffWaiting({ league }: { league: LeagueDetail }) {
   const latest = [...played].sort((a, b) => b.number - a.number)[0];
   return (
     <Card>
-      <Heading>{waiting.title}</Heading>
+      <CardTitle>{waiting.title}</CardTitle>
+      <RoundStrip weeks={league.weeks} />
       <Label>{waiting.detail}</Label>
       {status && <GuillotineStatusCard line={status} />}
       <View style={{ gap: 8 }}>
@@ -43,5 +48,57 @@ export function PlayoffWaiting({ league }: { league: LeagueDetail }) {
         )}
       </View>
     </Card>
+  );
+}
+
+const STEP: Record<RoundStep["state"], { word: string; tone: BadgeTone; icon: IconName }> = {
+  final: { word: "Final", tone: "win", icon: "check" },
+  open: { word: "Open", tone: "primary", icon: "arrow-right" },
+  next: { word: "Next", tone: "primary", icon: "clock" },
+  later: { word: "Later", tone: "outline", icon: "circle" },
+};
+
+/**
+ * The four rounds in a row (Wild Card · Divisional · Conference · Super Bowl), each with a pill saying where it
+ * stands in a word and an icon, never by color alone: the Picks tab between rounds and the empty Results tab.
+ */
+export function RoundStrip({ weeks }: { weeks: LeagueDetail["weeks"] }) {
+  // Under 360px of window the four names don't fit in a row: two rows of two, still in order.
+  const narrow = useWindowDimensions().width < 360;
+  return (
+    <View
+      role="list"
+      aria-label="Playoff rounds"
+      style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 8, rowGap: 12 }}
+    >
+      {playoffRoundSteps(weeks).map((step) => {
+        const { word, tone, icon } = STEP[step.state];
+        return (
+          <View
+            key={step.number}
+            role="listitem"
+            accessible
+            accessibilityLabel={`${step.label}: ${word}`}
+            style={[{ minWidth: 0, gap: 6 }, narrow ? { width: "47%" } : { flex: 1 }]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                type.caption,
+                {
+                  fontFamily: fonts.medium,
+                  color: step.state === "later" ? colors.mutedForeground : colors.foreground,
+                },
+              ]}
+            >
+              {step.label}
+            </Text>
+            <Badge tone={tone} icon={icon}>
+              {word}
+            </Badge>
+          </View>
+        );
+      })}
+    </View>
   );
 }

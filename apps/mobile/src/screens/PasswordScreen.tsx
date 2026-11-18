@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { type ComponentRef, useEffect, useRef, useState } from "react";
 import type { TextInput } from "react-native";
 import { BackLink } from "../components/BackLink";
+import { widths } from "../components/theme";
 import { Body, Button, Card, ErrorMessage, Field, Screen, Title } from "../components/ui";
 import { getSupabase } from "../lib/api";
 import { authFailure } from "../lib/authErrors";
@@ -38,7 +39,7 @@ export function PasswordScreen() {
       setSaved(true);
     });
   return (
-    <Screen narrow contentStyle={{ maxWidth: 416, paddingTop: 32 }}>
+    <Screen narrow contentStyle={{ maxWidth: widths.auth, paddingTop: 32 }}>
       <ViewHeader />
       <Card>
         <Field
@@ -47,6 +48,7 @@ export function PasswordScreen() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          reveal
           autoComplete="new-password"
           textContentType="newPassword"
           editable={!action.busy}
@@ -59,6 +61,7 @@ export function PasswordScreen() {
           value={confirmation}
           onChangeText={setConfirmation}
           secureTextEntry
+          reveal
           autoComplete="new-password"
           textContentType="newPassword"
           editable={!action.busy}

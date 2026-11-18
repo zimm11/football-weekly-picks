@@ -1,6 +1,15 @@
 import { Text, View } from "react-native";
 import { colors, fonts } from "./ui";
-export function Splash({ name }: { name?: string }) {
+
+/**
+ * The POW mark over the whole screen while the app opens, greeting the player by name once it is known.
+ * `public/boot-mark.png` (drawn by `scripts/icons.mjs boot-mark`) is the same mark in the same place, shown by
+ * `public/boot.css` before the app's scripts run: change one and redraw the other.
+ *
+ * `status` is the "Getting your leagues ready…" line: off until there is a session to get leagues for (a
+ * signed-out visitor has none). Its place is kept either way, so the mark never moves.
+ */
+export function Splash({ name, status = true }: { name?: string; status?: boolean }) {
   const first = name?.trim().split(/\s+/)[0];
   return (
     <View
@@ -55,9 +64,11 @@ export function Splash({ name }: { name?: string }) {
               Welcome back, {first}
             </Text>
           )}
-          <Text style={{ fontFamily: fonts.body, fontSize: 14, color: colors.mutedForeground }}>
-            Getting your leagues ready…
-          </Text>
+          {status && (
+            <Text style={{ fontFamily: fonts.body, fontSize: 14, color: colors.mutedForeground }}>
+              Getting your leagues ready…
+            </Text>
+          )}
         </View>
       </View>
     </View>

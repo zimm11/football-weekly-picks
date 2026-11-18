@@ -16,6 +16,8 @@ async function openWeek(page: Page, league: string, games: NewGame[]) {
   await expect(page.getByRole("heading", { name: league })).toBeVisible();
   const inviteUrl = await page.getByLabel("Invite link", { exact: true }).inputValue();
   await page.getByLabel("Auto-fill games and spreads").uncheck();
+  // A new league suggests the coming week by the calendar: this test is written for Week 1.
+  await page.getByRole("combobox", { name: "Week", exact: true }).selectOption("1");
   await page.getByRole("button", { name: "Create week" }).click();
   await expect(page.getByRole("heading", { name: /Week 1 · / })).toBeVisible();
   for (const game of games) {
@@ -175,7 +177,8 @@ test("a commissioner reopens a final week to correct a score, and the corrected 
     await expect(page.getByText("Week reopened.")).toBeVisible();
     await player.reload();
     // The scored game is the week's only one, so nothing is folded: its row says how Pat's pick did.
-    await expect(player.getByText("Final 30–10")).toBeVisible();
+    // The row is a scoreboard: each side's score beside its team, and "Final".
+    await expect(player.getByRole("button", { name: /^KC at ATL, final 30–10,/ })).toContainText("Final");
     const scored = player.getByRole("button", {
       name: "KC at ATL, final 30–10, your pick: Falcons (+3.5), lost",
       exact: true,
@@ -198,7 +201,9 @@ test("a commissioner reopens a final week to correct a score, and the corrected 
     // The corrected score has the Falcons covering. Closing again turns the result over.
     await enterScore(page, game, "10", "30");
     await finalizeWeek(page);
-    await expect(page.getByText("Winner: Pat")).toBeVisible();
+    await expect(page.getByRole("table", { name: "Week results" }).getByRole("row").first()).toContainText(
+      "Pat",
+    );
 
     // Pat saw the first recap; the corrected week is recapped once more, with the new finish.
     await player.getByRole("link", { name: "Picks", exact: true }).click();

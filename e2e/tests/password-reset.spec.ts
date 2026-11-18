@@ -23,9 +23,11 @@ const EXPIRED = "That link has expired or was already used. Ask for a new one.";
 /** Signs out from the account menu, then signs in with `password`. */
 async function signInAgain(page: Page, account: { email: string; displayName: string }, password: string) {
   await signOut(page, account.displayName);
+  // Signed out, Your leagues is the home page, whose form opens on Create account: switch it to Sign in.
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByLabel("Email").fill(account.email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
 test("a reset link works in another browser than the one that asked for it, and only once", async ({
@@ -35,6 +37,8 @@ test("a reset link works in another browser than the one that asked for it, and 
 }) => {
   await signOut(page, signedIn.displayName);
 
+  // The home page's form opens on Create account; Forgot password? is on its Sign in side.
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByLabel("Email").fill(signedIn.email);
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(page.getByLabel("Email")).toHaveValue(signedIn.email);

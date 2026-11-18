@@ -1,10 +1,12 @@
 import { DISPLAY_NAME_MAX, updateProfileSchema } from "@picks/shared";
 import { useRouter } from "expo-router";
 import { type ComponentRef, useEffect, useRef, useState } from "react";
-import type { TextInput } from "react-native";
+import { Text, type TextInput, View } from "react-native";
+import { Avatar } from "../components/Avatar";
 import { BackLink } from "../components/BackLink";
 import { ProfilePicture } from "../components/ProfilePicture";
-import { Body, Button, Card, ErrorMessage, Field, Screen, Title } from "../components/ui";
+import { colors, space, type, widths } from "../components/theme";
+import { Button, Card, ErrorMessage, Field, Screen, Title } from "../components/ui";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useDesktopFocus } from "../lib/desktopFocus";
@@ -39,21 +41,11 @@ export function NameScreen() {
     });
   };
   return (
-    <Screen narrow contentStyle={{ maxWidth: 416, paddingTop: 32 }}>
+    <Screen narrow contentStyle={{ maxWidth: widths.form, paddingTop: space["4xl"] }}>
       <BackLink />
       <Title>Name and picture</Title>
-      <Body muted>This is how your leagues see you on the leaderboard.</Body>
-      {auth.me?.displayName && (
-        <ProfilePicture
-          name={auth.me.displayName}
-          avatarId={auth.me.avatarId ?? null}
-          onSave={async (avatarId) => {
-            await request("/me/avatar", { method: "PUT", body: { avatarId } });
-            await auth.refreshProfile();
-          }}
-        />
-      )}
       <Card>
+        <NamePreview name={name} avatarId={auth.me?.avatarId ?? null} />
         <Field
           ref={field}
           label="Display name"
@@ -79,6 +71,38 @@ export function NameScreen() {
           onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
         />
       </Card>
+      {auth.me?.displayName && (
+        <ProfilePicture
+          avatarId={auth.me.avatarId ?? null}
+          onSave={async (avatarId) => {
+            await request("/me/avatar", { method: "PUT", body: { avatarId } });
+            await auth.refreshProfile();
+          }}
+        />
+      )}
     </Screen>
+  );
+}
+
+/**
+ * The name as the league will see it, while it is typed: the avatar (the chosen picture, or the typed name's
+ * initials and color), the name in the card-title style, and a muted line saying what this is. The sign-up
+ * name step draws the same row.
+ */
+function NamePreview({ name, avatarId }: { name: string; avatarId: number | null }) {
+  const shown = name.trim();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: space.lg }}>
+      <Avatar name={shown} avatarId={avatarId} size={48} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          numberOfLines={1}
+          style={[type.cardTitle, { color: shown ? colors.foreground : colors.mutedForeground }]}
+        >
+          {shown || "Your name"}
+        </Text>
+        <Text style={[type.small, { color: colors.mutedForeground }]}>How your league sees you</Text>
+      </View>
+    </View>
   );
 }

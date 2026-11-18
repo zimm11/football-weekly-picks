@@ -16,8 +16,10 @@ import {
 } from "@picks/shared";
 import { router } from "expo-router";
 import { type ComponentRef, useRef, useState } from "react";
-import { ScrollView, Text, type TextInput } from "react-native";
+import { ScrollView, type TextInput } from "react-native";
 import { BackLink } from "../components/BackLink";
+import { widths } from "../components/theme";
+import { Title } from "../components/ui";
 import { request } from "../lib/api";
 import { now } from "../lib/clock";
 import { useDesktopFocus } from "../lib/desktopFocus";
@@ -45,10 +47,16 @@ const MANAGEMENT_CHOICES = {
     detail: "Full control of each week: you set the slate and spreads, and open and close it.",
   },
 } as const;
-const PLAYOFF_FORMATS: { value: PlayoffFormat; label: string }[] = [
-  { value: "traditional", label: "Traditional: a POW is optional and wins 3 extra" },
-  { value: "guillotine", label: "Guillotine: a POW every round, or you're out" },
+const PLAYOFF_FORMATS: { value: PlayoffFormat; title: string; detail: string }[] = [
+  { value: "traditional", title: "Traditional", detail: "A POW is optional and wins 3 extra." },
+  { value: "guillotine", title: "Guillotine", detail: "Choose a POW every round. Lose it and you're out." },
 ];
+/** Survivor's lives, as radio cards: the value is the count as text (a `ChoiceList` holds strings). */
+const LIVES_CHOICES = Array.from({ length: MAX_SURVIVOR_LIVES }, (_, i) => ({
+  value: String(i + 1),
+  title: i === 0 ? "1 life" : `${i + 1} lives`,
+  detail: i === 0 ? "One loss and you're out." : `Out after ${i + 1} losses.`,
+}));
 
 /** `/leagues/new`: the New league form, reached from the button on Your leagues. */
 export function NewLeagueScreen() {
@@ -100,19 +108,23 @@ function NewLeagueForm({ leagues }: { leagues: LeagueSummary[] }) {
     <ScrollView
       ref={scrollRef}
       style={s.page}
-      contentContainerStyle={[s.content, { maxWidth: 560 }]}
+      contentContainerStyle={[s.content, { maxWidth: widths.reading }]}
       keyboardShouldPersistTaps="handled"
     >
       <BackLink />
-      <Text accessibilityRole="header" style={s.title}>
-        New league
-      </Text>
+      <Title>New league</Title>
       <Card>
         {types.length > 0 && (
           <ChoiceList
             label="Game"
             value={draft.type}
             disabled={busy}
+            columns={2}
+            action={
+              <Action ghost compact icon="info" href={`/how-to-play?section=${draft.type}`}>
+                {`How ${LEAGUE_TYPE_INFO[draft.type].name} works`}
+              </Action>
+            }
             onChange={(type) => setDraft((old) => chooseType(old, type))}
             choices={types.map((type) => ({
               value: type,
@@ -121,11 +133,6 @@ function NewLeagueForm({ leagues }: { leagues: LeagueSummary[] }) {
               icon: LEAGUE_TYPE_INFO[type].icon,
             }))}
           />
-        )}
-        {types.length > 0 && (
-          <Action ghost compact icon="info" href={`/how-to-play?section=${draft.type}`}>
-            {`How ${LEAGUE_TYPE_INFO[draft.type].name} works`}
-          </Action>
         )}
         <Input
           ref={nameField}
@@ -140,6 +147,7 @@ function NewLeagueForm({ leagues }: { leagues: LeagueSummary[] }) {
         {draft.type === "weekly" && ways.length > 1 && (
           <ChoiceList
             label="How do you want to run it?"
+            columns={2}
             value={draft.management}
             disabled={busy}
             onChange={(management) => change({ management })}
@@ -147,8 +155,9 @@ function NewLeagueForm({ leagues }: { leagues: LeagueSummary[] }) {
           />
         )}
         {draft.type === "playoff" && (
-          <Select
+          <ChoiceList
             label="Format"
+            columns={2}
             value={draft.format}
             disabled={busy}
             onChange={(format) => change({ format })}
@@ -157,15 +166,13 @@ function NewLeagueForm({ leagues }: { leagues: LeagueSummary[] }) {
         )}
         {draft.type === "survivor" && (
           <>
-            <Select
+            <ChoiceList
               label="Lives"
-              value={draft.lives}
+              columns={3}
+              value={String(draft.lives)}
               disabled={busy}
-              onChange={(lives) => change({ lives })}
-              choices={Array.from({ length: MAX_SURVIVOR_LIVES }, (_, i) => ({
-                value: i + 1,
-                label: i === 0 ? "1: one loss and you're out" : `${i + 1}: out after ${i + 1} losses`,
-              }))}
+              onChange={(lives) => change({ lives: Number(lives) })}
+              choices={LIVES_CHOICES}
             />
             <Select
               label="Start week"
