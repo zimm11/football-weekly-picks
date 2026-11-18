@@ -215,7 +215,7 @@ export function Button({
         kind === "destructive" && { borderColor: `${colors.destructive}66` },
         small && { paddingHorizontal: 12 },
         off && { opacity: 0.45 },
-        busy && { cursor: "auto" },
+        busy && ({ cursor: "auto" } as const),
         hovered && (kind === "primary" || kind === "link") && { opacity: 0.9 },
         pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
         style,

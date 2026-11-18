@@ -226,7 +226,7 @@ export function Action({
               ? { backgroundColor: colors.raisedHover }
               : { opacity: 0.9 }),
         off && { opacity: 0.45 },
-        busy && { cursor: "auto" },
+        busy && ({ cursor: "auto" } as const),
         pressed && { opacity: 0.75 },
         style,
       ];

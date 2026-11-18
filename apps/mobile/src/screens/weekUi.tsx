@@ -107,7 +107,7 @@ export function WeekAction({
           (secondary ? { backgroundColor: compact ? colors.raised : colors.raisedHover } : { opacity: 0.9 }),
         style,
         off && { opacity: 0.5 },
-        busy && { cursor: "auto" },
+        busy && ({ cursor: "auto" } as const),
         pressed && { opacity: 0.8 },
       ];
     },
