@@ -239,9 +239,9 @@ export default function HowToPlay() {
         </Text>
         <Title style={{ fontSize: 48, lineHeight: 48 }}>How to play</Title>
         <Body muted style={{ fontSize: 18, lineHeight: 28 }}>
-          POW Pick'em runs NFL leagues for your crew. Weekly pick'em is the main game: pick every game against
-          the spread, choose a Pick of the Week (POW), and chase weekly wins and the season lead. A league can
-          play Playoff pick'em, Squares, or Survivor instead.
+          POW Pick'em runs pro football leagues for your crew. Weekly pick'em is the main game: pick every
+          game against the spread, choose a Pick of the Week (POW), and chase weekly wins and the season lead.
+          A league can play Playoff pick'em, Squares, or Survivor instead.
         </Body>
         <Button
           link

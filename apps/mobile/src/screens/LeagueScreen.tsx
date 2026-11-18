@@ -130,7 +130,7 @@ export function LeagueScreen({ leagueId, path = "" }: { leagueId: string; path?:
         <Card label="Start a new season">
           <Heading>Start a new season</Heading>
           <Label>
-            Use the year the NFL season starts. Your league and members carry over.{" "}
+            Use the year the pro football season starts. Your league and members carry over.{" "}
             {detail.type === "weekly" && detail.management === "manual"
               ? "The season is created when you prepare its first week."
               : "Then start the season on the League tab."}
