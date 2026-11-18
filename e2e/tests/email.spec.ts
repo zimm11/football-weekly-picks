@@ -1,4 +1,4 @@
-import { expect, signUp, test } from "./fixtures";
+import { expect, openNewLeague, signUp, test } from "./fixtures";
 import { emailCount, waitForEmail } from "./inbox";
 
 test("emails other members about a new thread, and its link unsubscribes them", async ({
@@ -7,6 +7,7 @@ test("emails other members about a new thread, and its link unsubscribes them", 
   signedIn,
 }) => {
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Mail league");
   await page.getByRole("button", { name: "Create league" }).click();
   const invite = await page.getByLabel(/Invite link/).inputValue();

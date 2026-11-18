@@ -1,5 +1,5 @@
 import { type APIRequestContext, type Browser, expect, type Page, test } from "@playwright/test";
-import { signUp } from "./fixtures";
+import { openNewLeague, signUp } from "./fixtures";
 import { type HarnessGame, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 /*
@@ -46,6 +46,7 @@ async function joinAs(browser: Browser, inviteUrl: string, name: string) {
 
 /** Starts a survivor league from Your leagues, choosing the start week; returns its id and invite link. */
 async function createPool(page: Page, name: string, startWeek: string) {
+  await openNewLeague(page);
   await page.getByRole("radio", { name: /Survivor/ }).click();
   await page.getByLabel("League name").fill(name);
   await page.getByLabel("Start week").selectOption({ label: startWeek });
