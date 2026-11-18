@@ -9,7 +9,7 @@ import { usePageTitle } from "../src/lib/pageTitle";
  * a new provider or external host, a new kind of email or notification, a retention period, or what account
  * deletion clears (`apps/api/src/accounts.ts`).
  *
- * The sports-data company is ESPN. Players' copy never names the data provider (AGENTS.md, "Copy"), so this page
+ * The sports-data company is ESPN. Players' copy never names the data provider (docs/agents/design.md, "Copy"), so this page
  * describes it instead; the companies that hold players' data for us are named.
  */
 const UPDATED = "November 17, 2026";

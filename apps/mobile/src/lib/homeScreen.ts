@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 
 /*
- * Home-screen help for the browser build (AGENTS.md, "Home-screen help"). The native app is already on the
+ * Home-screen help for the browser build (docs/agents/accounts.md, "Settings and profile"). The native app is already on the
  * home screen, so on iOS and Android none of this shows: `homeScreenHelpAvailable` is false and offers are
  * ignored.
  */
