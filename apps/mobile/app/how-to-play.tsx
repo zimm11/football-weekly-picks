@@ -348,7 +348,7 @@ export default function HowToPlay() {
                 ["Before kickoff", "Save or change your pick and move your POW as often as you like."],
                 [
                   "At kickoff",
-                  "No new picks or changes on that game. Unsaved changes that lock are undone; the save bar tells you which.",
+                  "No new picks or changes on that game. It shrinks to one row with your pick and, once it's final, how it did; tap the row for the full card. Unsaved changes that lock are undone; the save bar tells you which.",
                 ],
                 ["Once your POW’s game kicks off", "Your POW cannot be moved or removed."],
               ].map(([title, detail]) => (

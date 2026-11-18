@@ -1,5 +1,15 @@
-import { formatLine, type Game, LEAGUE_TYPE_INFO, roundHasPow, teamName, type WeekView } from "@picks/shared";
-import { gameLocked, savedDraft } from "./pickDraft";
+import {
+  coveringSide,
+  formatLine,
+  type Game,
+  LEAGUE_TYPE_INFO,
+  lineFor,
+  pickPoints,
+  roundHasPow,
+  teamName,
+  type WeekView,
+} from "@picks/shared";
+import { gameLocked, matchup, type PickDraft, savedDraft } from "./pickDraft";
 
 export const kickoffDay = (iso: string, timeZone: string) =>
   new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long", month: "short", day: "numeric" }).format(
@@ -69,3 +79,49 @@ export function ordinal(n: number) {
 }
 export const formatRecord = (record: { wins: number; losses: number; pushes: number }) =>
   `${record.wins}–${record.losses}${record.pushes > 0 ? `–${record.pushes}` : ""}`;
+
+/** How a saved pick stands: `pending` until its game has a result, `none` when there is no pick. */
+export type PickOutcome = "won" | "lost" | "push" | "pending" | "none";
+
+/**
+ * What the pick sheet's compact row says about a game the player can no longer change (it has kicked off or
+ * has a result): the saved pick against its line, the POW, the final score and the outcome, and the row's
+ * accessible name, which carries all of it in words ("won", "lost", "push") so nothing rests on color.
+ */
+export function lockedGameRow(
+  game: Game,
+  saved: Pick<PickDraft, "sides" | "pow">,
+  { hasPow, powBonus }: { hasPow: boolean; powBonus?: number },
+) {
+  const scored = { ...game, kickoff: new Date(game.kickoff) };
+  const covered = coveringSide(scored);
+  const side = saved.sides[game.id];
+  // A playoff Super Bowl has no POW, and scoring ignores one saved before.
+  const pow = hasPow && !!side && saved.pow === game.id;
+  const team = side ? (side === "home" ? game.homeTeam : game.awayTeam) : null;
+  const line = side ? lineFor(side, game.spread ?? 0) : 0;
+  const pick = team ? formatLine(teamName(team), line) : null;
+  const earned = side ? pickPoints(scored, { side, isPow: pow }, powBonus) : null;
+  const outcome: PickOutcome = !side
+    ? "none"
+    : covered === null
+      ? "pending"
+      : covered === "push"
+        ? "push"
+        : covered === side
+          ? "won"
+          : "lost";
+  const score = covered === null ? null : `${game.awayScore}–${game.homeScore}`;
+  const result =
+    outcome === "won" ? `Won +${earned}` : outcome === "lost" ? "Lost" : outcome === "push" ? "Push" : null;
+  const said =
+    outcome === "won"
+      ? `, won ${earned} ${earned === 1 ? "point" : "points"}`
+      : outcome === "lost" || outcome === "push"
+        ? `, ${outcome}`
+        : "";
+  // The line in brackets ("Chiefs (-3.5)"), so the row's name never contains a team button's ("Chiefs -3.5").
+  const named = team && `${teamName(team)} (${line === 0 ? "PK" : `${line > 0 ? "+" : ""}${line}`})`;
+  const label = `${matchup(game)}, ${score ? `final ${score}` : "locked"}, ${named ? `your pick: ${named}${pow ? ", POW" : ""}` : "no pick"}${said}`;
+  return { team, pick, pow, outcome, earned, score, result, label };
+}

@@ -3,12 +3,15 @@ import { Modal, View } from "react-native";
 import { Body, Button, Card, colors, Title } from "../components/ui";
 import { type ConfirmPrompt, setConfirmPresenter } from "./confirm";
 import { useReducedMotion } from "./motion";
+import { useOverlayBack } from "./overlayBack";
 
 // `showConfirm` lives in ./confirm (no interface code there); it is re-exported for the screens that import
 // it from here.
 export { showConfirm } from "./confirm";
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [prompt, setPrompt] = useState<ConfirmPrompt>();
+  // What the dialog last asked: it keeps showing while the dialog fades out, rather than an empty box.
+  const [shown, setShown] = useState<ConfirmPrompt>();
   const pending = useRef<((answer: boolean) => void) | undefined>(undefined);
   const reduced = useReducedMotion();
   useEffect(() => {
@@ -18,6 +21,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           pending.current?.(false);
           pending.current = resolve;
           setPrompt(value);
+          setShown(value);
         }),
     );
     return () => {
@@ -31,6 +35,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     setPrompt(undefined);
     resolve?.(value);
   }
+  // The browser's Back answers Cancel, as Escape does.
+  useOverlayBack(!!prompt, () => answer(false));
   return (
     <>
       {children}
@@ -52,19 +58,19 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           <View
             role="alertdialog"
             aria-modal
-            aria-label={prompt?.title}
+            aria-label={shown?.title}
             style={{ width: "100%", maxWidth: 448 }}
           >
             <Card style={{ padding: 24, gap: 16 }}>
               <Title level={2} style={{ fontSize: 24, lineHeight: 28 }}>
-                {prompt?.title}
+                {shown?.title}
               </Title>
-              {prompt?.message && <Body muted>{prompt.message}</Body>}
+              {shown?.message && <Body muted>{shown.message}</Body>}
               <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
                 <Button title="Cancel" variant="outline" onPress={() => answer(false)} />
                 <Button
-                  title={prompt?.confirmLabel ?? "Continue"}
-                  destructive={prompt?.destructive}
+                  title={shown?.confirmLabel ?? "Continue"}
+                  destructive={shown?.destructive}
                   onPress={() => answer(true)}
                 />
               </View>

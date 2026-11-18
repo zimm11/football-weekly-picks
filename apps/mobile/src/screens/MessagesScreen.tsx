@@ -1,6 +1,5 @@
 import {
   createThreadSchema,
-  type LeagueDetail,
   MESSAGE_BODY_MAX,
   MESSAGE_REACTIONS,
   type MessageEmoji,
@@ -53,7 +52,7 @@ import { request, statusOf } from "../lib/api";
 import { now as clockNow } from "../lib/clock";
 import { showConfirm } from "../lib/dialogs";
 import { fieldDefaults } from "../lib/fieldProps";
-import { useResource } from "../lib/hooks";
+import { haptics } from "../lib/haptics";
 import { readLoadCache, writeLoadCache } from "../lib/loadCache";
 import { counted, type ThreadArrival, threadArrival } from "../lib/messagePresentation";
 import {
@@ -62,7 +61,6 @@ import {
   setPostingBlocked,
   setUnreadThreads,
   subscribeMessagesChanged,
-  useUnreadThreads,
 } from "../lib/messageUnread";
 import { postActions, postPlaceholder } from "../lib/moderation";
 import { notifyDone, notifyError } from "../lib/notify";
@@ -71,6 +69,7 @@ import { usePullRefresh } from "../lib/pullRefresh";
 import { useScrollRestore } from "../lib/scrollRestore";
 import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
 import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
+import { useLeagueShell } from "./leagueContext";
 
 const errorOf = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong. Try again.";
@@ -218,9 +217,13 @@ export function MessagesScreen({
   return <Board key={leagueId} leagueId={leagueId} header={header} />;
 }
 
+/**
+ * A thread (or the New thread form) in the Messages tab's stack (`app/leagues/[id]/messages/`), with the league
+ * the tabs already loaded (`LeagueShell`); the league's tab bar is the tab navigator's, below.
+ */
 function StandaloneMessages({ leagueId, threadId }: { leagueId: string; threadId: string }) {
-  const league = useResource<LeagueDetail>(`/leagues/${leagueId}`);
-  const unreadCount = useUnreadThreads(leagueId);
+  const shell = useLeagueShell();
+  const league = shell.detail;
   const latest = useRef(0);
   const active = useRef(true);
   useEffect(() => {
@@ -244,7 +247,7 @@ function StandaloneMessages({ leagueId, threadId }: { leagueId: string; threadId
   }, [leagueId]);
   useMessageRefresh(() => {
     void refreshUnread();
-  }, !!league.data);
+  }, true);
   useEffect(
     () =>
       subscribeMessagesChanged(() => {
@@ -258,57 +261,34 @@ function StandaloneMessages({ leagueId, threadId }: { leagueId: string; threadId
   // On a phone a thread keeps one slim bar of its own (back, title, options) in place of the league's header,
   // which would take a third of the screen before the first message.
   const compact = !wide && !isNew;
-  const header = compact ? null : league.data ? (
-    // The same spacing as the league's own tabs (`LeagueScreen`), so nothing moves between board and thread.
+  const header = compact ? null : (
+    // The same spacing as the league's own tabs (`LeagueTabHeader`), so nothing moves between board and thread.
     <View style={s.leagueHeader}>
-      <LeagueHeader leagueId={leagueId} leagueName={league.data.name} />
+      <LeagueHeader leagueId={leagueId} leagueName={league.name} />
       {wide && (
         <LeagueTabBar
           wide
           leagueId={leagueId}
-          type={league.data?.type}
+          type={league.type}
           active="messages"
-          unreadCount={unreadCount}
+          unreadCount={shell.unreadCount}
+          reportsWaiting={league.openReports ?? 0}
         />
       )}
     </View>
-  ) : league.error ? (
-    <Failure error={league.error} retry={league.reload} />
-  ) : (
-    <View accessibilityRole="progressbar" accessibilityLabel="Loading league" style={s.stack}>
-      <View style={[s.skeleton, { width: 80 }]} />
-      <View style={[s.skeleton, { width: "60%", height: 30 }]} />
-    </View>
   );
-  // A league that didn't load (it doesn't exist, or no connection) says so once, as the league tabs do, rather
-  // than again in the thread below.
-  if (league.error && !league.data)
-    return (
-      <ScrollView contentContainerStyle={s.screen}>
-        <Failure error={league.error} retry={league.reload} />
-      </ScrollView>
-    );
   return (
     <View style={s.flex}>
       {isNew ? (
-        <NewThread leagueId={leagueId} leagueName={league.data?.name} header={header} />
+        <NewThread leagueId={leagueId} leagueName={league.name} header={header} />
       ) : (
         <Thread
           leagueId={leagueId}
-          leagueName={league.data?.name}
+          leagueName={league.name}
           threadId={threadId}
           header={header}
           compact={compact}
-          // The league's header changes height when it loads; wait for it before choosing where to land.
-          settled={compact || !!league.data}
-        />
-      )}
-      {!wide && (
-        <LeagueTabBar
-          leagueId={leagueId}
-          type={league.data?.type}
-          active="messages"
-          unreadCount={unreadCount}
+          settled
         />
       )}
     </View>
@@ -904,6 +884,7 @@ function Thread({
     setReactionPost(undefined);
     const active = !post.reactions.find((reaction) => reaction.emoji === emoji)?.reacted;
     if (!(await terms.ensure())) return;
+    haptics.select();
     void mutate(`reaction:${post.id}:${emoji}`, async () => {
       const reactions = await request<MessageReaction[]>(`${path}/posts/${post.id}/reactions`, {
         method: "PUT",

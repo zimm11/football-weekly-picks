@@ -2,18 +2,18 @@ import { useFonts } from "expo-font";
 import { DarkTheme, type ErrorBoundaryProps, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppHeader } from "../src/components/AppHeader";
 import { ErrorScreen } from "../src/components/ErrorScreen";
+import { FocusedOnly } from "../src/components/FocusedOnly";
 import { GestureRoot } from "../src/components/GestureRoot";
 import { HomeScreenOffer } from "../src/components/HomeScreenInstall";
 import { Splash } from "../src/components/Splash";
 import { colors, ErrorMessage, Screen } from "../src/components/ui";
 import { AuthProvider, useAuth } from "../src/lib/auth";
 import { DialogProvider } from "../src/lib/dialogs";
-import { isTabSwap } from "../src/lib/navigation";
 import { NotificationBanner } from "../src/lib/notify";
 
 const web = Platform.OS === "web";
@@ -42,33 +42,6 @@ export const unstable_settings = {
   // "All leagues" have somewhere to go. A browser has its own history, and stays as it was.
   ...(web ? null : { anchor: "index" }),
 };
-
-/**
- * The web build shows one screen at a time. A phone's stack keeps earlier screens alive
- * for the back gesture, but in a browser those hidden copies would stay in the page (duplicate forms, stale
- * content for screen readers). Going back re-renders the earlier screen, which reloads its data.
- */
-function FocusedOnly({
-  navigation,
-  children,
-}: {
-  navigation: {
-    isFocused: () => boolean;
-    addListener: (event: "focus" | "blur", listener: () => void) => () => void;
-  };
-  children: ReactElement;
-}) {
-  const [focused, setFocused] = useState(navigation.isFocused());
-  useEffect(() => {
-    const offFocus = navigation.addListener("focus", () => setFocused(true));
-    const offBlur = navigation.addListener("blur", () => setFocused(false));
-    return () => {
-      offFocus();
-      offBlur();
-    };
-  }, [navigation]);
-  return focused ? children : <View />;
-}
 
 const theme = {
   ...DarkTheme,
@@ -162,18 +135,19 @@ export default function Layout() {
                 {/* On the web, one header above whichever screen is showing; on a phone, each screen's own. */}
                 {web && <AppHeader />}
                 <Stack
-                  screenOptions={({ route }) => ({
+                  screenOptions={{
                     headerShown: !web,
                     header: () => <AppHeader />,
                     contentStyle: { backgroundColor: colors.background },
-                    // A league tab opened from the iPhone tab bar takes the last tab's place without a slide.
-                    animation: isTabSwap(route.params) ? "none" : "default",
-                  })}
+                  }}
+                  // The web build shows one screen at a time (`FocusedOnly`); a phone keeps earlier ones for Back.
+                  // A league stays mounted under the screens above it: unmounting its tab navigator would forget
+                  // which tab was open (Expo Router resets an unmounted navigator), so an in-app Back would land
+                  // on its first tab. Its tabs empty themselves while it is covered (`FocusedOnly` there).
                   screenLayout={
                     web
-                      ? ({ children, navigation }) => (
-                          <FocusedOnly navigation={navigation}>{children}</FocusedOnly>
-                        )
+                      ? ({ children, route }) =>
+                          route.name === "leagues/[id]" ? children : <FocusedOnly>{children}</FocusedOnly>
                       : undefined
                   }
                 >

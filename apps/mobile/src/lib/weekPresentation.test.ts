@@ -1,6 +1,14 @@
 import type { Game, WeekView } from "@picks/shared";
 import { describe, expect, it } from "vitest";
-import { favoriteLine, gameDays, pickStatus, sheetEditable, weekHasPow, weekUnit } from "./weekPresentation";
+import {
+  favoriteLine,
+  gameDays,
+  lockedGameRow,
+  pickStatus,
+  sheetEditable,
+  weekHasPow,
+  weekUnit,
+} from "./weekPresentation";
 
 const game = (id: string, kickoff = "2026-11-16T00:00:00Z"): Game => ({
   id,
@@ -134,5 +142,73 @@ describe("what a pick sheet still lets the player change", () => {
   });
   it("offers nothing on a week that isn't open", () => {
     expect(sheetEditable({ ...view(), status: "final" }, before)).toEqual({ games: false, guess: false });
+  });
+});
+
+describe("the compact row of a game the player can no longer change", () => {
+  // DAL at PHI, the Eagles giving 3.5 and worth 2 points.
+  const locked = game("g");
+  const final = (away: number, home: number): Game => ({ ...locked, awayScore: away, homeScore: home });
+  const weekly = { hasPow: true, powBonus: 5 };
+  it("says the pick against its line while the game is under way", () => {
+    expect(lockedGameRow(locked, { sides: { g: "home" }, pow: null }, weekly)).toMatchObject({
+      team: "PHI",
+      pick: "Eagles -3.5",
+      pow: false,
+      outcome: "pending",
+      score: null,
+      result: null,
+      label: "DAL at PHI, locked, your pick: Eagles (-3.5)",
+    });
+  });
+  it("never contains a team button's name, so finding that button by name finds only it", () => {
+    const row = lockedGameRow(locked, { sides: { g: "home" }, pow: null }, weekly);
+    expect(row.pick).toBe("Eagles -3.5");
+    expect(row.label).not.toContain("Eagles -3.5");
+  });
+  it("says when there is no pick", () => {
+    expect(lockedGameRow(locked, { sides: {}, pow: null }, weekly)).toMatchObject({
+      team: null,
+      pick: null,
+      outcome: "none",
+      result: null,
+      label: "DAL at PHI, locked, no pick",
+    });
+    expect(lockedGameRow(final(20, 10), { sides: {}, pow: null }, weekly).label).toBe(
+      "DAL at PHI, final 20–10, no pick",
+    );
+  });
+  it("marks the POW, and a winning POW's bonus", () => {
+    const row = lockedGameRow(final(10, 27), { sides: { g: "home" }, pow: "g" }, weekly);
+    expect(row).toMatchObject({ pow: true, outcome: "won", earned: 7, score: "10–27", result: "Won +7" });
+    expect(row.label).toBe("DAL at PHI, final 10–27, your pick: Eagles (-3.5), POW, won 7 points");
+    expect(lockedGameRow(locked, { sides: { g: "away" }, pow: "g" }, weekly).label).toBe(
+      "DAL at PHI, locked, your pick: Cowboys (+3.5), POW",
+    );
+  });
+  it("says lost and push in words", () => {
+    const lost = lockedGameRow(final(24, 21), { sides: { g: "home" }, pow: null }, weekly);
+    expect(lost).toMatchObject({ outcome: "lost", earned: 0, result: "Lost" });
+    expect(lost.label).toBe("DAL at PHI, final 24–21, your pick: Eagles (-3.5), lost");
+    const spread = { ...final(17, 20), spread: -3 };
+    const push = lockedGameRow(spread, { sides: { g: "away" }, pow: null }, weekly);
+    expect(push).toMatchObject({ outcome: "push", earned: 0, result: "Push", pick: "Cowboys +3" });
+    expect(push.label).toBe("DAL at PHI, final 17–20, your pick: Cowboys (+3), push");
+  });
+  it("says one point, and a pick'em line", () => {
+    const pickem = { ...final(13, 20), spread: 0, points: 1 };
+    const row = lockedGameRow(pickem, { sides: { g: "home" }, pow: null }, weekly);
+    expect(row).toMatchObject({ pick: "Eagles PK", result: "Won +1" });
+    expect(row.label).toBe("DAL at PHI, final 13–20, your pick: Eagles (PK), won 1 point");
+  });
+  it("shows no POW in a playoff round without one, even one saved before", () => {
+    const superBowl = { hasPow: false, powBonus: 1 };
+    const row = lockedGameRow(final(10, 27), { sides: { g: "home" }, pow: "g" }, superBowl);
+    expect(row).toMatchObject({ pow: false, earned: 2, result: "Won +2" });
+    expect(row.label).toBe("DAL at PHI, final 10–27, your pick: Eagles (-3.5), won 2 points");
+    // A Guillotine round's POW is worth its own bonus.
+    expect(
+      lockedGameRow(final(10, 27), { sides: { g: "home" }, pow: "g" }, { hasPow: true, powBonus: 1 }).result,
+    ).toBe("Won +3");
   });
 });
