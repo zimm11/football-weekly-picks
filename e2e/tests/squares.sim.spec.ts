@@ -33,9 +33,11 @@ async function newBoardPage(page: Page) {
   await page.getByLabel("League name").fill("Super Bowl Squares");
   await page.getByRole("button", { name: "Create league" }).click();
   await page.getByRole("link", { name: "Boards", exact: true }).click();
+  // Read here: New board is a screen above the league, with the league in its query string.
+  const leagueId = leagueIdOf(page.url());
   await page.getByRole("link", { name: "New board", exact: true }).click();
   await expect(page.getByRole("heading", { name: "New board" })).toBeVisible();
-  return leagueIdOf(page.url());
+  return leagueId;
 }
 
 async function startBoard(page: Page) {
