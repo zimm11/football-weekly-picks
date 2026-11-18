@@ -12,7 +12,7 @@ const sections: LegalSection[] = [
   [
     "What POW Pick'em is",
     [
-      "Free NFL games for private leagues of friends: weekly and playoff pick'em against the spread, survivor, and squares. These terms cover the iPhone app and www.pow-pickem.com. By creating an account you agree to them.",
+      "Free pro football games for private leagues of friends: weekly and playoff pick'em against the spread, survivor, and squares. These terms cover the iPhone app and www.pow-pickem.com. By creating an account you agree to them.",
       "It is for fun only. There are no entry fees, no prizes and no betting in the app, and no money changes hands through it. Spreads and win predictions are shown as information about the games, not as an offer to bet. Don't use POW Pick'em for gambling that is illegal where you live.",
     ],
   ],

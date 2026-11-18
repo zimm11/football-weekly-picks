@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { type ComponentRef, useEffect, useRef, useState } from "react";
 import type { TextInput } from "react-native";
 import { BackLink } from "../components/BackLink";
+import { ProfilePicture } from "../components/ProfilePicture";
 import { Body, Button, Card, ErrorMessage, Field, Screen, Title } from "../components/ui";
 import { request } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -40,8 +41,18 @@ export function NameScreen() {
   return (
     <Screen narrow contentStyle={{ maxWidth: 416, paddingTop: 32 }}>
       <BackLink />
-      <Title>Change your name</Title>
-      <Body muted>This is the name your league sees on the leaderboard.</Body>
+      <Title>Name and picture</Title>
+      <Body muted>This is how your leagues see you on the leaderboard.</Body>
+      {auth.me?.displayName && (
+        <ProfilePicture
+          name={auth.me.displayName}
+          avatarId={auth.me.avatarId ?? null}
+          onSave={async (avatarId) => {
+            await request("/me/avatar", { method: "PUT", body: { avatarId } });
+            await auth.refreshProfile();
+          }}
+        />
+      )}
       <Card>
         <Field
           ref={field}

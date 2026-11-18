@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, joinLeague, test } from "./fixtures";
+import { expect, joinLeague, openNewLeague, test } from "./fixtures";
 
 async function openThread(page: Page, title: string) {
   await page.getByRole("link", { name: /Messages/ }).click();
@@ -14,6 +14,7 @@ test("a reported reply is removed by an admin, and blocking hides a player's mes
 }) => {
   // Three players in their own browsers.
   test.slow();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Moderated league");
   await page.getByRole("button", { name: "Create league" }).click();
   const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();

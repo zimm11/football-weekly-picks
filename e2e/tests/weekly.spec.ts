@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { dismissHomeScreenOffer, expect, joinLeague, kickoffInDays, test } from "./fixtures";
+import { dismissHomeScreenOffer, expect, joinLeague, kickoffInDays, openNewLeague, test } from "./fixtures";
 
 type NewGame = { away: string; home: string; days: number; spread: string };
 
@@ -9,6 +9,7 @@ type NewGame = { away: string; home: string; days: number; spread: string };
  * depends on the day the test runs. Ends on the week's management screen and returns the league's invite link.
  */
 async function openWeek(page: Page, league: string, games: NewGame[]) {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill(league);
   await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();

@@ -1,4 +1,4 @@
-import { expect, joinLeague, signOut, signUp, test } from "./fixtures";
+import { expect, joinLeague, openNewLeague, signOut, signUp, test } from "./fixtures";
 import { emailCount, waitForEmail } from "./inbox";
 
 test("a new invite link retires the old one, and a removed player comes back through the new link", async ({
@@ -6,6 +6,7 @@ test("a new invite link retires the old one, and a removed player comes back thr
   browser,
   signedIn: _,
 }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Invite only");
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Invite only" })).toBeVisible();
@@ -70,6 +71,7 @@ test("a new league starts with another league's members, who are told by email",
   browser,
   signedIn,
 }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Original crew");
   // Nobody to start with yet: the choice appears once the player runs a league.
   await expect(page.getByRole("combobox", { name: "Start with members from" })).toHaveCount(0);
@@ -84,6 +86,7 @@ test("a new league starts with another league's members, who are told by email",
     // A second league, of another type, with the first one's members.
     await page.getByRole("link", { name: "All leagues" }).click();
     await expect(page.getByRole("heading", { name: "Your leagues" })).toBeVisible();
+    await openNewLeague(page);
     await page.getByRole("radio", { name: "Squares" }).click();
     await page.getByLabel("League name").fill("Spin-off squares");
     const source = page.getByRole("combobox", { name: "Start with members from" });
@@ -133,6 +136,7 @@ test("a thread link opened signed out opens the thread after signing in, and onl
   browser,
   signedIn,
 }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Linked league");
   await page.getByRole("button", { name: "Create league" }).click();
   await page.getByRole("link", { name: "Messages", exact: true }).click();
@@ -175,14 +179,15 @@ test("a player changes their display name, and their league shows the new one", 
   page,
   signedIn,
 }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Name change");
   await page.getByRole("button", { name: "Create league" }).click();
   const members = page.getByRole("region", { name: "Members" });
   await expect(members).toContainText(`${signedIn.displayName} (you)`);
 
   await page.getByRole("button", { name: signedIn.displayName, exact: true }).click();
-  await page.getByRole("menuitem", { name: "Change your name" }).click();
-  await expect(page.getByRole("heading", { name: "Change your name" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Name and picture" }).click();
+  await expect(page.getByRole("heading", { name: "Name and picture" })).toBeVisible();
   const name = page.getByLabel("Display name");
   await expect(name).toHaveValue(signedIn.displayName);
   // A name is required.
@@ -202,6 +207,7 @@ test("a player changes their display name, and their league shows the new one", 
 });
 
 test("league tabs are links that switch without reloading the league", async ({ page, signedIn: _ }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Tab hopping");
   await page.getByRole("button", { name: "Create league" }).click();
   const name = page.getByRole("heading", { name: "Tab hopping", exact: true });

@@ -2,7 +2,7 @@
   "id": "/",
   "name": "POW Pick'em",
   "short_name": "POW Pick'em",
-  "description": "Pick every NFL game against the spread with your league, and call your Pick of the Week.",
+  "description": "Pick every pro football game against the spread with your league, and call your Pick of the Week.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

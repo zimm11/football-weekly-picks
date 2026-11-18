@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page } from "@playwright/test";
-import { expect, joinLeague, signUp, test } from "./fixtures";
+import { expect, joinLeague, openNewLeague, signUp, test } from "./fixtures";
 import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 /*
@@ -35,6 +35,7 @@ const final = (g: HarnessGame, home: number, away: number): HarnessGame => ({
 
 /** Starts a survivor league from Your leagues, choosing the start week; returns its id and invite link. */
 async function createPool(page: Page, name: string, startWeek: string) {
+  await openNewLeague(page);
   await page.getByRole("radio", { name: /Survivor/ }).click();
   await page.getByLabel("League name").fill(name);
   await page.getByLabel("Start week").selectOption({ label: startWeek });

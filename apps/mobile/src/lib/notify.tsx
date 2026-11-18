@@ -88,8 +88,11 @@ export function NotificationBanner({ above }: { above?: number }) {
   // Phones keep the league tab bar (and a save bar) at the bottom; wide screens put the tabs at the top.
   const { width, height } = useWindowDimensions();
   const wide = width >= 768;
+  // New league (`/leagues/new`) sits outside any league, so it has no tab bar.
   const leagueScreen =
-    path.startsWith("/leagues/") || path.startsWith("/weeks/") || path.startsWith("/boards/");
+    (path.startsWith("/leagues/") && path !== "/leagues/new") ||
+    path.startsWith("/weeks/") ||
+    path.startsWith("/boards/");
   const bottom =
     above === undefined
       ? insets.bottom + (leagueScreen ? (wide ? 96 : 136) : 24)

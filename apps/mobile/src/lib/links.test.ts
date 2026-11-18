@@ -88,7 +88,14 @@ describe("native link boundaries", () => {
     expect(authCallback("https://www.pow-pickem.com/account?code=abc")?.otherAddress).toBe(false);
   });
   it("returns only to allowlisted in-app pages", () => {
-    for (const path of ["/account", "/join/abc", "/leagues/abc", "/weeks/abc/manage", "/boards/abc"])
+    for (const path of [
+      "/account",
+      "/leagues/new",
+      "/join/abc",
+      "/leagues/abc",
+      "/weeks/abc/manage",
+      "/boards/abc",
+    ])
       expect(nextPath(path)).toBe(path);
     for (const path of [
       "https://evil.test",
@@ -148,6 +155,9 @@ describe("native link boundaries", () => {
       "/boards/abc/manage/extra",
       "/boards/abc?next=https://evil.test",
       "/leagues/abc/settings",
+      // The New league form, not a league.
+      "/leagues/new",
+      "/leagues/new/league",
       "/weeks/abc/picks",
       "/operator",
       "https://evil.test/boards/abc",

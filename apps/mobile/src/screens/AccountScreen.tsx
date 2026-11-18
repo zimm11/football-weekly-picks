@@ -10,7 +10,6 @@ import { useHomeScreenHelp } from "../components/HomeScreenInstall";
 import { Icon } from "../components/Icon";
 import { setBlocked } from "../components/Moderation";
 import { PreferenceToggle } from "../components/PreferenceToggle";
-import { ProfilePicture } from "../components/ProfilePicture";
 import { hoverFill } from "../components/pressState";
 import { SettingsHeading } from "../components/SettingsHeading";
 import {
@@ -65,16 +64,6 @@ export function AccountScreen() {
     <Screen narrow>
       <BackLink />
       <Title>Settings</Title>
-      {auth.me?.displayName && (
-        <ProfilePicture
-          name={auth.me.displayName}
-          avatarId={auth.me.avatarId ?? null}
-          onSave={async (avatarId) => {
-            await request("/me/avatar", { method: "PUT", body: { avatarId } });
-            await auth.refreshProfile();
-          }}
-        />
-      )}
       <View style={{ gap: 12 }}>
         <Title level={2} style={{ fontSize: 24, lineHeight: 28 }}>
           Notifications

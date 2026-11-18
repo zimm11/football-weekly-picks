@@ -1,7 +1,8 @@
-import { expect, joinLeague, test } from "./fixtures";
+import { expect, joinLeague, openNewLeague, test } from "./fixtures";
 
 test("members create threads, reply, and guard unsaved messages", async ({ page, signedIn }) => {
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Message league");
   await page.getByRole("button", { name: "Create league" }).click();
   await page.getByRole("link", { name: "Messages", exact: true }).click();
@@ -44,6 +45,7 @@ test("members create threads, reply, and guard unsaved messages", async ({ page,
 
 test("new threads and replies show unread indicators until opened", async ({ page, browser, signedIn }) => {
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Unread league");
   await page.getByRole("button", { name: "Create league" }).click();
   const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
@@ -81,6 +83,7 @@ test("new threads and replies show unread indicators until opened", async ({ pag
 
 test("admins pin announcements and members quote replies", async ({ page, browser, signedIn }) => {
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Announcement league");
   await page.getByRole("button", { name: "Create league" }).click();
   const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
@@ -146,6 +149,7 @@ test("admins confirm thread deletion, keep drafts on failure, and return to the 
   signedIn,
 }) => {
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Moderated league");
   await page.getByRole("button", { name: "Create league" }).click();
   await page.getByRole("link", { name: "Messages", exact: true }).click();
@@ -206,6 +210,7 @@ test("a thread opens on its first unread reply, replying keeps the reply box, an
 }) => {
   // Two players, and a thread long enough to scroll.
   test.slow();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Long thread league");
   await page.getByRole("button", { name: "Create league" }).click();
   const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();

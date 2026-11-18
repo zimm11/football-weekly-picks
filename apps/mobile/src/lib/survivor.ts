@@ -279,9 +279,12 @@ export function waitingLine(view: SurvivorView): { detail: string; standings: bo
   if (view.over) return { detail: "The pool is over. See how it finished on Standings.", standings: true };
   const next = nextSurvivorWeek(view);
   if (next === null) {
-    return { detail: "The next week opens as soon as its games are on the NFL schedule.", standings: false };
+    return {
+      detail: "The next week opens as soon as its games are on the pro football schedule.",
+      standings: false,
+    };
   }
-  const opens = "as soon as its games are on the NFL schedule";
+  const opens = "as soon as its games are on the pro football schedule";
   // Before the first week is played, say where the pool begins.
   const begun = view.weeks.some((w) => w.status === "final");
   if (!begun && next === view.settings.startWeek) {

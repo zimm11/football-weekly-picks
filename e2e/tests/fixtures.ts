@@ -25,6 +25,12 @@ export async function signUp(page: Page, displayName: string) {
   return { email, password: PASSWORD, displayName };
 }
 
+/** From Your leagues, opens the New league form. */
+export async function openNewLeague(page: Page) {
+  await page.getByRole("link", { name: "New league" }).click();
+  await expect(page.getByRole("heading", { name: "New league" })).toBeVisible();
+}
+
 /**
  * Signs out from the account menu and waits for the menu to be gone. Typing into the sign-in form while the
  * menu is still closing can lose the text: the closing menu takes the focus back (seen on WebKit under load).

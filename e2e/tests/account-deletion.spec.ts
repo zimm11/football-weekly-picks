@@ -1,4 +1,4 @@
-import { expect, joinLeague, test } from "./fixtures";
+import { expect, joinLeague, openNewLeague, test } from "./fixtures";
 
 test("a player deletes their account from Settings and can sign up again with the same email", async ({
   page,
@@ -7,6 +7,7 @@ test("a player deletes their account from Settings and can sign up again with th
 }) => {
   // Two players in their own browsers.
   test.slow();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Deletion league");
   await page.getByRole("button", { name: "Create league" }).click();
   const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();

@@ -1,4 +1,4 @@
-import { expect, signUp, test } from "./fixtures";
+import { expect, openNewLeague, signUp, test } from "./fixtures";
 import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 // Playoff pick'em, create to champion, with nobody pressing Open or Finalize: the dev harness scripts the 2027
@@ -47,6 +47,7 @@ test("a Guillotine playoff league runs from Wild Card to champion by itself", as
   await setClock(request, "2028-01-10T15:00:00Z");
   await page.goto("/");
   await signUp(page, "Commish");
+  await openNewLeague(page);
   await page.getByRole("radio", { name: "Playoff pick'em" }).click();
   await page.getByLabel("League name").fill("Bracket Busters");
   await page.getByRole("combobox", { name: "Format", exact: true }).selectOption("guillotine");

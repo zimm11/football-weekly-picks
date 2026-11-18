@@ -312,11 +312,11 @@ describe("survivor presentation", () => {
 
     it("says which week is next and what opens it", () => {
       expect(waitingLine(between())).toEqual({
-        detail: "Week 12 opens as soon as its games are on the NFL schedule.",
+        detail: "Week 12 opens as soon as its games are on the pro football schedule.",
         standings: false,
       });
       expect(waitingLine({ ...between(), weeks: [], picks: [], players: [] }).detail).toBe(
-        "The pool starts with Week 11. It opens as soon as its games are on the NFL schedule.",
+        "The pool starts with Week 11. It opens as soon as its games are on the pro football schedule.",
       );
       const postseason = (finalThrough: number) =>
         view({
@@ -334,10 +334,10 @@ describe("survivor presentation", () => {
           })),
         });
       expect(waitingLine(postseason(18)).detail).toBe(
-        "The Wild Card round opens as soon as its games are on the NFL schedule.",
+        "The Wild Card round opens as soon as its games are on the pro football schedule.",
       );
       expect(waitingLine(postseason(21)).detail).toBe(
-        "The Super Bowl opens as soon as its games are on the NFL schedule.",
+        "The Super Bowl opens as soon as its games are on the pro football schedule.",
       );
       expect(waitingLine({ ...between(), over: true })).toEqual({
         detail: "The pool is over. See how it finished on Standings.",

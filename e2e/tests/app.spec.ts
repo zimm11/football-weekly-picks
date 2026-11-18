@@ -1,5 +1,14 @@
 import type { Page } from "@playwright/test";
-import { dismissHomeScreenOffer, expect, joinLeague, kickoffInDays, signOut, signUp, test } from "./fixtures";
+import {
+  dismissHomeScreenOffer,
+  expect,
+  joinLeague,
+  kickoffInDays,
+  openNewLeague,
+  signOut,
+  signUp,
+  test,
+} from "./fixtures";
 
 /** Opens a member's "⋯" menu on the League tab and chooses one of its actions. */
 async function memberAction(page: Page, member: string, action: string) {
@@ -122,6 +131,7 @@ test("the API rejects unauthenticated requests", async ({ request }) => {
 });
 
 test("a player can leave a league, but its only admin can't", async ({ page, browser, signedIn: _ }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Leaving soon");
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Leaving soon" })).toBeVisible();
@@ -156,6 +166,7 @@ test("admins have equal authority and can step down while keeping one admin", as
 }) => {
   // Three players, several reloads and a menu per admin action: this runs close to the default 30s.
   test.slow();
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Shared administration");
   await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
@@ -245,6 +256,7 @@ test("admins choose one season across tabs and manage existing weeks without dup
   page,
   signedIn: _,
 }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Season choices");
   await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
@@ -281,6 +293,7 @@ test("upcoming picks take priority over unfinished past weeks and season changes
   page,
   signedIn: _,
 }) => {
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Pick priorities");
   await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
@@ -336,6 +349,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   test.slow();
   // The admin starts a league, which lands on its League tab, and sets up a week by hand (no schedule import,
   // so the test stays offline).
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("E2E League");
   await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();

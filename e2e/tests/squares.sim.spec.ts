@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, openNewLeague, test } from "./fixtures";
 import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 /*
@@ -32,6 +32,7 @@ test.afterEach(async ({ request }) => {
  * Returns the league's id.
  */
 async function startBoard(page: Page) {
+  await openNewLeague(page);
   await page.getByRole("radio", { name: "Squares" }).click();
   await page.getByLabel("League name").fill("Super Bowl Squares");
   await page.getByRole("button", { name: "Create league" }).click();

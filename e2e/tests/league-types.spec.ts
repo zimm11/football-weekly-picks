@@ -1,4 +1,4 @@
-import { expect, kickoffInDays, test } from "./fixtures";
+import { expect, kickoffInDays, openNewLeague, test } from "./fixtures";
 
 /*
  * Playoff pick'em and Survivor on real time, on the desktop and phone projects: what a new league of each type
@@ -10,6 +10,7 @@ test("a Playoff pick'em league waits for the Wild Card round, and a round set up
   page,
   signedIn: _,
 }) => {
+  await openNewLeague(page);
   await page.getByRole("radio", { name: "Playoff pick'em" }).click();
   await page.getByLabel("League name").fill("Bracket night");
   await expect(page.getByRole("combobox", { name: "Format", exact: true })).toHaveValue("traditional");
@@ -63,6 +64,7 @@ test("a Playoff pick'em league waits for the Wild Card round, and a round set up
 });
 
 test("a Survivor pool waits for its start week, and has no Results tab", async ({ page, signedIn: _ }) => {
+  await openNewLeague(page);
   await page.getByRole("radio", { name: "Survivor" }).click();
   await page.getByLabel("League name").fill("Last one in");
   await expect(page.getByRole("combobox", { name: "Lives", exact: true })).toHaveValue("1");
@@ -85,7 +87,7 @@ test("a Survivor pool waits for its start week, and has no Results tab", async (
   await expect(page.getByRole("heading", { name: "No week is being played" })).toBeVisible();
   await expect(
     page.getByText(
-      `The pool starts with Week ${startWeek}. It opens as soon as its games are on the NFL schedule.`,
+      `The pool starts with Week ${startWeek}. It opens as soon as its games are on the pro football schedule.`,
     ),
   ).toBeVisible();
 

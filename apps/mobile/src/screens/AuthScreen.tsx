@@ -296,7 +296,7 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
               <Body muted>
                 {joining
                   ? "Sign in or create an account to join the league."
-                  : "Pick NFL winners against the spread with your league."}
+                  : "Pick pro football winners against the spread with your league."}
               </Body>
             )
           )}
@@ -338,8 +338,8 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
             <Text style={{ color: colors.primary }}>Own the week.</Text>
           </Text>
           <Body muted style={{ fontSize: 18, lineHeight: 28 }}>
-            An NFL pick'em built for your crew. Pick every game against the spread, call your Pick of the
-            Week, and chase the top spot in your league.
+            A pro football pick'em built for your crew. Pick every game against the spread, call your Pick of
+            the Week, and chase the top spot in your league.
           </Body>
           <View style={{ flexDirection: "row", gap: 12 }}>
             <Button title="Get started" icon="chevron-right" onPress={getStarted} />
@@ -413,8 +413,8 @@ export function AuthScreen({ nameOnly = false }: { nameOnly?: boolean }) {
           <View style={{ flexDirection: "row", gap: 12 }}>
             <Icon name="trophy" color={colors.primary} />
             <Body muted style={{ fontSize: 14, lineHeight: 20, flex: 1 }}>
-              Running the league? Let it run itself from the NFL schedule, or run each week by hand. The guide
-              covers both.
+              Running the league? Let it run itself from the pro football schedule, or run each week by hand.
+              The guide covers both.
             </Body>
           </View>
           <Button

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { dismissHomeScreenOffer, expect, joinLeague, kickoffInDays, test } from "./fixtures";
+import { dismissHomeScreenOffer, expect, joinLeague, kickoffInDays, openNewLeague, test } from "./fixtures";
 import { emailCount, waitForEmail } from "./inbox";
 
 /*
@@ -28,6 +28,7 @@ test("players claim squares up to the limit on a typed-in board, and a typed sco
 }) => {
   // Two players, a draw and a score, each with reloads.
   test.slow();
+  await openNewLeague(page);
   await page.getByRole("radio", { name: "Squares" }).click();
   await page.getByLabel("League name").fill("Office squares");
   await page.getByRole("button", { name: "Create league" }).click();

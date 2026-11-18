@@ -69,7 +69,7 @@ export function authCallback(value: string) {
 export type AuthCallback = NonNullable<ReturnType<typeof authCallback>>;
 
 /** Pages a sign-in or an emailed link may return to besides the notification destinations below. */
-const RETURN_PAGES = ["/account"];
+const RETURN_PAGES = ["/account", "/leagues/new"];
 
 /**
  * Where to go after signing in or opening an emailed link (`?next=`): an in-app path from the allowlist (a
@@ -92,9 +92,10 @@ export function withNext(link: string, next: string | null | undefined) {
  * a league and its tabs, a thread, a week and its manage screen, a squares board and its manage screen, an
  * invite. Keep it in step with `safePath` in `public/push-sw.js` (the website's copy) and with the paths the
  * API puts in notifications (`path`/`url` in apps/api/src: leagueEvents, pushQueue, reminders, automation).
+ * `/leagues/new` is the New league form, not a league, so no notification opens it.
  */
 const DESTINATION =
-  /^\/(?:leagues\/[a-zA-Z0-9-]+(?:\/(?:messages(?:\/[a-zA-Z0-9-]+)?|results|standings|league))?|weeks\/[a-zA-Z0-9-]+(?:\/manage)?|boards\/[a-zA-Z0-9-]+(?:\/manage)?|join\/[a-zA-Z0-9-]+)\/?$/;
+  /^\/(?:leagues\/(?!new(?:\/|$))[a-zA-Z0-9-]+(?:\/(?:messages(?:\/[a-zA-Z0-9-]+)?|results|standings|league))?|weeks\/[a-zA-Z0-9-]+(?:\/manage)?|boards\/[a-zA-Z0-9-]+(?:\/manage)?|join\/[a-zA-Z0-9-]+)\/?$/;
 
 /** Notification destinations have no query, fragment, credentials or external hosts. */
 export function internalPath(value: unknown): string | null {

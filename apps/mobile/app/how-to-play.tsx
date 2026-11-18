@@ -69,7 +69,7 @@ const everyLeagueSteps = [
   ],
   [
     "Start a league of your own",
-    `From Your leagues, choose the game (Weekly pick'em, Playoff pick'em, Squares, or Survivor; it can't change later), enter a League name, and press Create league. Start with members from adds the players of a league you already run, so the same crew needs no new link. In the League tab, check the time zone and copy the invite link to share. A league can hold up to ${MAX_LEAGUE_MEMBERS} players, and keeps them from season to season.`,
+    `From Your leagues, press New league, choose the game (Weekly pick'em, Playoff pick'em, Squares, or Survivor; it can't change later), enter a League name, and press Create league. Start with members from adds the players of a league you already run, so the same crew needs no new link. In the League tab, check the time zone and copy the invite link to share. A league can hold up to ${MAX_LEAGUE_MEMBERS} players, and keeps them from season to season.`,
   ],
   [
     "Share the commissioner work",
@@ -95,7 +95,7 @@ const everyLeagueSteps = [
   ],
   [
     "Manage your account",
-    "Tap your profile picture at the top right to open the account menu: change your name or password, open Settings, or sign out. In Settings, open Profile picture to choose a profile logo or switch back to your initials. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only commissioner, make someone else a commissioner first. The Privacy policy, linked in Settings, says what POW Pick'em keeps about you.",
+    "Tap your profile picture at the top right to open the account menu: change your name, picture or password, open Settings, or sign out. In Name and picture, press Change picture to choose a profile logo or switch back to your initials. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only commissioner, make someone else a commissioner first. The Privacy policy, linked in Settings, says what POW Pick'em keeps about you.",
   ],
 ];
 function Steps({ items }: { items: string[][] }) {
@@ -242,9 +242,9 @@ export default function HowToPlay() {
         </Text>
         <Title style={{ fontSize: 48, lineHeight: 48 }}>How to play</Title>
         <Body muted style={{ fontSize: 18, lineHeight: 28 }}>
-          POW Pick'em runs NFL leagues for your crew. Weekly pick'em is the main game: pick every game against
-          the spread, choose a Pick of the Week (POW), and chase weekly wins and the season lead. A league can
-          play Playoff pick'em, Squares, or Survivor instead.
+          POW Pick'em runs pro football leagues for your crew. Weekly pick'em is the main game: pick every
+          game against the spread, choose a Pick of the Week (POW), and chase weekly wins and the season lead.
+          A league can play Playoff pick'em, Squares, or Survivor instead.
         </Body>
         <Button
           title={auth.session ? "Go to your leagues" : "Sign in or create an account"}

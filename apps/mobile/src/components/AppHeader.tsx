@@ -34,7 +34,7 @@ export function AppHeader() {
   const rows: { label: string; icon: IconName; path?: Href; action?: () => void }[] = [
     ...(name
       ? [
-          { label: "Change your name", icon: "users" as const, path: "/change-name" as Href },
+          { label: "Name and picture", icon: "users" as const, path: "/change-name" as Href },
           { label: "Settings", icon: "settings" as const, path: "/account" as Href },
           { label: "Change password", icon: "lock" as const, path: "/reset-password" as Href },
           {

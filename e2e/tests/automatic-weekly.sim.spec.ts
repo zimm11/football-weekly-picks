@@ -1,4 +1,4 @@
-import { expect, signUp, test } from "./fixtures";
+import { expect, openNewLeague, signUp, test } from "./fixtures";
 import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 // Automatic weekly pick'em, start to recap, with nobody pressing Open or Finalize: the dev harness scripts Week 3
@@ -42,6 +42,7 @@ test("an Automatic weekly league opens, scores and finalizes its week by itself"
   await signUp(page, "Commish");
 
   // Automatic is preselected for a weekly league.
+  await openNewLeague(page);
   await page.getByLabel("League name").fill("Runs Itself");
   await expect(page.getByRole("radio", { name: "Automatic" })).toBeChecked();
   await page.getByRole("button", { name: "Create league" }).click();
