@@ -1,18 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, signUp, test } from "./fixtures";
-
-/** On a phone, a browser's first save of picks suggests the home screen, once; on a computer it never does. */
-async function dismissHomeScreenOffer(page: Page) {
-  const offer = page.getByRole("dialog", { name: "Add it to your home screen" });
-  if (test.info().project.name !== "mobile-safari") {
-    await expect(offer).toHaveCount(0);
-    return;
-  }
-  await expect(offer).toHaveAccessibleDescription(/^Picks saved\./);
-  await expect(offer.getByRole("heading", { name: "Android · Chrome" })).toHaveCount(0);
-  await offer.getByRole("button", { name: "Not now" }).click();
-  await expect(offer).toHaveCount(0);
-}
+import { dismissHomeScreenOffer, expect, joinLeague, kickoffInDays, signOut, signUp, test } from "./fixtures";
 
 /** Opens a member's "⋯" menu on the League tab and chooses one of its actions. */
 async function memberAction(page: Page, member: string, action: string) {
@@ -103,25 +90,24 @@ test("signed-in users can read the guide and return to their leagues", async ({
     await expect(page.getByRole("heading", { name: "iPhone or iPad · Safari" })).toBeVisible();
   } else {
     await page.getByRole("button", { name: "Show me how" }).click();
-    await expect(page.getByRole("dialog", { name: "Add it to your home screen" })).toBeVisible();
+    const steps = page.getByRole("dialog", { name: "Add it to your home screen" });
+    await expect(steps).toBeVisible();
     await expect(page).toHaveURL(/\/account$/);
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await steps.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(steps).toHaveCount(0);
   }
   await page.getByRole("link", { name: "How to play", exact: true }).click();
   await expect(page.getByRole("heading", { name: "How to play", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: signedIn.displayName })).toBeVisible();
   await page.getByRole("link", { name: "For players", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Press Save picks" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Add to home screen", exact: true })).not.toBeAttached();
   await page.getByRole("link", { name: "Go to your leagues" }).first().click();
   await expect(page.getByRole("heading", { name: "Your leagues" })).toBeVisible();
 });
 
 test("a user can sign out and sign back in", async ({ page, signedIn }) => {
   // Sign out lives in the account menu, under the player's name.
-  await page.getByRole("button", { name: signedIn.displayName }).click();
-  await page.getByRole("menuitem", { name: "Sign out" }).click();
-  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+  await signOut(page, signedIn.displayName);
 
   await page.getByLabel("Email").fill(signedIn.email);
   await page.getByLabel("Password").fill(signedIn.password);
@@ -139,24 +125,24 @@ test("a player can leave a league, but its only admin can't", async ({ page, bro
   await page.getByLabel("League name").fill("Leaving soon");
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Leaving soon" })).toBeVisible();
-  const inviteUrl = await page.getByLabel(/Invite link/).inputValue();
+  const inviteUrl = await page.getByLabel("Invite link", { exact: true }).inputValue();
   await expect(page.getByRole("button", { name: "Leave league" })).toBeDisabled();
 
-  const context = await browser.newContext();
+  const { context, page: player } = await joinLeague(browser, inviteUrl, "Pat");
   try {
-    const player = await context.newPage();
-    await player.goto(inviteUrl);
-    await signUp(player, "Pat");
-    await player.getByRole("button", { name: "Join league" }).click();
-    await expect(player).toHaveURL(/\/leagues\/[^/]+$/);
     await expect(player.getByRole("heading", { name: "Leaving soon" })).toBeVisible();
-    await player.goto(`${new URL(page.url()).pathname.replace(/\/league$/, "")}/league`);
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Members" })).toContainText("Pat");
+
+    await player.getByRole("link", { name: "League", exact: true }).click();
     await player.getByRole("button", { name: "Leave league" }).click();
     await player.getByRole("alertdialog").getByRole("button", { name: "Leave league" }).click();
+    await expect(player.getByText("You left Leaving soon.")).toBeVisible();
     await expect(player.getByRole("heading", { name: "Your leagues" })).toBeVisible();
     await expect(player.getByRole("link", { name: /Leaving soon/ })).toHaveCount(0);
 
     await page.reload();
+    await expect(page.getByRole("region", { name: "Members" })).toContainText("Commish");
     await expect(page.getByRole("region", { name: "Members" })).not.toContainText("Pat");
   } finally {
     await context.close();
@@ -175,21 +161,19 @@ test("admins have equal authority and can step down while keeping one admin", as
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "Shared administration" })).toBeVisible();
   const leagueUrl = page.url();
-  const inviteUrl = await page.getByLabel(/Invite link/).inputValue();
+  const inviteUrl = await page.getByLabel("Invite link", { exact: true }).inputValue();
   const contexts = [];
   try {
     for (const name of ["Pat", "Sam"]) {
-      const context = await browser.newContext();
+      const { context, page: player } = await joinLeague(browser, inviteUrl, name);
       contexts.push(context);
-      const player = await context.newPage();
-      await player.goto(inviteUrl);
-      await signUp(player, name);
-      await player.getByRole("button", { name: "Join league" }).click();
-      await expect(player).toHaveURL(/\/leagues\/[^/]+$/);
       await expect(player.getByRole("heading", { name: "Shared administration" })).toBeVisible();
       await player.goto(leagueUrl);
+      // A player's League tab: the members, and nothing to run the league with (their own row has no menu).
+      await expect(player.getByRole("region", { name: "Members" })).toContainText(name);
       await expect(player.getByRole("button", { name: "Create week" })).toHaveCount(0);
-      await expect(player.getByRole("button", { name: /^Options for / })).toHaveCount(0);
+      await expect(player.getByRole("button", { name: `Options for ${name}` })).toHaveCount(0);
+      await expect(player.getByLabel("Invite link", { exact: true })).toHaveCount(0);
 
       await page.reload();
       await memberAction(page, name, `Make ${name} a commissioner`);
@@ -229,16 +213,18 @@ test("admins have equal authority and can step down while keeping one admin", as
     await expect(pat.getByRole("menuitem", { name: "Make Commish a commissioner" })).toBeVisible();
     await pat.keyboard.press("Escape");
     await page.reload();
+    // Back to a player: the members are still listed, without the commissioner's tools.
+    await expect(page.getByRole("region", { name: "Members" })).toContainText("Commish");
     await expect(page.getByRole("button", { name: "Create week" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^Options for / })).toHaveCount(0);
-    await expect(page.getByLabel(/Invite link/)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Options for Commish" })).toHaveCount(0);
+    await expect(page.getByLabel("Invite link", { exact: true })).toHaveCount(0);
 
     await memberAction(pat, "Pat", "Revoke commissioner access for Pat");
     await pat
       .getByRole("alertdialog")
       .getByRole("button", { name: "Revoke commissioner", exact: true })
       .click();
-    await expect(pat.getByLabel(/Invite link/)).toHaveCount(0);
+    await expect(pat.getByLabel("Invite link", { exact: true })).toHaveCount(0);
     const sam = contexts[1]?.pages()[0];
     if (!sam) throw new Error("Missing Sam's page");
     await sam.reload();
@@ -249,18 +235,11 @@ test("admins have equal authority and can step down while keeping one admin", as
     await sam.getByRole("alertdialog").getByRole("button", { name: "Remove", exact: true }).click();
     await expect(sam.getByText("Commish", { exact: true })).toHaveCount(0);
     await page.reload();
-    await expect(page.getByRole("alert")).toContainText("League not found");
+    await expect(page.getByRole("alert").getByRole("heading", { name: "League not found" })).toBeVisible();
   } finally {
     for (const context of contexts) await context.close();
   }
 });
-
-/** A `datetime-local` value a few days out (read in the league's time zone), so every pick window is still open. */
-function kickoffInDays(days: number) {
-  const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T13:00`;
-}
 
 test("admins choose one season across tabs and manage existing weeks without duplicates", async ({
   page,
@@ -289,6 +268,7 @@ test("admins choose one season across tabs and manage existing weeks without dup
   await expect(page.getByRole("heading", { name: new RegExp(`Week 1 · ${nextYear}`) })).toBeVisible();
   for (const tab of ["Standings", "Results", "League"]) {
     await page.getByRole("link", { name: tab, exact: true }).click();
+    await expect(page.getByRole("link", { name: tab, exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("combobox", { name: "Season", exact: true })).toHaveValue(nextYear);
   }
   await page.getByRole("combobox", { name: "Season", exact: true }).selectOption(originalYear);
@@ -306,7 +286,12 @@ test("upcoming picks take priority over unfinished past weeks and season changes
   await page.getByRole("button", { name: "Create league" }).click();
   const originalYear = await page.getByRole("combobox", { name: "Season", exact: true }).inputValue();
 
-  for (const days of [-3, 3]) {
+  for (const [week, days] of [
+    [1, -3],
+    [2, 3],
+  ] as const) {
+    // The League tab can show the league as it was remembered for a moment: wait for the week it suggests now.
+    await expect(page.getByRole("combobox", { name: "Week", exact: true })).toHaveValue(String(week));
     await page.getByLabel("Auto-fill games and spreads").uncheck();
     await page.getByRole("button", { name: "Create week" }).click();
     await page.getByLabel("Away team").selectOption("KC");
@@ -355,7 +340,7 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await page.getByRole("radio", { name: "Hands-on" }).click();
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name: "E2E League" })).toBeVisible();
-  const inviteUrl = await page.getByLabel(/Invite link/).inputValue();
+  const inviteUrl = await page.getByLabel("Invite link", { exact: true }).inputValue();
 
   await page.getByLabel("Auto-fill games and spreads").uncheck();
   await page.getByRole("button", { name: "Create week" }).click();
@@ -375,11 +360,17 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await page.getByRole("link", { name: "Make your own picks" }).click();
   await page.getByRole("button", { name: "Chiefs -3.5" }).click();
   await page.getByRole("button", { name: "POW: KC at ATL" }).click();
-  await page.getByLabel(/Tiebreaker/).fill("44");
+  await page.getByLabel(/Tiebreaker/).fill("45");
   await page.getByRole("button", { name: "Save picks" }).click();
+  await expect(page.getByText("Picks saved.", { exact: true })).toBeVisible();
   await dismissHomeScreenOffer(page);
-  await expect(page.getByText("Picks saved.")).toBeVisible();
   await expect(page.getByText("1 of 1 picked")).toBeVisible();
+  // The home screen is suggested once per browser: a second save doesn't bring it back.
+  await page.getByLabel(/Tiebreaker/).fill("44");
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await page.getByRole("button", { name: "Save picks" }).click();
+  await expect(page.getByText("Picks saved.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Add it to your home screen" })).toHaveCount(0);
 
   // A second person follows the invite link, signs up, joins and takes the Falcons.
   const context = await browser.newContext();
@@ -397,8 +388,8 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(player.getByText("0 of 1 picked")).toBeVisible();
   await player.getByRole("button", { name: "Falcons +3.5" }).click();
   await player.getByRole("button", { name: "Save picks" }).click();
+  await expect(player.getByText("Picks saved.", { exact: true })).toBeVisible();
   await dismissHomeScreenOffer(player);
-  await expect(player.getByText("Picks saved.")).toBeVisible();
 
   // While the week is open the player sees only their own pick: the Chiefs button is not selected.
   await player.reload();
@@ -430,6 +421,8 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await page.getByRole("alertdialog").getByRole("button", { name: "Finalize week" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("Winner: Commish");
   await page.getByRole("alertdialog").getByRole("button", { name: "Write message" }).click();
+  // The dialog is gone before the draft is typed: while it closes it can take the focus back.
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
   const announcementResults = page.getByRole("region", { name: "Final results", exact: true });
   await expect(announcementResults).toContainText("Commish");
   await expect(announcementResults).toContainText("Pat");

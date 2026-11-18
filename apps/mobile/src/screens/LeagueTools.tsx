@@ -11,8 +11,9 @@ import {
 } from "@picks/shared";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
-import { type ComponentRef, type ReactNode, useRef, useState } from "react";
-import { Platform, Share, Text, TextInput, View } from "react-native";
+import { type ComponentRef, type ReactNode, useEffect, useRef, useState } from "react";
+import { Platform, Share, Text, View } from "react-native";
+import { AutoGrowInput } from "../components/AutoGrowInput";
 import { Avatar } from "../components/Avatar";
 import { ReportSheet, type ReportTarget, setBlocked } from "../components/Moderation";
 import { type Anchor, Menu, MenuItem } from "../components/Popover";
@@ -39,11 +40,27 @@ import {
 } from "./leagueUi";
 import { ReportsQueue } from "./ReportsQueue";
 
-/** How a weekly league can be run, as the League tab's settings name it. */
+/** How a weekly league can be run, as the League tab's settings name it: short, so it fits a phone's select. */
 const MANAGEMENT_LABEL: Record<LeagueManagement, string> = {
-  auto: "Automatic: weeks set up, open and close themselves",
-  manual: "Hands-on: you run each week",
+  auto: "Automatic",
+  manual: "Hands-on",
 };
+/** What the chosen way of running it means, under the select. */
+const MANAGEMENT_DETAIL: Record<LeagueManagement, string> = {
+  auto: "Weeks set up, open and close themselves.",
+  manual: "You set up, open and finalize each week.",
+};
+/** Whether this browser (or the phone) has a share sheet. A computer's browser usually has none. */
+const canShare = () =>
+  Platform.OS !== "web" || (typeof navigator !== "undefined" && typeof navigator.share === "function");
+
+/** The invite link in its box: the app's own type, quieter than typed text, wrapping rather than cut off. */
+const inviteText = {
+  fontFamily: fonts.body,
+  fontSize: 14,
+  lineHeight: 20,
+  color: colors.mutedForeground,
+} as const;
 
 export const timeZones = [
   { value: "America/New_York", label: "Eastern" },
@@ -183,6 +200,12 @@ export function LeagueTools({
         : `${target.displayName} can post again.`,
     );
   }
+  // "Copied" goes back to "Copy link" after a moment, so copying again says so again.
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
   async function copy() {
     try {
       await Clipboard.setStringAsync(inviteUrl);
@@ -193,17 +216,37 @@ export function LeagueTools({
   }
   async function share() {
     try {
-      if (Platform.OS === "web" && typeof navigator !== "undefined" && !navigator.share) {
-        await copy();
-        return;
-      }
       await Share.share({ title: league.name, message: `Join ${league.name} on POW Pick'em: ${inviteUrl}` });
     } catch {
       notifyError("Couldn't share the invite. Use Copy link instead.");
     }
   }
+  const reportsWaiting = admin && !!league.openReports;
+  const reports = admin && (
+    <Card label="Reports">
+      <Eyebrow>Reports{league.openReports ? ` (${league.openReports})` : ""}</Eyebrow>
+      <ReportsQueue path={`${base}/reports`} onChanged={reload} />
+    </Card>
+  );
+  function saveSettings() {
+    if (busy || !dirty) return;
+    const parsed = updateLeagueSchema.safeParse({
+      name,
+      timeZone,
+      ...(management !== league.management && { management }),
+    });
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message);
+    setError(undefined);
+    void run(
+      "settings",
+      () => request(base, { method: "PATCH", body: parsed.data }),
+      "League settings saved.",
+    );
+  }
   return (
     <>
+      {/* Reports waiting for a decision come first, so a commissioner sees them on opening the tab. */}
+      {reportsWaiting && reports}
       {/* The admin's tools for this league type (`LEAGUE_TYPE_SCREENS[type].AdminTools`): Set up a week, … */}
       {admin && adminTools}
       {admin && league.inviteCode && (
@@ -212,23 +255,29 @@ export function LeagueTools({
             <Eyebrow>Invite players</Eyebrow>
             <Label>Anyone with this link can join the league.</Label>
           </View>
-          {/* Read-only, so it can be selected and copied by hand, as on the web. */}
-          <TextInput
-            value={inviteUrl}
-            editable={false}
-            selectTextOnFocus
-            accessibilityLabel="Invite link"
-            style={[
-              s.input,
-              { fontFamily: "monospace", fontSize: 14, borderRadius: 100, color: colors.mutedForeground },
-            ]}
-          />
+          {Platform.OS === "web" ? (
+            // A read-only box that wraps the whole link, so it can be selected and copied by hand.
+            <AutoGrowInput
+              value={inviteUrl}
+              editable={false}
+              selectTextOnFocus
+              accessibilityLabel="Invite link"
+              style={[s.input, inviteText]}
+            />
+          ) : (
+            // A read-only text field can't be selected on iPhone; text can (press and hold).
+            <Text selectable accessibilityLabel={`Invite link: ${inviteUrl}`} style={[s.input, inviteText]}>
+              {inviteUrl}
+            </Text>
+          )}
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            <Action icon="share" onPress={() => void share()} style={{ paddingHorizontal: 16 }}>
-              Share
-            </Action>
+            {canShare() && (
+              <Action icon="share" onPress={() => void share()} style={{ paddingHorizontal: 16 }}>
+                Share
+              </Action>
+            )}
             <Action
-              secondary
+              secondary={canShare()}
               icon={copied ? "check" : "copy"}
               onPress={() => void copy()}
               style={{ paddingHorizontal: 16 }}
@@ -262,12 +311,7 @@ export function LeagueTools({
           </Action>
         </Card>
       )}
-      {admin && (
-        <Card label="Reports">
-          <Eyebrow>Reports{league.openReports ? ` (${league.openReports})` : ""}</Eyebrow>
-          <ReportsQueue path={`${base}/reports`} onChanged={reload} />
-        </Card>
-      )}
+      {!reportsWaiting && reports}
       <Card label="Members">
         <Eyebrow>Members ({league.members.length})</Eyebrow>
         <View>
@@ -347,6 +391,7 @@ export function LeagueTools({
             onChangeText={setName}
             maxLength={LEAGUE_NAME_MAX}
             editable={!busy}
+            onSubmit={saveSettings}
           />
           <Select
             label="Time zone for game times"
@@ -360,32 +405,23 @@ export function LeagueTools({
             }
           />
           {managementOptions.length > 1 && (
-            <Select
-              label="How it's run"
-              value={management}
-              onChange={setManagement}
-              disabled={!!busy}
-              choices={managementOptions.map((value) => ({ value, label: MANAGEMENT_LABEL[value] }))}
-            />
+            <View style={{ gap: 6 }}>
+              <Select
+                label="How it's run"
+                value={management}
+                onChange={setManagement}
+                disabled={!!busy}
+                choices={managementOptions.map((value) => ({ value, label: MANAGEMENT_LABEL[value] }))}
+              />
+              <Label>{MANAGEMENT_DETAIL[management]}</Label>
+            </View>
           )}
           <Failure message={error} />
           <Action
             secondary
-            disabled={!!busy || !dirty}
-            onPress={() => {
-              const parsed = updateLeagueSchema.safeParse({
-                name,
-                timeZone,
-                ...(management !== league.management && { management }),
-              });
-              if (!parsed.success) return setError(parsed.error.issues[0]?.message);
-              setError(undefined);
-              void run(
-                "settings",
-                () => request(base, { method: "PATCH", body: parsed.data }),
-                "League settings saved.",
-              );
-            }}
+            busy={busy === "settings"}
+            disabled={(!!busy && busy !== "settings") || (!dirty && busy !== "settings")}
+            onPress={saveSettings}
           >
             {busy === "settings" ? "Saving…" : "Save settings"}
           </Action>

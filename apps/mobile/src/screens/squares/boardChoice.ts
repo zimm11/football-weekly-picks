@@ -41,12 +41,15 @@ function update(leagueId: string, patch: Entry) {
 }
 
 export function setBoards(leagueId: string, boards: BoardSummary[]) {
+  for (const board of boards) rememberBoardLeague(board.id, leagueId);
   update(leagueId, { boards, error: undefined });
 }
 
 /** The boards couldn't be loaded: the tab shows why, with Try again. */
 export function setBoardsError(leagueId: string, error: string | undefined, retry: () => void) {
-  if (entry(leagueId).error !== error) update(leagueId, { error, retry });
+  const current = entry(leagueId);
+  // `retry` is also the tab's way to reload the list (pull to refresh), so it is kept from the first call.
+  if (current.error !== error || current.retry !== retry) update(leagueId, { error, retry });
 }
 
 export function chooseBoard(leagueId: string, boardId: string) {
@@ -65,6 +68,37 @@ export function forgetBoard(leagueId: string, boardId: string) {
     boards: current.boards?.filter((b) => b.id !== boardId),
     chosen: current.chosen === boardId ? undefined : current.chosen,
   });
+}
+
+/*
+ * Which league each board seen this session belongs to (kept as the board choice is: session storage on the
+ * web, memory in the native app). A board that is gone answers 404 with nothing about where it was, so this is
+ * how its not-found screen still offers the way back to its league.
+ */
+const boardLeagues = new Map<string, string>();
+const leagueKey = (boardId: string) => `picks:board-league:${boardId}`;
+
+export function rememberBoardLeague(boardId: string, leagueId: string) {
+  if (boardLeagues.get(boardId) === leagueId) return;
+  boardLeagues.set(boardId, leagueId);
+  try {
+    browserSession()?.setItem(leagueKey(boardId), leagueId);
+  } catch {
+    /* Storage is optional. */
+  }
+}
+
+/** The league a board was in, when this session has seen the board or its league's list of boards. */
+export function leagueOfBoard(boardId: string): string | undefined {
+  const known = boardLeagues.get(boardId);
+  if (known) return known;
+  try {
+    const stored = browserSession()?.getItem(leagueKey(boardId));
+    // Only ever a league id: it goes into a link.
+    return stored && /^[0-9a-f-]{36}$/i.test(stored) ? stored : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const subscribe = (listener: () => void) => {

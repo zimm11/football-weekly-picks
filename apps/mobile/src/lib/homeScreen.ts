@@ -59,14 +59,32 @@ function local(): Storage | undefined {
   }
 }
 
-const listeners = new Set<() => void>();
+/** What the player just did that makes this a good moment to suggest the home screen. */
+export type HomeScreenReason = "picks" | "pick" | "square";
 
-/** A good moment to suggest the home screen (picks were just saved). The listener decides whether to. */
-export function offerHomeScreen() {
-  for (const listener of listeners) listener();
+/**
+ * The offer sheet's lead-in: what just happened, then why the home screen helps. A squares board isn't played
+ * week by week, so it doesn't say "next week".
+ */
+export function homeScreenOfferLead(reason: HomeScreenReason = "picks") {
+  if (reason === "square") {
+    return "Square claimed. Put POW Pick'em on your home screen so the board is one tap away.";
+  }
+  const saved = reason === "pick" ? "Pick saved." : "Picks saved.";
+  return `${saved} Put POW Pick'em on your home screen so next week is one tap away.`;
 }
 
-export function onHomeScreenOffer(listener: () => void) {
+const listeners = new Set<(reason: HomeScreenReason) => void>();
+
+/**
+ * A good moment to suggest the home screen: picks were just saved (the pick sheet, the default), a survivor
+ * pick was ("pick"), or a square was claimed ("square"). The listener decides whether to.
+ */
+export function offerHomeScreen(reason: HomeScreenReason = "picks") {
+  for (const listener of listeners) listener(reason);
+}
+
+export function onHomeScreenOffer(listener: (reason: HomeScreenReason) => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

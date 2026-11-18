@@ -1,16 +1,5 @@
-import type { Browser, Page } from "@playwright/test";
-import { expect, signUp, test } from "./fixtures";
-
-/** Opens a second player's browser, signs them up through the invite link and joins the league. */
-async function join(browser: Browser, invite: string, name: string) {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto(invite);
-  await signUp(page, name);
-  await page.getByRole("button", { name: "Join league" }).click();
-  await expect(page.getByRole("heading", { name: "Moderated league" })).toBeVisible();
-  return { context, page };
-}
+import type { Page } from "@playwright/test";
+import { expect, joinLeague, test } from "./fixtures";
 
 async function openThread(page: Page, title: string) {
   await page.getByRole("link", { name: /Messages/ }).click();
@@ -27,7 +16,7 @@ test("a reported reply is removed by an admin, and blocking hides a player's mes
   test.slow();
   await page.getByLabel("League name").fill("Moderated league");
   await page.getByRole("button", { name: "Create league" }).click();
-  const invite = await page.getByLabel(/Invite link/).inputValue();
+  const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
   await page.getByRole("link", { name: "Messages", exact: true }).click();
   await page.getByRole("link", { name: "New thread" }).click();
   await page.getByLabel("Thread title").fill("Week 9 talk");
@@ -35,8 +24,11 @@ test("a reported reply is removed by an admin, and blocking hides a player's mes
   await page.getByRole("button", { name: "Create thread", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Week 9 talk" })).toBeVisible();
 
-  const pat = await join(browser, invite, "Pat");
-  const sam = await join(browser, invite, "Sam");
+  const pat = await joinLeague(browser, invite, "Pat");
+  const sam = await joinLeague(browser, invite, "Sam").catch(async (error) => {
+    await pat.context.close();
+    throw error;
+  });
   try {
     await openThread(pat.page, "Week 9 talk");
     await pat.page
@@ -60,6 +52,7 @@ test("a reported reply is removed by an admin, and blocking hides a player's mes
     await expect(reports).toContainText("Message from Pat: Spam");
     await expect(reports).toContainText("Buy my picks newsletter today!");
     await reports.getByRole("button", { name: "Remove", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Remove message", exact: true }).click();
     await expect(reports).toContainText("No reports waiting.");
 
     await sam.page.reload();
@@ -86,6 +79,16 @@ test("a reported reply is removed by an admin, and blocking hides a player's mes
     await page.getByRole("link", { name: /Week 9 talk/ }).click();
     await expect(page.getByRole("region", { name: "Message 3 by Pat", exact: true })).toContainText(
       "good luck",
+    );
+
+    // Settings lists the players Sam blocked; unblocking Pat shows Pat's messages again.
+    await sam.page.goto("/account");
+    await sam.page.getByRole("button", { name: "Unblock Pat", exact: true }).click();
+    await expect(sam.page.getByText("Pat is unblocked.")).toBeVisible();
+    await expect(sam.page.getByRole("heading", { name: "Blocked players" })).toHaveCount(0);
+    await sam.page.goBack();
+    await expect(sam.page.getByRole("region", { name: "Message 3 by Pat", exact: true })).toContainText(
+      "Fine, good luck this week.",
     );
   } finally {
     await pat.context.close();

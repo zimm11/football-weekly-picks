@@ -4,7 +4,7 @@
 // who is asking, which is the caller's job.
 
 import { games, weekRecapViews, weeks } from "@picks/db";
-import { defaultPoints, hasResult } from "@picks/shared";
+import { defaultPoints, hasResult, isPostseasonWeek } from "@picks/shared";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { recordWeekParticipants, type Store } from "./context";
 import { logError } from "./logging";
@@ -64,7 +64,9 @@ export async function importSlate(
     logError("schedule_import", err, requestId);
     return "Couldn't load the schedule. Add games by hand, or try the import again.";
   }
-  if (provided.length === 0) return "No games are scheduled for that week yet.";
+  // Weeks past 18 are only ever playoff rounds (weekly week creation stops at 18).
+  if (provided.length === 0)
+    return `No games are scheduled for that ${isPostseasonWeek(week.number) ? "round" : "week"} yet.`;
   const existing = new Map((await gamesOf(db, week.id)).map((g) => [g.externalId, g]));
   for (const g of provided) {
     const current = existing.get(g.externalId);

@@ -395,8 +395,15 @@ async function alertOperators(deps: AppDeps, reportId: string, now: Date) {
 const reporter = alias(profiles, "reporter");
 const subject = alias(profiles, "subject");
 
-/** Open reports, newest information first, shaped for the queue screens. */
-async function queueItems(db: AppDeps["db"], where: SQL | undefined): Promise<ReportItem[]> {
+/**
+ * Open reports, newest information first, shaped for the queue screens. `viewerId` is who is reviewing: an item
+ * says whether they can open its thread (`canOpen`), which the operator can't in a league they aren't in.
+ */
+async function queueItems(
+  db: AppDeps["db"],
+  where: SQL | undefined,
+  viewerId: string,
+): Promise<ReportItem[]> {
   const rows = await db
     .select({
       report: contentReports,
@@ -408,6 +415,13 @@ async function queueItems(db: AppDeps["db"], where: SQL | undefined): Promise<Re
       subjectRole: leagueMembers.role,
       others: sql<number>`(select count(*)::int - 1 from ${contentReports} o
         where o.target_key = ${contentReports.targetKey} and o.status = 'open' and o.source <> 'appeal')`,
+      // The same rule as the thread route: a current member, and the opening message isn't gone for them.
+      canOpen: sql<boolean>`exists (select 1 from ${leagueMembers} v
+        where v.league_id = ${contentReports.leagueId} and v.user_id = ${viewerId} and v.removed_at is null
+          and not exists (select 1 from ${messagePosts} op
+            where op.thread_id = ${messagePosts.threadId} and op.position = 1
+              and (op.removed_at is not null
+                or (op.hidden_at is not null and op.author_id <> ${viewerId} and v.role <> 'admin'))))`,
     })
     .from(contentReports)
     .leftJoin(leagues, eq(leagues.id, contentReports.leagueId))
@@ -452,6 +466,7 @@ async function queueItems(db: AppDeps["db"], where: SQL | undefined): Promise<Re
         : null,
     otherReports: Math.max(0, row.others),
     aboutAdmin: row.subjectRole === "admin",
+    ...(post && row.threadTitle !== null && { canOpen: !!row.canOpen }),
   }));
 }
 
@@ -810,7 +825,9 @@ export function moderationRoutes(deps: AppDeps) {
     .get("/leagues/:leagueId/reports", auth, leagueParam, async (c) => {
       const { leagueId } = c.req.valid("param");
       requireAdmin((await requireMember(db, leagueId, c.var.user.id)).role);
-      return c.json<ReportQueue>({ items: await queueItems(db, adminReviewable(leagueId)) });
+      return c.json<ReportQueue>({
+        items: await queueItems(db, adminReviewable(leagueId), c.var.user.id),
+      });
     })
     .post("/reports/:reportId/resolve", auth, reportParam, body(resolveReportSchema), async (c) => {
       const { reportId } = c.req.valid("param");
@@ -916,7 +933,7 @@ export function moderationRoutes(deps: AppDeps) {
     })
     .get("/operator/reports", auth, operator, async (c) => {
       const clock = now();
-      const items = await queueItems(db, and(eq(contentReports.status, "open")));
+      const items = await queueItems(db, and(eq(contentReports.status, "open")), c.var.user.id);
       // Players with three or more removals in 30 days, for a suspension decision.
       const repeat = await db
         .select({

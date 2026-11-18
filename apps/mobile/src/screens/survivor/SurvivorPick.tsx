@@ -12,8 +12,9 @@ import {
 } from "@picks/shared";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../../components/Icon";
+import { hoverFill, pressState, ringInside } from "../../components/pressState";
 import { TeamLogo } from "../../components/TeamLogo";
 import { colors, fonts } from "../../components/ui";
 import { request } from "../../lib/api";
@@ -28,10 +29,24 @@ import {
   survivorGameLocked,
   survivorMatchup,
   teamChoice,
+  teamsUsed,
+  waitingLine,
 } from "../../lib/survivor";
 import { gameDays, kickoffTime } from "../../lib/weekPresentation";
+import { LeagueTabScroll } from "../LeagueTabScroll";
 import type { LeagueTabProps } from "../leagueTypeScreens";
-import { Card, Disclosure, Failure, Heading, Label, StatGrid, StatTile, s, useEditsGuard } from "../leagueUi";
+import {
+  Action,
+  Card,
+  Disclosure,
+  Failure,
+  Heading,
+  Label,
+  StatGrid,
+  StatTile,
+  s,
+  useEditsGuard,
+} from "../leagueUi";
 import { MatchupSheet } from "../MatchupSheet";
 import { WeekAction, WeekBadge, w } from "../weekUi";
 import { SurvivorSkeleton, useSurvivor } from "./useSurvivor";
@@ -79,12 +94,13 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
     );
   }, [lockedDraft, draft, draftGame]);
 
+  // Pulling down reloads the pool this tab shows, and the league around it.
+  const refresh = () => Promise.all([survivor.refresh(), reload()]);
   if (!view) {
     return (
-      <ScrollView contentContainerStyle={[s.content, { gap: 20 }]}>
-        {header}
+      <LeagueTabScroll header={header} reload={refresh}>
         {survivor.error ? <Failure message={survivor.error} retry={survivor.reload} /> : <SurvivorSkeleton />}
-      </ScrollView>
+      </LeagueTabScroll>
     );
   }
   const week = currentWeek(view);
@@ -94,6 +110,8 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
   const shown = draft ?? (saved ? { gameId: saved.gameId, side: saved.side } : null);
   const headline = pickHeadline(view, userId);
   const lives = view.settings?.lives ?? 1;
+  // Between weeks too: the teams already used don't go back to "none" while the pool waits for the next slate.
+  const used = teamsUsed(view, userId);
   const open = week ? week.games.some((g) => !survivorGameLocked(g, now)) : false;
   const pickedGame = shown && week?.games.find((g) => g.id === shown.gameId);
   const pickedTeam =
@@ -115,7 +133,7 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
       setDraft(null);
       setMessage("Pick saved.");
       survivor.reload();
-      offerHomeScreen();
+      offerHomeScreen("pick");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save your pick. Try again.");
     } finally {
@@ -125,21 +143,7 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={false}
-            onRefresh={() => {
-              reload();
-              survivor.reload();
-            }}
-            tintColor={colors.foreground}
-          />
-        }
-        contentContainerStyle={[s.content, { gap: 16 }]}
-      >
-        {header}
+      <LeagueTabScroll header={header} reload={refresh}>
         <Failure message={survivor.error} retry={survivor.reload} />
         <View style={{ gap: 8 }}>
           {week && (
@@ -159,8 +163,8 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
               <StatTile label="Lives left" value={me.livesLeft} detail={`of ${lives}`} />
               <StatTile
                 label="Teams used"
-                value={view.current?.used.length ?? 0}
-                detail={view.current?.used.length ? "can't be picked again" : "None yet"}
+                value={used.length}
+                detail={used.length ? "can't be picked again" : "None yet"}
               />
               <StatTile
                 label="Still in"
@@ -170,15 +174,15 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
             </StatGrid>
           )}
           {/* Abbreviations on one line of their own: a season's worth of full names would swamp the tile. */}
-          {me?.alive && !view.over && !!view.current?.used.length && (
-            <Label>{`Used: ${view.current.used.map((u) => u.team).join(", ")}`}</Label>
+          {me?.alive && !view.over && used.length > 0 && (
+            <Label>{`Used: ${used.map((u) => u.team).join(", ")}`}</Label>
           )}
           {view.current?.usedWaived && canPick && (
             <Label>Every team still to play this week is one you've used, so you may pick any of them.</Label>
           )}
           {saved?.byAdmin && <Label>A commissioner entered this pick for you.</Label>}
         </Card>
-        {!week && <NoWeek view={view} />}
+        {!week && <NoWeek view={view} leagueId={league.id} />}
         {week &&
           gameDays(week.games.map(asMatchupGame), view.timeZone).map((group) => (
             <View key={group.day} style={{ gap: 8 }}>
@@ -212,14 +216,15 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
             out nobody.
           </Label>
         </Disclosure>
-      </ScrollView>
+      </LeagueTabScroll>
       {canPick && (open || dirty) && (
         <View style={st.savebar}>
           <View style={st.saveContents}>
             <WeekAction
               label={saving ? "Saving…" : "Save pick"}
               style={{ minWidth: 144 }}
-              disabled={saving || !dirty}
+              disabled={!dirty && !saving}
+              busy={saving}
               onPress={() => void save()}
             />
             <View style={{ flex: 1, gap: 4 }}>
@@ -243,18 +248,18 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
   );
 }
 
-function NoWeek({ view }: { view: SurvivorView }) {
-  const detail = !view.settings
-    ? view.role === "admin"
-      ? "Start the pool from the League tab."
-      : "A commissioner can start the pool from the League tab."
-    : view.over
-      ? "The pool is over. See how it finished on Standings."
-      : "The next week opens by itself as soon as its games are listed.";
+/** No week is being played: which week is next and what opens it, or where to see how the pool finished. */
+function NoWeek({ view, leagueId }: { view: SurvivorView; leagueId: string }) {
+  const waiting = waitingLine(view);
   return (
     <Card>
       <Heading>No week is being played</Heading>
-      <Label>{detail}</Label>
+      <Label>{waiting.detail}</Label>
+      {waiting.standings && (
+        <Action secondary compact icon="trophy" href={`/leagues/${leagueId}/standings`}>
+          Final standings
+        </Action>
+      )}
     </Card>
   );
 }
@@ -313,12 +318,17 @@ function GameCard({
               aria-pressed={choice.selected}
               disabled={choice.disabled}
               onPress={() => onChoose(game, side)}
-              style={({ pressed }) => [
-                st.team,
-                choice.selected && st.selected,
-                choice.disabled && !choice.selected && st.disabled,
-                pressed && { transform: [{ scale: 0.98 }] },
-              ]}
+              style={(state) => {
+                const { pressed, hovered } = pressState(state);
+                return [
+                  st.team,
+                  // A team that can be picked lifts under the mouse.
+                  hovered && !choice.selected && { backgroundColor: colors.raisedHover },
+                  choice.selected && st.selected,
+                  choice.disabled && !choice.selected && st.disabled,
+                  pressed && { transform: [{ scale: 0.98 }] },
+                ];
+              }}
             >
               {choice.selected && (
                 <View style={st.chosen}>
@@ -345,7 +355,7 @@ function GameCard({
         accessibilityRole="button"
         accessibilityLabel={`Matchup: ${survivorMatchup(game)}`}
         onPress={onInsight}
-        style={({ pressed }) => [st.insights, pressed && { backgroundColor: colors.raised }]}
+        style={(state) => [st.insights, { backgroundColor: hoverFill(state) }, ringInside]}
       >
         <Icon name="chart" size={16} color={colors.mutedForeground} filled />
         <Text style={[st.disclosure, { flex: 1 }]}>Stats & news</Text>

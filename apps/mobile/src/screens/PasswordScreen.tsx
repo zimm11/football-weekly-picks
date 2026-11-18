@@ -1,8 +1,11 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { type ComponentRef, useEffect, useRef, useState } from "react";
+import type { TextInput } from "react-native";
 import { BackLink } from "../components/BackLink";
 import { Body, Button, Card, ErrorMessage, Field, Screen, Title } from "../components/ui";
 import { getSupabase } from "../lib/api";
+import { authFailure } from "../lib/authErrors";
+import { useDesktopFocus } from "../lib/desktopFocus";
 import { useAction, useFormGuard } from "../lib/hooks";
 import { notifyDone } from "../lib/notify";
 export function PasswordScreen() {
@@ -11,6 +14,9 @@ export function PasswordScreen() {
   const [saved, setSaved] = useState(false);
   const router = useRouter();
   const action = useAction();
+  const first = useRef<ComponentRef<typeof TextInput>>(null);
+  const second = useRef<ComponentRef<typeof TextInput>>(null);
+  useDesktopFocus(first);
   useFormGuard(!saved && (!!password || !!confirmation), () => {
     setPassword("");
     setConfirmation("");
@@ -21,42 +27,45 @@ export function PasswordScreen() {
       router.replace("/");
     }
   }, [saved, router]);
+  const save = () =>
+    void action.run(async () => {
+      if (password.length < 6) throw new Error("Use a password of at least six characters.");
+      if (password !== confirmation) throw new Error("The passwords don't match.");
+      const { error } = await (await getSupabase()).auth.updateUser({ password });
+      if (error) throw authFailure(error);
+      setPassword("");
+      setConfirmation("");
+      setSaved(true);
+    });
   return (
     <Screen narrow contentStyle={{ maxWidth: 416, paddingTop: 32 }}>
       <ViewHeader />
       <Card>
         <Field
+          ref={first}
           label="New password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           autoComplete="new-password"
+          textContentType="newPassword"
           editable={!action.busy}
+          enterKeyHint="next"
+          onSubmit={() => second.current?.focus()}
         />
         <Field
+          ref={second}
           label="Confirm new password"
           value={confirmation}
           onChangeText={setConfirmation}
           secureTextEntry
           autoComplete="new-password"
+          textContentType="newPassword"
           editable={!action.busy}
+          onSubmit={save}
         />
         <ErrorMessage message={action.error} />
-        <Button
-          title={action.busy ? "Saving…" : "Save password"}
-          disabled={action.busy}
-          onPress={() =>
-            void action.run(async () => {
-              if (password.length < 6) throw new Error("Use a password of at least six characters.");
-              if (password !== confirmation) throw new Error("The passwords don't match.");
-              const { error } = await (await getSupabase()).auth.updateUser({ password });
-              if (error) throw error;
-              setPassword("");
-              setConfirmation("");
-              setSaved(true);
-            })
-          }
-        />
+        <Button title={action.busy ? "Saving…" : "Save password"} busy={action.busy} onPress={save} />
         <Button
           title="Cancel"
           variant="ghost"

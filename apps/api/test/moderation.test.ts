@@ -343,6 +343,49 @@ describe.skipIf(!process.env.DATABASE_URL)("content moderation (requires `pnpm d
     );
     const view = await detail(SAM, thread.body.id);
     expect(view.body.postingBlocked).toMatch(/muted/);
+    // The board says so too, so the app can show it in place of the New thread form.
+    expect((await board(SAM)).body.postingBlocked).toBe(view.body.postingBlocked);
+    expect((await board(PAT)).body.postingBlocked).toBeNull();
+  });
+
+  it("tells the board about a league mute and a suspension, and nothing once lifted", async () => {
+    expect((await board(SAM)).body.postingBlocked).toBeNull();
+    await call(ADMIN, "PUT", `/leagues/${leagueId}/members/${SAM}/mute`, { duration: "24h" });
+    expect((await board(SAM)).body.postingBlocked).toMatch(/muted/);
+    await call(ADMIN, "PUT", `/leagues/${leagueId}/members/${SAM}/mute`, { duration: null });
+    expect((await board(SAM)).body.postingBlocked).toBeNull();
+    await db.update(profiles).set({ suspendedAt: new Date() }).where(eq(profiles.userId, SAM));
+    expect((await board(SAM)).body.postingBlocked).toBe(MODERATION_MESSAGES.suspended);
+  });
+
+  it("says whether the reviewer can open a reported message's thread", async () => {
+    const { threadId, postId } = await threadWithReply();
+    await reportPost(ALEX, threadId, postId);
+    const mine = (i: { post: { id: string } | null }) => i.post?.id === postId;
+    // The league's commissioner is in the league.
+    const adminQueue = await call<ReportQueue>(ADMIN, "GET", `/leagues/${leagueId}/reports`);
+    expect(adminQueue.body.items.find(mine)?.canOpen).toBe(true);
+    // The operator isn't, so the thread would answer 404 for them.
+    const outside = await call<ReportQueue>(OPERATOR, "GET", "/operator/reports");
+    expect(outside.body.items.find(mine)?.canOpen).toBe(false);
+    expect((await detail(OPERATOR, threadId)).status).toBe(404);
+    await db.insert(leagueMembers).values({ leagueId, userId: OPERATOR });
+    const inside = await call<ReportQueue>(OPERATOR, "GET", "/operator/reports");
+    expect(inside.body.items.find(mine)?.canOpen).toBe(true);
+    expect((await detail(OPERATOR, threadId)).status).toBe(200);
+    // A thread whose opening message was removed is gone for everyone, members included.
+    const opening = (await detail(PAT, threadId)).body.posts[0];
+    assert(opening);
+    await db.update(messagePosts).set({ removedAt: new Date() }).where(eq(messagePosts.id, opening.id));
+    const gone = await call<ReportQueue>(OPERATOR, "GET", "/operator/reports");
+    expect(gone.body.items.find(mine)?.canOpen).toBe(false);
+    // A report that isn't about a message has no thread to open.
+    await call(PAT, "POST", "/reports", { kind: "league_name", leagueId, reason: "other" });
+    const named = (await call<ReportQueue>(OPERATOR, "GET", "/operator/reports")).body.items.find(
+      (i) => i.kind === "league_name" && i.league?.id === leagueId,
+    );
+    assert(named);
+    expect(named).not.toHaveProperty("canOpen");
   });
 
   it("lets a muted or suspended player keep picking", async () => {

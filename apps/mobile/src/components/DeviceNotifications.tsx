@@ -7,7 +7,7 @@ import { Body, Card } from "./ui";
 export function DeviceNotifications() {
   return (
     <Card>
-      <SettingsHeading>On this device</SettingsHeading>
+      <SettingsHeading level={3}>On this device</SettingsHeading>
       <Body muted>
         New threads, missing-pick reminders, and results and updates as notifications. They can show league
         names and thread titles on your lock screen.

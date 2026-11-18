@@ -22,6 +22,11 @@ export type LeagueTabProps = {
   /** The league's header (name, season selector, the tab row on wide screens), to put first. */
   header: ReactNode;
   reload: () => void;
+  /**
+   * Whether `league` is this visit's own answer from the server. Until it is, the league on screen may be the
+   * remembered copy from an earlier visit: wait for it before choosing something once from it.
+   */
+  fresh?: boolean;
 };
 
 /** The League tab's admin tools, shown to admins above the shared invite, members and settings cards. */

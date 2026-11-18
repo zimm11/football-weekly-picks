@@ -1,4 +1,4 @@
-import { expect, signUp, test } from "./fixtures";
+import { expect, joinLeague, test } from "./fixtures";
 
 test("a player deletes their account from Settings and can sign up again with the same email", async ({
   page,
@@ -9,14 +9,10 @@ test("a player deletes their account from Settings and can sign up again with th
   test.slow();
   await page.getByLabel("League name").fill("Deletion league");
   await page.getByRole("button", { name: "Create league" }).click();
-  const invite = await page.getByLabel(/Invite link/).inputValue();
+  const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
 
-  const context = await browser.newContext();
+  const { context, page: player, account } = await joinLeague(browser, invite, "Pat");
   try {
-    const player = await context.newPage();
-    await player.goto(invite);
-    const account = await signUp(player, "Pat");
-    await player.getByRole("button", { name: "Join league" }).click();
     await expect(player.getByRole("heading", { name: "Deletion league" })).toBeVisible();
     await player.getByRole("link", { name: /Messages/ }).click();
     await player.getByRole("link", { name: "New thread" }).click();
@@ -53,9 +49,11 @@ test("a player deletes their account from Settings and can sign up again with th
     await player.getByLabel("Password").fill(account.password);
     await player.getByRole("button", { name: "Create account" }).click();
     await player.getByLabel("Display name").fill("Pat again");
-    await player.getByRole("checkbox", { name: "I agree to the Terms of use" }).click();
+    await player.getByRole("checkbox", { name: "I'm 18 or older and I agree to the Terms of use" }).click();
     await player.getByRole("button", { name: "Continue" }).click();
     await expect(player.getByRole("button", { name: "Pat again" })).toBeVisible();
+    // Your leagues has loaded, and it is empty.
+    await expect(player.getByRole("heading", { name: "Get ready for your first week" })).toBeVisible();
     await expect(player.getByText("Deletion league")).toHaveCount(0);
   } finally {
     await context.close();

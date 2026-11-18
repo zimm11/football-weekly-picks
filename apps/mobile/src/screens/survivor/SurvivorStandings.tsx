@@ -1,6 +1,6 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Heading and Label render native Text.
 import { type SurvivorView, weekLabel } from "@picks/shared";
-import type { ReactNode } from "react";
+import { type ComponentRef, type ReactNode, useRef } from "react";
 import { Platform, ScrollView, Text, useWindowDimensions, View, type ViewStyle } from "react-native";
 import { Avatar } from "../../components/Avatar";
 import { Icon } from "../../components/Icon";
@@ -24,8 +24,22 @@ import { SurvivorSkeleton, useSurvivor } from "./useSurvivor";
 
 /** The web build's first column stays put while the weeks scroll sideways. */
 const stickyFirst = { position: "sticky", left: 0, zIndex: 1 } as unknown as ViewStyle;
-const CELL = 64;
 const ROW = 60;
+
+/**
+ * Starts a sideways scroller at its far end, once per `columns` count: the newest week is the one players
+ * come for, and the earlier ones are a swipe back. After that the player's own scrolling is left alone.
+ */
+function useStartAtEnd(columns: number) {
+  const ref = useRef<ComponentRef<typeof ScrollView>>(null);
+  const placed = useRef(-1);
+  const onContentSizeChange = () => {
+    if (placed.current === columns) return;
+    placed.current = columns;
+    ref.current?.scrollToEnd({ animated: false });
+  };
+  return { ref, onContentSizeChange };
+}
 
 /**
  * Standings: the survivor grid. Players down the side (alive first, the rest by how long they lasted), weeks
@@ -35,13 +49,7 @@ export function SurvivorStandings({ league, year, userId, header, reload }: Leag
   const survivor = useSurvivor(league.id, year);
   const view = survivor.data;
   return (
-    <LeagueTabScroll
-      header={header}
-      reload={() => {
-        reload();
-        survivor.reload();
-      }}
-    >
+    <LeagueTabScroll header={header} reload={() => Promise.all([survivor.refresh(), reload()])}>
       {!view ? (
         survivor.error ? (
           <Failure message={survivor.error} retry={survivor.reload} />
@@ -103,7 +111,11 @@ function SurvivorBoard({ view, userId }: { view: SurvivorView; userId: string })
 function CellContent({ cell }: { cell: GridCell }) {
   if (cell.kind === "missed") {
     return (
-      <Text accessibilityLabel={cell.label} style={[s.muted, { color: colors.destructive }]}>
+      <Text
+        accessibilityLabel={cell.label}
+        numberOfLines={1}
+        style={[s.muted, { fontSize: 12, lineHeight: 16, color: colors.destructive }]}
+      >
         No pick
       </Text>
     );
@@ -179,8 +191,12 @@ function PlayerName({ view, player, mine }: { view: SurvivorView; player: Surviv
 
 function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek[]; userId: string }) {
   const { width } = useWindowDimensions();
-  const nameWidth = width < 440 ? 160 : 210;
-  const lives = (view.settings?.lives ?? 1) > 1;
+  // A phone keeps as many weeks in view as it can: a narrower player column and cells, and no Lives column
+  // (the line under each name already says "Alive · 1 of 2 lives").
+  const phone = width < 560;
+  const nameWidth = phone ? 148 : 210;
+  const CELL = phone ? 56 : 64;
+  const lives = !phone && (view.settings?.lives ?? 1) > 1;
   const columns: { key: string; title: string; label: string; cell: (p: SurvivorPlayer) => ReactNode }[] = [
     ...(lives
       ? [
@@ -221,6 +237,8 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
   // Takes up the rest of a row wider than its columns, so the row's divider runs to the card's edge.
   const filler = <View aria-hidden style={[cell, { flexGrow: 1, paddingHorizontal: 0 }]} />;
   const label = `Survivor grid: ${view.players.length} players, ${weeks.length} weeks`;
+  // Opens on the newest weeks; the player column stays pinned as the older ones scroll in.
+  const scroller = useStartAtEnd(columns.length);
   if (Platform.OS === "web")
     return (
       <View
@@ -228,7 +246,13 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
         aria-label={label}
         style={{ borderRadius: 16, overflow: "hidden", backgroundColor: colors.card }}
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
+        <ScrollView
+          ref={scroller.ref}
+          onContentSizeChange={scroller.onContentSizeChange}
+          horizontal
+          showsHorizontalScrollIndicator
+          contentContainerStyle={{ flexGrow: 1 }}
+        >
           <View style={{ flexGrow: 1 }}>
             <View role="row" style={{ flexDirection: "row" }}>
               <View
@@ -308,6 +332,8 @@ function Grid({ view, weeks, userId }: { view: SurvivorView; weeks: SurvivorWeek
         ))}
       </View>
       <ScrollView
+        ref={scroller.ref}
+        onContentSizeChange={scroller.onContentSizeChange}
         horizontal
         showsHorizontalScrollIndicator
         accessibilityLabel="Weeks, scroll horizontally"

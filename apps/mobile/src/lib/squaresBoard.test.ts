@@ -6,6 +6,8 @@ import {
   claimRoom,
   digitAt,
   gameFromDraft,
+  gridLayout,
+  gridMove,
   quarterRows,
   randomOpenSquare,
   scheduleWeekAt,
@@ -82,6 +84,56 @@ describe("squares board presentation", () => {
       ["Q3", 10],
       ["Final", null],
     ]);
+  });
+
+  it("says a quarter that landed on nobody's square has no winner", () => {
+    const base = { view: drawn, userId: "me", current: false };
+    expect(cellLabel({ ...base, row: 3, col: 4, square: undefined, wins: ["half"] })).toBe(
+      "Open square, Chiefs 1, Eagles 0, hit Halftime, nobody's square",
+    );
+    expect(cellLabel({ ...base, row: 2, col: 3, square: pat, userId: "pat", wins: ["half"] })).toBe(
+      "Your square, Chiefs 4, Eagles 1, won Halftime",
+    );
+    expect(winsText(["half"], false)).toBe("Hit Halftime: nobody's square, so no winner");
+    expect(winsText(["q1", "final"], false)).toBe("Hit Q1 and Final: nobody's square, so no winner");
+    expect(winsText(["half"], true)).toBe("Won Halftime");
+    expect(winsText([], false)).toBe("Nothing yet");
+  });
+
+  it("sizes the grid so all ten columns fit the width it has", () => {
+    // Content width is the screen less the page's 16px gutters.
+    for (const screen of [320, 360, 393, 430, 559, 560, 768, 928, 1280]) {
+      const content = Math.min(screen, 928) - 32;
+      const layout = gridLayout(content);
+      const card = (layout.bleed ? content + 32 : content) - 2 * layout.padding;
+      expect(layout.width, `fits at ${screen}`).toBeLessThanOrEqual(card);
+      expect(layout.width).toBe(layout.axis + 10 * (layout.cell + 2));
+    }
+    // A phone: edge to edge, as large as the width allows.
+    expect(gridLayout(393 - 32)).toMatchObject({ bleed: true, cell: 33, twoLines: true });
+    expect(gridLayout(320 - 32)).toMatchObject({ bleed: true, cell: 26, twoLines: false });
+    // From 560px the cells are full tap targets, and they stop growing at 56px.
+    expect(gridLayout(560 - 32)).toMatchObject({ bleed: false, cell: 45 });
+    expect(gridLayout(768 - 32).cell).toBe(56);
+    expect(gridLayout(896 - 32)).toMatchObject({ bleed: false, cell: 56, width: 32 + 580 });
+    // The type never gets too small to read.
+    expect(gridLayout(320 - 32).labelSize).toBeGreaterThanOrEqual(9);
+    expect(gridLayout(320 - 32).initialsSize).toBeGreaterThanOrEqual(11);
+  });
+
+  it("moves the keyboard focus one square at a time and stops at the edges", () => {
+    expect(gridMove("ArrowRight", 0, 0)).toEqual({ row: 0, col: 1 });
+    expect(gridMove("ArrowDown", 0, 0)).toEqual({ row: 1, col: 0 });
+    expect(gridMove("ArrowLeft", 4, 4)).toEqual({ row: 4, col: 3 });
+    expect(gridMove("ArrowUp", 4, 4)).toEqual({ row: 3, col: 4 });
+    expect(gridMove("ArrowLeft", 0, 0)).toBeUndefined();
+    expect(gridMove("ArrowUp", 0, 0)).toBeUndefined();
+    expect(gridMove("ArrowRight", 9, 9)).toBeUndefined();
+    expect(gridMove("ArrowDown", 9, 9)).toBeUndefined();
+    expect(gridMove("Home", 3, 7)).toEqual({ row: 3, col: 0 });
+    expect(gridMove("End", 3, 7)).toEqual({ row: 3, col: 9 });
+    expect(gridMove("Home", 3, 0)).toBeUndefined();
+    expect(gridMove("Enter", 3, 3)).toBeUndefined();
   });
 
   it("titles a board and counts the squares left to claim", () => {

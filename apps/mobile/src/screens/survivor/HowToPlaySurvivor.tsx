@@ -40,7 +40,9 @@ export function HowToPlaySurvivor() {
     <View style={{ gap: 20 }}>
       <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
         <Icon name="heart" size={28} color={colors.primary} />
-        <Title style={{ fontSize: 30, lineHeight: 34 }}>Survivor</Title>
+        <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
+          Survivor
+        </Title>
       </View>
       <Body muted>Pick one team to win each week, never the same team twice. Last player standing wins.</Body>
       <Card>
@@ -56,7 +58,7 @@ export function HowToPlaySurvivor() {
           >
             <Text
               accessibilityRole="header"
-              aria-level={4}
+              aria-level={3}
               style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
             >
               {title}

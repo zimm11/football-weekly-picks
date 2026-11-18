@@ -22,13 +22,25 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-/** Shortens text to about `max` characters, at a word boundary. */
+/**
+ * Shortens text to about `max` characters, at a word boundary. Runs of spaces become one; line breaks are kept
+ * (a blank line at most between paragraphs), so a message reads in an email as it was written.
+ */
 export function excerpt(text: string, max = 400): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  const flat = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
   if (flat.length <= max) return flat;
   const cut = flat.slice(0, max);
-  return `${cut.slice(0, cut.lastIndexOf(" ") > max * 0.6 ? cut.lastIndexOf(" ") : max)}…`;
+  const space = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("\n"));
+  return `${cut.slice(0, space > max * 0.6 ? space : max).trimEnd()}…`;
 }
+
+/** Escaped text with its line breaks as `<br>`: escape first, so nothing a player typed becomes markup. */
+export const escapeLines = (value: string) => escapeHtml(value).replaceAll("\n", "<br>\n");
 
 type Links = {
   /** The button's destination. */
@@ -91,7 +103,7 @@ export function newThreadEmail(input: {
   const stop = "Turn off new-thread emails";
   const heading = title;
   const bodyHtml = `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:${MUTED};">${escapeHtml(authorName)} started a new thread on the ${escapeHtml(leagueName)} message board.</p>
-<blockquote style="margin:0;padding:12px 16px;border-left:3px solid ${BLUE};background:#f5f7fb;font-size:15px;line-height:1.5;color:${NAVY};white-space:pre-line;">${escapeHtml(preview)}</blockquote>`;
+<blockquote style="margin:0;padding:12px 16px;border-left:3px solid ${BLUE};background:#f5f7fb;font-size:15px;line-height:1.5;color:${NAVY};">${escapeLines(preview)}</blockquote>`;
   return {
     // Names and titles are single lines by rule; one stored before the rule must still not break a header.
     subject: toSingleLine(`${leagueName}: ${title}`),

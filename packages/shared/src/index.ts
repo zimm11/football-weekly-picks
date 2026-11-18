@@ -298,6 +298,13 @@ export type LeagueDetail = {
   members: Member[];
   /** Newest first. Members don't see draft weeks. */
   weeks: WeekSummary[];
+  /**
+   * The years of this league's seasons, newest first, when its type's season exists before any of its weeks does
+   * (playoff and survivor: from Start season, or the league's creation). The app opens the league on the current
+   * one (`preferredSeasonYear`) rather than on last year's finished season. Empty for weekly pick'em and squares.
+   * Optional: an older API doesn't send it.
+   */
+  startedSeasons?: number[];
   /** The most recently finalized week whose results this player hasn't been shown yet, if any. */
   recapWeekId: string | null;
   /** Admins only: open moderation reports they can review in this league. Null for members. */
@@ -466,6 +473,12 @@ export type ThreadDetail = {
   postingBlocked: string | null;
   /** The player hasn't agreed to the terms yet, so the app asks before their first post. */
   needsTerms: boolean;
+  /**
+   * The highest message position the reader had marked read before this request (0 for a thread they never
+   * opened): messages after it are new to them, so the app opens the thread there. Absent from servers older
+   * than the field.
+   */
+  readVersion?: number;
   posts: MessagePost[];
 };
 

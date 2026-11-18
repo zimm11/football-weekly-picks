@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { harnessState, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 // The plumbing the simulated journeys stand on: the Worker's clock and feed move, and the app sees the clock.

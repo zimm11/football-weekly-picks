@@ -23,6 +23,8 @@ export const colors = {
   powTint: `${palette.pow}1f`,
   winTint: `${palette.win}1a`,
   destructiveTint: `${palette.destructive}1a`,
+  /** A control already filled with `raised` (a secondary button, a selected row) under the mouse. */
+  raisedHover: "#1e2d5e",
   popover: "#131f41",
   overlay: "#00000099",
   avatarForeground: "#ffffff",

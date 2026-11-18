@@ -1,13 +1,14 @@
 import { type BoardFeedGame, LAST_WEEK, NFL_TEAMS, seasonYear, TEAM_ABBRS, weekLabel } from "@picks/shared";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
+import { DateTimeField } from "../../components/DateTimeField";
 import { messageOf, request } from "../../lib/api";
 import { now } from "../../lib/clock";
 import type { GameDraft } from "../../lib/squaresBoard";
 import { kickoffDay, kickoffTime } from "../../lib/weekPresentation";
 import { ChoiceList } from "../ChoiceList";
 import { timeZones } from "../LeagueTools";
-import { Failure, Input, Label, Select } from "../leagueUi";
+import { Failure, Label, Select } from "../leagueUi";
 
 /**
  * Choosing a board's game: the Super Bowl (the default, once the feed lists it), any game from the feed for a
@@ -19,12 +20,15 @@ export function GameChooser({
   draft,
   onChange,
   disabled,
+  onSubmit,
 }: {
   leagueId: string;
   timeZone: string;
   draft: GameDraft;
   onChange: (draft: GameDraft) => void;
   disabled?: boolean;
+  /** Enter in the kickoff field: the form's own submit (Create board, Save game). */
+  onSubmit?: () => void;
 }) {
   const [games, setGames] = useState<BoardFeedGame[]>();
   const [error, setError] = useState<string>();
@@ -134,13 +138,13 @@ export function GameChooser({
               />
             </View>
           </View>
-          <Input
+          {/* The browser's own date and time picker on the web; a text field for YYYY-MM-DD HH:mm on iPhone. */}
+          <DateTimeField
             label={`Kickoff (${timeZones.find((zone) => zone.value === timeZone)?.label ?? timeZone} time)`}
-            placeholder="YYYY-MM-DD HH:mm"
             value={draft.kickoff}
             onChangeText={(value) => set({ kickoff: value })}
-            autoCapitalize="none"
             editable={!disabled}
+            onSubmit={onSubmit}
           />
         </>
       )}

@@ -1,15 +1,16 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: Step renders its children inside native Text.
-import { type ReactNode, useEffect, useId, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { type ReactNode, useEffect, useState } from "react";
+import { Text, View } from "react-native";
 import {
   claimHomeScreenOffer,
   detectPlatform,
   type HomeScreenPlatform,
+  type HomeScreenReason,
   homeScreenHelpAvailable,
+  homeScreenOfferLead,
   onHomeScreenOffer,
 } from "../lib/homeScreen";
-import { Icon } from "./Icon";
+import { BottomSheet } from "./BottomSheet";
 import { Button, colors, fonts } from "./ui";
 
 const text = { fontFamily: fonts.body, fontSize: 16, lineHeight: 23, color: colors.mutedForeground };
@@ -43,7 +44,14 @@ function Steps({ title, steps }: { title: string; steps: string[] }) {
  * The install steps. The sheet passes the player's own platform so a phone sees only its steps; elsewhere
  * both show.
  */
-export function HomeScreenInstructions({ platform = "other" }: { platform?: HomeScreenPlatform }) {
+export function HomeScreenInstructions({
+  platform = "other",
+  inSettings = false,
+}: {
+  platform?: HomeScreenPlatform;
+  /** Shown in Settings itself, which already says to come back there: leaves out "open Settings". */
+  inSettings?: boolean;
+}) {
   const ios = (
     <Steps
       title="iPhone or iPad · Safari"
@@ -80,10 +88,12 @@ export function HomeScreenInstructions({ platform = "other" }: { platform?: Home
         Open the new POW Pick'em icon to get back to your leagues. You may need to sign in again the first
         time. An internet connection is required.
       </Text>
-      <Text style={note}>
-        Want pick reminders on your phone? In the app, open Settings from the account menu and tap Enable
-        notifications.
-      </Text>
+      {!inSettings && (
+        <Text style={note}>
+          Want pick reminders on your phone? In the app, open Settings from the account menu and tap Enable
+          notifications.
+        </Text>
+      )}
       <Text style={note}>
         Can't find the option? If you opened a link inside another app, open this site in Safari or Chrome
         first.
@@ -108,75 +118,18 @@ function SheetFrame({
   children: ReactNode;
   footer?: ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
-  const id = useId();
-  // On the web, Modal's own element is the dialog; these name and describe it.
-  const dialog = { "aria-label": title, "aria-describedby": `${id}-description` } as object;
+  // The app's one bottom sheet. The offer is mounted only while it shows, so it slides out before closing.
   return (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} {...dialog}>
-      <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay }}>
-        {/* Tapping outside closes, as the web sheet does; the Close button is the accessible way. */}
-        <Pressable
-          accessible={false}
-          importantForAccessibility="no"
-          tabIndex={-1}
-          onPress={onClose}
-          style={StyleSheet.absoluteFill}
-        />
-        <View
-          accessibilityViewIsModal
-          style={{
-            maxHeight: "90%",
-            width: "100%",
-            maxWidth: 672,
-            alignSelf: "center",
-            backgroundColor: colors.card,
-            borderTopLeftRadius: 22,
-            borderTopRightRadius: 22,
-            paddingBottom: Math.max(insets.bottom, 24),
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "flex-start", paddingLeft: 16, paddingTop: 16 }}>
-            <View style={{ flex: 1, gap: 6, paddingTop: 6 }}>
-              <Text
-                role="heading"
-                aria-level={2}
-                style={{
-                  fontFamily: fonts.displayBold,
-                  fontSize: 24,
-                  lineHeight: 28,
-                  color: colors.foreground,
-                  textTransform: "uppercase",
-                }}
-              >
-                {title}
-              </Text>
-              <Text id={`${id}-description`} style={note}>
-                {description}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={onClose}
-              style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                marginRight: 4,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 10,
-                backgroundColor: pressed ? colors.raised : "transparent",
-              })}
-            >
-              <Icon name="close" size={20} color={colors.mutedForeground} />
-            </Pressable>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>{children}</ScrollView>
-          {footer && <View style={{ paddingHorizontal: 16 }}>{footer}</View>}
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet
+      visible={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      footer={footer}
+      exitFirst
+    >
+      {children}
+    </BottomSheet>
   );
 }
 
@@ -190,8 +143,11 @@ export function HomeScreenSheet({
   open: boolean;
   onClose: () => void;
   platform: HomeScreenPlatform;
-  /** Opened by the app (after saving picks) rather than asked for: says why and offers "Not now". */
-  offer?: boolean;
+  /**
+   * Opened by the app rather than asked for: says why and offers "Not now". The reason is what the player just
+   * did (saved picks, saved a survivor pick, claimed a square); `true` is the pick sheet's.
+   */
+  offer?: boolean | HomeScreenReason;
 }) {
   return (
     <SheetFrame
@@ -200,7 +156,7 @@ export function HomeScreenSheet({
       title="Add it to your home screen"
       description={
         offer
-          ? "Picks saved. Put POW Pick'em on your home screen so next week is one tap away."
+          ? homeScreenOfferLead(offer === true ? "picks" : offer)
           : "Keep POW Pick'em a tap away, with its own icon on your phone."
       }
       footer={offer ? <Button title="Not now" variant="outline" onPress={onClose} /> : undefined}
@@ -225,20 +181,21 @@ export function useHomeScreenHelp() {
 }
 
 /**
- * On a phone browser, the first save of picks opens the steps once on its own (`offerHomeScreen`). Mounted
+ * On a phone browser, the first save of picks (or of a survivor pick, or the first claimed square) opens the
+ * steps once on its own (`offerHomeScreen`, which says which it was so the sheet's first words match). Mounted
  * once for the whole app; renders nothing in the native app, on a computer, or in the installed web app.
  */
 export function HomeScreenOffer() {
   const [platform] = useState(() => detectPlatform());
-  const [shown, setShown] = useState(false);
+  const [shown, setShown] = useState<HomeScreenReason | null>(null);
   useEffect(
     () =>
-      onHomeScreenOffer(() => {
+      onHomeScreenOffer((reason) => {
         if (!homeScreenHelpAvailable() || platform === "other" || !claimHomeScreenOffer()) return;
-        setShown(true);
+        setShown(reason);
       }),
     [platform],
   );
   if (!shown) return null;
-  return <HomeScreenSheet open offer platform={platform} onClose={() => setShown(false)} />;
+  return <HomeScreenSheet open offer={shown} platform={platform} onClose={() => setShown(null)} />;
 }

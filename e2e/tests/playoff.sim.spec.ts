@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { signUp } from "./fixtures";
+import { expect, signUp, test } from "./fixtures";
 import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 // Playoff pick'em, create to champion, with nobody pressing Open or Finalize: the dev harness scripts the 2027
@@ -83,9 +82,12 @@ test("a Guillotine playoff league runs from Wild Card to champion by itself", as
   await setClock(request, "2028-01-31T06:00:00Z");
   await runJobs(request, leagues);
 
-  // Out of picking since the Divisional round, but the Super Bowl guess is still open.
+  // Out of picking since the Divisional round, but the Super Bowl guess is still open. The Conference round's
+  // recap comes first.
   await page.goto(leagueUrl);
-  await page.getByRole("button", { name: "Close" }).click();
+  const conference = page.getByRole("dialog", { name: "Conference is final" });
+  await conference.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(conference).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /^Super Bowl/ })).toBeVisible();
   await expect(page.getByText("You're out of picking")).toBeVisible();
   await expect(page.getByRole("button", { name: "Eagles -3, home" })).toBeDisabled();

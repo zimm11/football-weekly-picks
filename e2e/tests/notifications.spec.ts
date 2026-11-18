@@ -36,7 +36,9 @@ test("Your leagues suggests notifications once, and Settings holds them with iPh
   // Old links to the notifications screen land on Settings.
   await page.goto("/notifications");
   await expect(page.getByRole("heading", { name: "On this device" })).toBeVisible();
+  // Both live in Settings now: the open account menu has no entry of its own for either.
   await page.getByRole("button", { name: signedIn.displayName }).click();
+  await expect(page.getByRole("menuitem", { name: "Settings", exact: true })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Notifications", exact: true })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "Add to home screen" })).toHaveCount(0);
 });

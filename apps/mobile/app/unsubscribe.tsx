@@ -5,7 +5,9 @@ import { useState } from "react";
 import { ScrollView, Text } from "react-native";
 import { request } from "../src/lib/api";
 import { useAuth } from "../src/lib/auth";
-import { Action, Card, Failure, go, s } from "../src/screens/leagueUi";
+import { withNext } from "../src/lib/links";
+import { usePageTitle } from "../src/lib/pageTitle";
+import { Action, Card, Failure, s } from "../src/screens/leagueUi";
 
 /** Public route. Opening a link never changes preferences; only the explicit button posts. */
 export default function Unsubscribe() {
@@ -23,6 +25,7 @@ export default function Unsubscribe() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string>();
   const { session, refreshProfile } = useAuth();
+  usePageTitle("Unsubscribe");
   async function unsubscribe() {
     if (busy) return;
     setBusy(true);
@@ -40,7 +43,7 @@ export default function Unsubscribe() {
   }
   return (
     <ScrollView style={s.page} contentContainerStyle={s.content}>
-      <Text accessibilityRole="header" style={s.title}>
+      <Text accessibilityRole="header" aria-level={1} style={s.title}>
         {done ? "You're unsubscribed" : "Unsubscribe"}
       </Text>
       <Card>
@@ -55,7 +58,7 @@ export default function Unsubscribe() {
             <Text style={s.text}>Stop getting {label} from POW Pick'em?</Text>
             <Failure message={error} />
             <Action
-              disabled={busy}
+              busy={busy}
               onPress={() => {
                 void unsubscribe();
               }}
@@ -67,7 +70,8 @@ export default function Unsubscribe() {
         <Text style={s.muted}>
           {session ? "Choose which emails you get in Settings." : "Sign in to choose which emails you get."}
         </Text>
-        <Action link secondary onPress={() => go(session ? "/account" : "/login")}>
+        {/* Signing in comes back here to Settings, which the line above promises. */}
+        <Action secondary href={session ? "/account" : withNext("/login", "/account")}>
           {session ? "Settings" : "Sign in"}
         </Action>
       </Card>

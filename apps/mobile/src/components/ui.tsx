@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { type ComponentRef, type ReactNode, type Ref, useState } from "react";
 import {
-  Modal,
+  Platform,
   Pressable,
+  type PressableStateCallbackType,
   ScrollView,
   type StyleProp,
   StyleSheet,
@@ -12,8 +13,13 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { fieldDefaults } from "../lib/fieldProps";
+import { useScrollRestore } from "../lib/scrollRestore";
+import { AppLink, type LinkHow } from "./AppLink";
+import { BottomSheet } from "./BottomSheet";
 import { Icon, type IconName } from "./Icon";
+import { atRest, busyProps, pressState } from "./pressState";
 import { colors, fonts } from "./theme";
 
 export { colors, fonts } from "./theme";
@@ -78,10 +84,16 @@ export function Screen({
   narrow?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
 }) {
+  // In a browser, Back and Forward return to where the page was scrolled (lib/scrollRestore).
+  const scrollRef = useScrollRestore();
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
       <ScrollView
+        ref={scrollRef}
         keyboardShouldPersistTaps="handled"
+        // A focused field stays above the iPhone keyboard, and dragging the page puts the keyboard away.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
         contentContainerStyle={[styles.content, narrow && { maxWidth: 512 }, contentStyle]}
       >
         {children}
@@ -92,9 +104,21 @@ export function Screen({
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
-export function Title({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
+/**
+ * A page title. `level` is its place in the page's outline for screen readers (1 the page, 2 a section,
+ * 3 a part of one); it doesn't change how the title looks.
+ */
+export function Title({
+  children,
+  style,
+  level = 1,
+}: {
+  children: ReactNode;
+  style?: StyleProp<TextStyle>;
+  level?: 1 | 2 | 3 | 4;
+}) {
   return (
-    <Text accessibilityRole="header" style={[styles.title, style]}>
+    <Text accessibilityRole="header" aria-level={level} style={[styles.title, style]}>
       {children}
     </Text>
   );
@@ -117,6 +141,7 @@ export function Eyebrow({ children }: { children: ReactNode }) {
     </Text>
   );
 }
+const ignore = () => {};
 export function Button({
   title,
   onPress,
@@ -128,10 +153,19 @@ export function Button({
   style,
   small = false,
   link = false,
+  busy = false,
+  href,
+  how,
 }: {
   title: string;
-  onPress: () => void;
+  /** Optional with `href`, where it replaces the default navigation. */
+  onPress?: () => void;
   disabled?: boolean;
+  /**
+   * Its own request is running: it looks disabled and ignores presses, but stays a keyboard stop so the
+   * focus isn't dropped to the page. Use it rather than `disabled` for "Saving…".
+   */
+  busy?: boolean;
   secondary?: boolean;
   destructive?: boolean;
   variant?: "primary" | "secondary" | "outline" | "ghost" | "link" | "destructive";
@@ -140,8 +174,15 @@ export function Button({
   small?: boolean;
   /** It goes to another screen: announced as a link, as on the web. */
   link?: boolean;
+  /**
+   * An in-app path: the button is a real link (`AppLink`: an `<a href>` on the web, so Enter and new-tab
+   * clicks work), opened through the unsaved-work guard. `how` is push (default), replace or dismissTo.
+   */
+  href?: string;
+  how?: LinkHow;
 }) {
   const kind = variant ?? (destructive ? "destructive" : secondary ? "secondary" : "primary");
+  const off = disabled || busy;
   const tint =
     kind === "primary"
       ? colors.primaryForeground
@@ -150,30 +191,39 @@ export function Button({
         : kind === "link"
           ? colors.primary
           : colors.foreground;
-  return (
-    <Pressable
-      accessibilityRole={link ? "link" : "button"}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
+  const shared = {
+    ...busyProps(disabled, busy, Platform.OS === "web"),
+    style: (state: PressableStateCallbackType) => {
+      const { pressed, hovered } = busy ? atRest : pressState(state);
+      return [
         styles.button,
         kind !== "primary" && {
           backgroundColor:
             kind === "secondary"
-              ? colors.raised
+              ? hovered
+                ? colors.raisedHover
+                : colors.raised
               : kind === "destructive"
-                ? colors.destructiveTint
-                : "transparent",
+                ? hovered
+                  ? `${colors.destructive}2e`
+                  : colors.destructiveTint
+                : hovered && kind !== "link"
+                  ? colors.raised
+                  : "transparent",
         },
         kind === "outline" && { borderColor: colors.input },
         kind === "destructive" && { borderColor: `${colors.destructive}66` },
         small && { paddingHorizontal: 12 },
-        disabled && { opacity: 0.45 },
+        off && { opacity: 0.45 },
+        busy && { cursor: "auto" },
+        hovered && (kind === "primary" || kind === "link") && { opacity: 0.9 },
         pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
         style,
-      ]}
-    >
+      ];
+    },
+  };
+  const content = (
+    <>
       {icon && <Icon name={icon} size={small ? 16 : 20} color={tint} />}
       <Text
         style={[
@@ -184,19 +234,65 @@ export function Button({
       >
         {title}
       </Text>
+    </>
+  );
+  if (href !== undefined)
+    return (
+      <AppLink href={href} how={how} onPress={busy ? ignore : onPress} {...shared}>
+        {content}
+      </AppLink>
+    );
+  return (
+    <Pressable accessibilityRole={link ? "link" : "button"} onPress={busy ? ignore : onPress} {...shared}>
+      {content}
     </Pressable>
   );
 }
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+/**
+ * A labelled text field. Beyond `TextInput`'s props:
+ *
+ * - `onSubmit` runs when the player presses Enter (or the keyboard's return key) in a single-line field:
+ *   pass the form's submit, or focus the next field (`enterKeyHint="next"` with `ref` on the next one).
+ *   The return key says "done" unless `enterKeyHint`/`returnKeyType` says otherwise.
+ * - `ref` reaches the `TextInput` (`ref.current?.focus()`).
+ * - A `secureTextEntry` field turns off capitalization, autocorrect and spell-check by itself.
+ */
+export function Field({
+  label,
+  onSubmit,
+  ref,
+  ...props
+}: Omit<TextInputProps, "ref"> & {
+  label: string;
+  onSubmit?: () => void;
+  ref?: Ref<ComponentRef<typeof TextInput>>;
+}) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}>{label}</Text>
       <TextInput
+        ref={ref}
         accessibilityLabel={label}
         placeholderTextColor={colors.mutedForeground}
         selectionColor={colors.primary}
+        onSubmitEditing={onSubmit && !props.multiline ? () => onSubmit() : undefined}
+        {...fieldDefaults({ submits: !!onSubmit, ...props }, Platform.OS === "web")}
         {...props}
-        style={[styles.input, props.editable === false && { opacity: 0.7 }, props.style]}
+        onFocus={(event) => {
+          setFocused(true);
+          props.onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          props.onBlur?.(event);
+        }}
+        style={[
+          styles.input,
+          focused && { borderColor: colors.primary },
+          props.editable === false && { opacity: 0.7 },
+          props.style,
+        ]}
       />
     </View>
   );
@@ -268,6 +364,10 @@ export function Badge({
     </View>
   );
 }
+/**
+ * A bottom sheet over the current screen (`BottomSheet`). The ✕ is named "Close <title>"; a tap outside,
+ * Escape and the phone's back button close it too.
+ */
 export function Sheet({
   visible,
   onClose,
@@ -279,79 +379,9 @@ export function Sheet({
   title: string;
   children: ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay }}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          accessibilityRole="button"
-          accessibilityLabel={`Close ${title}`}
-          onPress={onClose}
-        />
-        <View
-          accessibilityViewIsModal
-          style={{
-            maxHeight: "90%",
-            width: "100%",
-            maxWidth: 672,
-            alignSelf: "center",
-            backgroundColor: colors.card,
-            borderTopLeftRadius: 22,
-            borderTopRightRadius: 22,
-            paddingBottom: Math.max(insets.bottom, 16),
-          }}
-        >
-          <View
-            style={{
-              width: 40,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: colors.mutedForeground,
-              opacity: 0.4,
-              alignSelf: "center",
-              marginTop: 10,
-            }}
-          />
-          <View
-            style={{
-              paddingHorizontal: 20,
-              paddingTop: 8,
-              paddingBottom: 12,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <Text
-              accessibilityRole="header"
-              style={{
-                fontFamily: fonts.displayBold,
-                fontSize: 24,
-                color: colors.foreground,
-                flex: 1,
-                textTransform: "uppercase",
-              }}
-            >
-              {title}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Close ${title}`}
-              onPress={onClose}
-              style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-            >
-              <Icon name="close" size={20} color={colors.mutedForeground} />
-            </Pressable>
-          </View>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingHorizontal: 20, gap: 16, paddingBottom: 16 }}
-          >
-            {children}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose} title={title} closeLabel={`Close ${title}`}>
+      {children}
+    </BottomSheet>
   );
 }

@@ -34,6 +34,8 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
   const powHits = results.entries.filter((entry) => entry.powWon).length;
   // A playoff round has no winner and no Low Point Loser: one champion, after the Super Bowl.
   const playoff = view.leagueType === "playoff";
+  // A playoff round before the Super Bowl has no tiebreaker game, so nothing to guess or show.
+  const hasTiebreaker = !playoff || !!view.tiebreakerGameId;
   return (
     <View style={{ gap: 16 }}>
       <View role="region" aria-label="Week summary" style={s.stats}>
@@ -73,12 +75,14 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
           detail={`${powHits} of ${results.entries.length} POWs hit`}
           style={s.stat}
         />
-        <WeekStat
-          label="Tiebreaker total"
-          value={actual ?? "—"}
-          detail={me?.tiebreakerGuess != null ? `You guessed ${me.tiebreakerGuess}` : undefined}
-          style={s.stat}
-        />
+        {hasTiebreaker && (
+          <WeekStat
+            label="Tiebreaker total"
+            value={actual ?? "—"}
+            detail={me?.tiebreakerGuess != null ? `You guessed ${me.tiebreakerGuess}` : undefined}
+            style={s.stat}
+          />
+        )}
       </View>
       {winners.length > 0 && (
         <View style={w.row}>
@@ -100,6 +104,7 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
             actual={actual}
             mine={entry.userId === userId}
             playoff={playoff}
+            hasTiebreaker={hasTiebreaker}
             powBonus={view.powBonus}
           />
         ))}
@@ -122,6 +127,7 @@ function PlayerResult({
   actual,
   mine,
   playoff = false,
+  hasTiebreaker = true,
   powBonus,
 }: {
   entry: Results["entries"][number];
@@ -130,6 +136,7 @@ function PlayerResult({
   actual: number | null;
   mine: boolean;
   playoff?: boolean;
+  hasTiebreaker?: boolean;
   powBonus?: number;
 }) {
   const [gridWidth, setGridWidth] = useState(0);
@@ -165,12 +172,16 @@ function PlayerResult({
             <Text style={[w.small, { fontFamily: fonts.medium }]}>W–L</Text>
             <Text style={s.cell}>{formatRecord(entry)}</Text>
           </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={[w.small, { fontFamily: fonts.medium }]}>
-              Tiebreaker{actual === null ? "" : ` (${actual})`}
-            </Text>
-            <Text style={s.cell}>{entry.tiebreakerGuess ?? "—"}</Text>
-          </View>
+          {hasTiebreaker ? (
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[w.small, { fontFamily: fonts.medium }]}>
+                Tiebreaker{actual === null ? "" : ` (${actual})`}
+              </Text>
+              <Text style={s.cell}>{entry.tiebreakerGuess ?? "—"}</Text>
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
         </View>
         <View style={s.picks} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
           {games.map((game) => {
@@ -242,7 +253,16 @@ function PlayerResult({
   );
 }
 
-export function WeekAwardCards({ view, showWinner = false }: { view: WeekView; showWinner?: boolean }) {
+/** `raised` inside a sheet (the recap), where a card in the sheet's own fill would disappear. */
+export function WeekAwardCards({
+  view,
+  showWinner = false,
+  raised = false,
+}: {
+  view: WeekView;
+  showWinner?: boolean;
+  raised?: boolean;
+}) {
   if (view.status !== "final" || !view.results) return null;
   const { results } = view;
   const awards = weekAwards({
@@ -322,8 +342,8 @@ export function WeekAwardCards({ view, showWinner = false }: { view: WeekView; s
     <View role="region" aria-label="Week awards" style={{ gap: 12 }}>
       <WeekCaption>Awards</WeekCaption>
       {list.map((award) => (
-        <View key={award.key} style={s.award}>
-          <View style={s.awardIcon}>
+        <View key={award.key} style={[s.award, raised && { backgroundColor: colors.raised }]}>
+          <View style={[s.awardIcon, raised && { backgroundColor: colors.raisedHover }]}>
             <Icon name={award.icon} size={24} color={award.tone} filled />
           </View>
           <View style={{ flex: 1, gap: 2 }}>

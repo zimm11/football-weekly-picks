@@ -10,9 +10,11 @@ import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { BackLink } from "../src/components/BackLink";
 import { Icon, type IconName } from "../src/components/Icon";
+import { hoverFill } from "../src/components/pressState";
 import { Body, Button, Card, colors, fonts, styles, Title } from "../src/components/ui";
 import { useAuth } from "../src/lib/auth";
-import { openScreen } from "../src/lib/navigation";
+import { usePageTitle } from "../src/lib/pageTitle";
+import { useScrollRestore } from "../src/lib/scrollRestore";
 import { HowToPlayManagement, HowToPlayPlayoff } from "../src/screens/playoff/HowToPlayPlayoff";
 import { HowToPlaySquares } from "../src/screens/squares/HowToPlaySquares";
 import { HowToPlaySurvivor } from "../src/screens/survivor/HowToPlaySurvivor";
@@ -93,7 +95,7 @@ const everyLeagueSteps = [
   ],
   [
     "Manage your account",
-    "Tap your name in the header to change your name or password, open Settings, or sign out. In Settings, open Profile picture to choose a profile logo or switch back to your initials. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only commissioner, make someone else a commissioner first. The Privacy policy, linked in Settings, says what POW Pick'em keeps about you.",
+    "Tap your profile picture at the top right to open the account menu: change your name or password, open Settings, or sign out. In Settings, open Profile picture to choose a profile logo or switch back to your initials. Forgot your password? Use Forgot password? on the sign-in form to get a reset link by email. To leave a league, open its League tab and press Leave league; your results from weeks already played stay in the standings, and rejoining later doesn't change them. To delete your account, open Settings and choose Delete account: your email, name, devices and messages are deleted at once, and your results from weeks already played stay as Deleted player. If you're a league's only commissioner, make someone else a commissioner first. The Privacy policy, linked in Settings, says what POW Pick'em keeps about you.",
   ],
 ];
 function Steps({ items }: { items: string[][] }) {
@@ -128,7 +130,7 @@ function Steps({ items }: { items: string[][] }) {
           <View style={{ flex: 1, gap: 4 }}>
             <Text
               accessibilityRole="header"
-              aria-level={4}
+              aria-level={3}
               style={{ fontFamily: fonts.semibold, fontSize: 18, lineHeight: 26, color: colors.foreground }}
             >
               {title}
@@ -144,17 +146,14 @@ function SectionHeading({ title, icon }: { title: string; icon: IconName }) {
   return (
     <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
       <Icon name={icon} size={28} color={colors.primary} />
-      <Title style={{ fontSize: 30, lineHeight: 34 }}>{title}</Title>
+      <Title level={2} style={{ fontSize: 30, lineHeight: 34 }}>
+        {title}
+      </Title>
     </View>
   );
 }
 /** The tabs: one per league type, named and iconed from the registry. */
-const TABS: { type: LeagueType; label: string }[] = [
-  { type: "weekly", label: "Weekly" },
-  { type: "playoff", label: "Playoffs" },
-  { type: "squares", label: "Squares" },
-  { type: "survivor", label: "Survivor" },
-];
+const TABS: LeagueType[] = ["weekly", "playoff", "squares", "survivor"];
 const isLeagueType = (value: unknown): value is LeagueType =>
   typeof value === "string" && (LEAGUE_TYPES as readonly string[]).includes(value);
 
@@ -165,27 +164,28 @@ function TypeTabs({ value, onChange }: { value: LeagueType; onChange: (type: Lea
       aria-label="Games"
       style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
     >
-      {TABS.map(({ type, label }) => {
+      {TABS.map((type) => {
         const selected = type === value;
         return (
           <Pressable
             key={type}
             accessibilityRole="tab"
-            accessibilityLabel={LEAGUE_TYPE_INFO[type].name}
             accessibilityState={{ selected }}
             aria-selected={selected}
             onPress={() => onChange(type)}
-            style={({ pressed }) => ({
+            style={(state) => ({
               flexGrow: 1,
-              flexBasis: 120,
+              flexBasis: 140,
               minHeight: 44,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
               gap: 8,
-              paddingHorizontal: 16,
+              paddingHorizontal: 12,
               borderRadius: 999,
-              backgroundColor: selected ? colors.primary : pressed ? colors.card : colors.raised,
+              backgroundColor: selected
+                ? colors.primary
+                : hoverFill(state, colors.raised, colors.raisedHover),
             })}
           >
             <Icon
@@ -200,7 +200,7 @@ function TypeTabs({ value, onChange }: { value: LeagueType; onChange: (type: Lea
                 color: selected ? colors.primaryForeground : colors.foreground,
               }}
             >
-              {label}
+              {LEAGUE_TYPE_INFO[type].name}
             </Text>
           </Pressable>
         );
@@ -210,9 +210,12 @@ function TypeTabs({ value, onChange }: { value: LeagueType; onChange: (type: Lea
 }
 
 export default function HowToPlay() {
+  usePageTitle("How to play");
   const auth = useAuth();
   const router = useRouter();
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  // In a browser, Back and Forward return to where the guide was scrolled.
+  const scrollRef = useScrollRestore(scroll);
   const [positions, setPositions] = useState<Record<string, number>>({});
   // `?section=<league type>` (the "How … works" links on New league and the home page) opens that type's tab.
   const { section } = useLocalSearchParams<{ section?: string }>();
@@ -228,7 +231,7 @@ export default function HowToPlay() {
   const jump = (id: string) => scroll.current?.scrollTo({ y: positions[id] ?? 0, animated: true });
   return (
     <ScrollView
-      ref={scroll}
+      ref={scrollRef}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={[styles.content, { gap: 32, paddingTop: 32 }]}
     >
@@ -244,11 +247,10 @@ export default function HowToPlay() {
           play Playoff pick'em, Squares, or Survivor instead.
         </Body>
         <Button
-          link
           title={auth.session ? "Go to your leagues" : "Sign in or create an account"}
           style={{ alignSelf: "flex-start" }}
           icon="chevron-right"
-          onPress={() => void openScreen("/")}
+          href="/"
         />
       </View>
       <TypeTabs value={tab} onChange={choose} />
@@ -292,7 +294,7 @@ export default function HowToPlay() {
               </View>
               <Body muted style={{ fontSize: 14, lineHeight: 20 }}>
                 A winning pick earns the game’s points. Losing or missing picks earn zero. A push earns zero
-                and is neither a win nor a loss. Use the spread shown in the app; it stays fixed unless an
+                and is neither a win nor a loss. Use the spread shown in the app; it stays fixed unless a
                 commissioner edits it.
               </Body>
             </Card>
@@ -428,12 +430,7 @@ export default function HowToPlay() {
       </View>
       <View style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }}>
         <Body muted>Ready for the next slate?</Body>
-        <Button
-          link
-          title={auth.session ? "Go to your leagues" : "Get started"}
-          icon="chevron-right"
-          onPress={() => void openScreen("/")}
-        />
+        <Button title={auth.session ? "Go to your leagues" : "Get started"} icon="chevron-right" href="/" />
       </View>
     </ScrollView>
   );

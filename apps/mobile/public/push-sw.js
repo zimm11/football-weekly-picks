@@ -2,11 +2,17 @@
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
+/*
+ * Every in-app destination a notification may open, and nothing else (an allowlist against open redirects):
+ * a league and its tabs, a thread, a week and its manage screen, a squares board and its manage screen.
+ * Anything else opens Your leagues. Keep in step with `internalPath` in src/lib/links.ts (the iPhone app's copy).
+ */
+const ID = "[a-f0-9-]{36}";
+const DESTINATION = new RegExp(
+  `^/(?:leagues/${ID}(?:/(?:messages(?:/${ID})?|results|standings|league))?|weeks/${ID}(?:/manage)?|boards/${ID}(?:/manage)?)$`,
+);
 function safePath(path) {
-  return typeof path === "string" &&
-    /^\/(weeks\/[a-f0-9-]{36}|leagues\/[a-f0-9-]{36}\/messages\/[a-f0-9-]{36})$/.test(path)
-    ? path
-    : "/";
+  return typeof path === "string" && DESTINATION.test(path) ? path : "/";
 }
 
 self.addEventListener("push", (event) => {

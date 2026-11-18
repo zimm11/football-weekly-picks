@@ -9,8 +9,10 @@ import {
   weekLabel,
 } from "@picks/shared";
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AppLink } from "../../components/AppLink";
 import { PreferenceToggle } from "../../components/PreferenceToggle";
+import { hoverFill, ringInside } from "../../components/pressState";
 import { request } from "../../lib/api";
 import { notifyDone, notifyError } from "../../lib/notify";
 import { confirmDiscard } from "../../lib/unsaved";
@@ -47,14 +49,21 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
     if (saved) setFormat(saved);
   }, [saved]);
   const [busy, setBusy] = useState<string>();
-  const [round, setRound] = useState<number>(
-    PLAYOFF_ROUNDS.find((n) => !league.weeks.some((w) => w.number === n)) ?? PLAYOFF_ROUNDS[0],
-  );
+  // The admin's choice holds while the rounds stay the same; when a refresh brings other rounds (a remembered
+  // league shown before its refresh), the suggestion follows them.
+  const suggestedRound =
+    PLAYOFF_ROUNDS.find((n) => !league.weeks.some((w) => w.number === n)) ?? PLAYOFF_ROUNDS[0];
+  const roundsKey = league.weeks.map((w) => w.number).join(",");
+  const [roundChoice, setRoundChoice] = useState<{ round: number; rounds: string }>();
+  const round = roundChoice?.rounds === roundsKey ? roundChoice.round : suggestedRound;
+  const setRound = (value: number) => setRoundChoice({ round: value, rounds: roundsKey });
   const [importGames, setImportGames] = useState(true);
   // The format is fixed once the Wild Card round is under way.
   const locked = playoffFormatLocked(league.weeks);
   const changed = saved !== format;
-  useEditsGuard(changed && !locked && !busy, () => saved && setFormat(saved));
+  // Only a change from the saved format is unsaved work: until the standings answer there is nothing to compare
+  // with, and a tab change then must not ask "Leave without saving?".
+  useEditsGuard(changed && !!saved && !locked && !busy, () => saved && setFormat(saved));
   async function run(action: string, task: () => Promise<void>) {
     if (busy || !(await confirmDiscard())) return;
     setBusy(action);
@@ -92,7 +101,8 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
           <Label>The format is fixed now that the Wild Card round has kicked off.</Label>
         ) : (
           <Action
-            disabled={!!busy || (!changed && !!saved)}
+            disabled={(!!busy && busy !== "start") || (!changed && !!saved)}
+            busy={busy === "start"}
             onPress={() =>
               void run("start", async () => {
                 await request(`/leagues/${league.id}/seasons`, {
@@ -116,27 +126,29 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
           {[...league.weeks]
             .sort((a, b) => a.number - b.number)
             .map((week) => (
-              <Pressable
+              <AppLink
                 key={week.id}
-                accessibilityRole="link"
+                href={`/weeks/${week.id}/manage`}
                 accessibilityLabel={`Manage ${weekLabel(week.number)}`}
-                onPress={() => void go(`/weeks/${week.id}/manage`)}
-                style={({ pressed }) => ({
-                  minHeight: 56,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  borderTopWidth: 1,
-                  borderTopColor: colors.border,
-                  backgroundColor: pressed ? colors.raised : "transparent",
-                })}
+                style={(state) => [
+                  {
+                    minHeight: 56,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.border,
+                    backgroundColor: hoverFill(state),
+                  },
+                  ringInside,
+                ]}
               >
                 <Text style={[s.subtitle, { fontSize: 20 }]}>{weekLabel(week.number)}</Text>
                 <Pill inline tone={week.status === "open" ? "primary" : "muted"}>
                   {WEEK_PHASE_LABEL[week.phase]}
                 </Pill>
-              </Pressable>
+              </AppLink>
             ))}
         </View>
         <Label>
@@ -153,14 +165,23 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
           }))}
         />
         {existing ? (
-          <Action link secondary disabled={!!busy} onPress={() => go(`/weeks/${existing.id}/manage`)}>
+          <Action secondary disabled={!!busy} href={`/weeks/${existing.id}/manage`}>
             Manage round
           </Action>
         ) : (
           <>
+            {/* The choice sits above the button it changes. */}
+            <PreferenceToggle
+              small
+              label="Auto-fill games and spreads"
+              checked={importGames}
+              onChange={setImportGames}
+              disabled={!!busy}
+            />
             <Action
               secondary
-              disabled={!!busy}
+              disabled={!!busy && busy !== "round"}
+              busy={busy === "round"}
               onPress={() =>
                 void run("round", async () => {
                   const created = await request<{ id: string; importError: string | null }>(
@@ -175,13 +196,6 @@ export function PlayoffAdminTools({ league, year, reload }: AdminToolsProps) {
             >
               {busy === "round" ? "Creating…" : "Create round"}
             </Action>
-            <PreferenceToggle
-              small
-              label="Auto-fill games and spreads"
-              checked={importGames}
-              onChange={setImportGames}
-              disabled={!!busy}
-            />
           </>
         )}
       </Card>

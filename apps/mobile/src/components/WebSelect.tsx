@@ -9,8 +9,10 @@ export type WebSelectProps = {
   choices: { value: string; label: string }[];
   onChange: (value: string) => void;
   disabled?: boolean;
-  /** The round season pill rather than a full-width field. */
+  /** The round season pill rather than a full-width field. It is as wide as its chosen label. */
   compact?: boolean;
+  /** The pill's least width. */
+  minWidth?: number;
 };
 
 /**

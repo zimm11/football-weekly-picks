@@ -100,13 +100,35 @@ for (const file of copies) {
   });
   test(`${app}: notification clicks only open app destinations, never external or executable URLs`, async () => {
     const { handlers, opened } = worker();
-    for (const url of [
+    const id = "11111111-1111-4111-8111-111111111111";
+    const other = "22222222-2222-4222-8222-222222222222";
+    // Every path the API puts in a notification (league events, reminders, new threads).
+    const destinations = [
+      `/weeks/${id}`,
+      `/weeks/${id}/manage`,
+      `/leagues/${id}`,
+      `/leagues/${id}/results`,
+      `/leagues/${id}/standings`,
+      `/leagues/${id}/messages`,
+      `/leagues/${id}/messages/${other}`,
+      `/leagues/${id}/league`,
+      `/boards/${id}`,
+      `/boards/${id}/manage`,
+    ];
+    const refused = [
       "https://evil.test",
       "//evil.test",
       "javascript:alert(1)",
       "/reset-password#token=secret",
-      "/weeks/11111111-1111-4111-8111-111111111111",
-    ]) {
+      "/account",
+      `/boards/${id}/delete`,
+      `/boards/${id}?next=https://evil.test`,
+      `/leagues/${id}/settings`,
+      `/leagues/${id}/../../account`,
+      "/boards/not-an-id",
+      `https://evil.test/boards/${id}`,
+    ];
+    for (const url of [...refused, ...destinations]) {
       let done;
       handlers.notificationclick({
         notification: { close() {}, data: { url } },
@@ -117,8 +139,8 @@ for (const file of copies) {
       await done;
     }
     assert.deepEqual(opened, [
-      ...Array(4).fill("https://www.pow-pickem.com/"),
-      "https://www.pow-pickem.com/weeks/11111111-1111-4111-8111-111111111111",
+      ...refused.map(() => "https://www.pow-pickem.com/"),
+      ...destinations.map((path) => `https://www.pow-pickem.com${path}`),
     ]);
   });
 }

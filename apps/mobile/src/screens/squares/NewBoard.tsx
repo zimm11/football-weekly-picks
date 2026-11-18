@@ -7,7 +7,9 @@ import {
   seasonYear,
 } from "@picks/shared";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AppLink } from "../../components/AppLink";
+import { hoverFill, ringInside } from "../../components/pressState";
 import { colors } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
 import { now } from "../../lib/clock";
@@ -18,7 +20,6 @@ import {
   Action,
   Card,
   Failure,
-  go,
   Heading,
   Input,
   Label,
@@ -99,21 +100,23 @@ export function SquaresAdminTools({ league }: AdminToolsProps) {
       {!!boards.data?.length && (
         <View>
           {boards.data.map((board) => (
-            <Pressable
+            <AppLink
               key={board.id}
-              accessibilityRole="link"
+              href={`/boards/${board.id}/manage`}
               accessibilityLabel={`Manage ${boardTitle(board, league.timeZone)}`}
-              onPress={() => void go(`/boards/${board.id}/manage`)}
-              style={({ pressed }) => ({
-                minHeight: 56,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                borderTopWidth: 1,
-                borderTopColor: colors.border,
-                backgroundColor: pressed ? colors.raised : "transparent",
-              })}
+              style={(state) => [
+                {
+                  minHeight: 56,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border,
+                  backgroundColor: hoverFill(state),
+                },
+                ringInside,
+              ]}
             >
               <Text style={[s.subtitle, { fontSize: 20, flexShrink: 1 }]}>
                 {boardTitle(board, league.timeZone)}
@@ -121,7 +124,7 @@ export function SquaresAdminTools({ league }: AdminToolsProps) {
               <Pill inline tone={board.phase === "open" ? "primary" : "muted"}>
                 {BOARD_PHASE_LABEL[board.phase]}
               </Pill>
-            </Pressable>
+            </AppLink>
           ))}
         </View>
       )}
@@ -131,19 +134,30 @@ export function SquaresAdminTools({ league }: AdminToolsProps) {
           leagueId={league.id}
           timeZone={league.timeZone}
           draft={draft}
-          onChange={setDraft}
+          // A message about the form ("Choose both teams.") goes once the form changes: it may no longer be true.
+          onChange={(next) => {
+            setDraft(next);
+            setError(undefined);
+          }}
           disabled={busy}
+          onSubmit={() => void create()}
         />
         <Input
           label="Squares per player"
           value={limit}
-          onChangeText={setLimit}
+          onChangeText={(value) => {
+            setLimit(value);
+            setError(undefined);
+          }}
           keyboardType="number-pad"
+          inputMode="numeric"
+          maxLength={3}
           editable={!busy}
+          onSubmit={() => void create()}
         />
         <Label>It can be raised before the board locks, never lowered. Guest squares don't count.</Label>
         <Failure message={error} />
-        <Action disabled={busy} onPress={() => void create()}>
+        <Action busy={busy} onPress={() => void create()}>
           {busy ? "Creating…" : "Create board"}
         </Action>
       </View>

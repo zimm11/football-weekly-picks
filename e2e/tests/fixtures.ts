@@ -16,11 +16,68 @@ export async function signUp(page: Page, displayName: string) {
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
   await page.getByLabel("Display name").fill(displayName);
-  // The first name step agrees to the Terms of use, which posting needs.
-  await page.getByRole("checkbox", { name: "I agree to the Terms of use" }).click();
+  // The first name step confirms the player's age and agrees to the Terms of use, which posting needs.
+  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "I'm 18 or older and I agree to the Terms of use" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("button", { name: displayName })).toBeVisible();
+  // The account menu sits under the player's name.
+  await expect(page.getByRole("button", { name: displayName, exact: true })).toBeVisible();
   return { email, password: PASSWORD, displayName };
+}
+
+/**
+ * Signs out from the account menu and waits for the menu to be gone. Typing into the sign-in form while the
+ * menu is still closing can lose the text: the closing menu takes the focus back (seen on WebKit under load).
+ */
+export async function signOut(page: Page, displayName: string) {
+  await page.getByRole("button", { name: displayName, exact: true }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(page.getByRole("menuitem", { name: "Sign out" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+}
+
+/**
+ * A second player in their own browser: opens the invite link signed out, signs up from it and joins. Lands on
+ * the league's first tab. Close the returned context when the test is done with the player.
+ */
+export async function joinLeague(browser: Browser, inviteUrl: string, displayName: string) {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(inviteUrl);
+    const account = await signUp(page, displayName);
+    await page.getByRole("button", { name: "Join league" }).click();
+    await expect(page).toHaveURL(/\/leagues\/[^/]+$/);
+    return { context, page, account };
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
+}
+
+/** A `datetime-local` value some days away (read in the league's time zone): ahead to pick, behind to be locked. */
+export function kickoffInDays(days: number) {
+  const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T13:00`;
+}
+
+/**
+ * After an action that suggests the home screen (the first saved picks, the first claimed square): on a phone
+ * the sheet opens once and is put away with "Not now"; on a computer it never opens. Call it once the action's
+ * own outcome is on screen, so "never opens" is checked after the save, not before it.
+ */
+export async function dismissHomeScreenOffer(page: Page, description = /^Picks saved\./) {
+  const offer = page.getByRole("dialog", { name: "Add it to your home screen" });
+  if (test.info().project.name !== "mobile-safari") {
+    await expect(offer).toHaveCount(0);
+    return;
+  }
+  await expect(offer).toHaveAccessibleDescription(description);
+  await expect(offer.getByRole("heading", { name: "iPhone or iPad · Safari" })).toBeVisible();
+  await expect(offer.getByRole("heading", { name: "Android · Chrome" })).toHaveCount(0);
+  await offer.getByRole("button", { name: "Not now" }).click();
+  await expect(offer).toHaveCount(0);
 }
 
 /**

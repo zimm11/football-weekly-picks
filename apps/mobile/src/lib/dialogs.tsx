@@ -1,25 +1,27 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Modal, View } from "react-native";
 import { Body, Button, Card, colors, Title } from "../components/ui";
+import { type ConfirmPrompt, setConfirmPresenter } from "./confirm";
+import { useReducedMotion } from "./motion";
 
-type Prompt = { title: string; message?: string; confirmLabel?: string; destructive?: boolean };
-let present: ((prompt: Prompt) => Promise<boolean>) | undefined;
-export function showConfirm(prompt: Prompt): Promise<boolean> {
-  return present?.(prompt) ?? Promise.resolve(false);
-}
+// `showConfirm` lives in ./confirm (no interface code there); it is re-exported for the screens that import
+// it from here.
+export { showConfirm } from "./confirm";
 export function DialogProvider({ children }: { children: ReactNode }) {
-  const [prompt, setPrompt] = useState<Prompt>();
+  const [prompt, setPrompt] = useState<ConfirmPrompt>();
   const pending = useRef<((answer: boolean) => void) | undefined>(undefined);
+  const reduced = useReducedMotion();
   useEffect(() => {
-    const handler = (value: Prompt) =>
-      new Promise<boolean>((resolve) => {
-        pending.current?.(false);
-        pending.current = resolve;
-        setPrompt(value);
-      });
-    present = handler;
+    const remove = setConfirmPresenter(
+      (value) =>
+        new Promise<boolean>((resolve) => {
+          pending.current?.(false);
+          pending.current = resolve;
+          setPrompt(value);
+        }),
+    );
     return () => {
-      if (present === handler) present = undefined;
+      remove();
       pending.current?.(false);
     };
   }, []);
@@ -32,7 +34,12 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      <Modal visible={!!prompt} transparent animationType="fade" onRequestClose={() => answer(false)}>
+      <Modal
+        visible={!!prompt}
+        transparent
+        animationType={reduced ? "none" : "fade"}
+        onRequestClose={() => answer(false)}
+      >
         <View
           style={{
             flex: 1,
@@ -49,7 +56,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             style={{ width: "100%", maxWidth: 448 }}
           >
             <Card style={{ padding: 24, gap: 16 }}>
-              <Title style={{ fontSize: 24, lineHeight: 28 }}>{prompt?.title}</Title>
+              <Title level={2} style={{ fontSize: 24, lineHeight: 28 }}>
+                {prompt?.title}
+              </Title>
               {prompt?.message && <Body muted>{prompt.message}</Body>}
               <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
                 <Button title="Cancel" variant="outline" onPress={() => answer(false)} />

@@ -7,16 +7,21 @@ import {
   SQUARE_PERIOD_LABEL,
   SQUARE_PERIODS,
   type SquarePeriod,
+  type ThreadPage,
 } from "@picks/shared";
 import { router } from "expo-router";
-import { type ReactNode, useState } from "react";
-import { RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
-import { colors, fonts } from "../../components/ui";
+import { type ReactNode, useEffect, useState } from "react";
+import { Text, useWindowDimensions, View } from "react-native";
+import { HomeLink } from "../../components/NotFound";
+import { Body, colors, fonts, Screen, Title } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { setUnreadThreads, subscribeMessagesChanged, useUnreadThreads } from "../../lib/messageUnread";
 import { notifyDone, notifyError } from "../../lib/notify";
+import { usePageTitle } from "../../lib/pageTitle";
 import { boardTitle, type GameDraft, gameFromDraft, withPending } from "../../lib/squaresBoard";
 import { LeagueHeader, LeagueTabBar } from "../LeagueChrome";
+import { LeagueTabScroll } from "../LeagueTabScroll";
 import {
   Action,
   Card,
@@ -24,19 +29,46 @@ import {
   Disclosure,
   Eyebrow,
   Failure,
-  go,
   Heading,
   Input,
   Label,
   Pill,
   s,
   useEditsGuard,
+  useLeagueLoad,
 } from "../leagueUi";
 import { BoardHeading, BoardPanel, SquareSheet, useBoard, useSquareChanges } from "./BoardPanel";
-import { forgetBoard } from "./boardChoice";
+import { forgetBoard, leagueOfBoard } from "./boardChoice";
 import { GameChooser } from "./GameChooser";
 import { newGameDraft, parseLimit } from "./NewBoard";
 import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
+
+/**
+ * The league's tabs on a board screen, with the Messages tab's unread count as the league's own screens show
+ * it: the count the league screen last loaded when there is one, and this screen's own load otherwise (a board
+ * opened straight from a link).
+ */
+function BoardTabBar({ leagueId, wide }: { leagueId: string; wide?: boolean }) {
+  const known = useUnreadThreads(leagueId);
+  const unread = useLeagueLoad(
+    () => request<ThreadPage>(`/leagues/${leagueId}/messages?limit=1`),
+    `${leagueId}:unread`,
+    30_000,
+  );
+  useEffect(() => subscribeMessagesChanged(unread.reload), [unread.reload]);
+  useEffect(() => {
+    if (unread.data) setUnreadThreads(leagueId, unread.data.unreadCount);
+  }, [unread.data, leagueId]);
+  return (
+    <LeagueTabBar
+      wide={wide}
+      leagueId={leagueId}
+      type="squares"
+      active="board"
+      unreadCount={known ?? unread.data?.unreadCount ?? 0}
+    />
+  );
+}
 
 /** A board screen's frame: the league's header and tabs around the content, as the week screens have. */
 function BoardFrame({
@@ -45,26 +77,53 @@ function BoardFrame({
   children,
 }: {
   view: BoardView | undefined;
-  reload: () => void;
+  /** Pull to refresh: the board's `refresh`, so the spinner stays until the board has reloaded. */
+  reload: () => unknown;
   children: ReactNode;
 }) {
   const wide = useWindowDimensions().width >= 768;
   return (
     <View style={s.page}>
-      <ScrollView
-        style={s.page}
-        contentContainerStyle={[s.content, { gap: 20 }]}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl refreshing={false} onRefresh={reload} tintColor={colors.foreground} />
+      <LeagueTabScroll
+        reload={reload}
+        header={
+          view && (
+            <>
+              <LeagueHeader leagueId={view.leagueId} leagueName={view.leagueName} />
+              {wide && <BoardTabBar wide leagueId={view.leagueId} />}
+            </>
+          )
         }
       >
-        {view && <LeagueHeader leagueId={view.leagueId} leagueName={view.leagueName} />}
-        {view && wide && <LeagueTabBar wide leagueId={view.leagueId} type="squares" active="board" />}
         {children}
-      </ScrollView>
-      {view && !wide && <LeagueTabBar leagueId={view.leagueId} type="squares" active="board" />}
+      </LeagueTabScroll>
+      {view && !wide && <BoardTabBar leagueId={view.leagueId} />}
     </View>
+  );
+}
+
+/**
+ * A board link that leads nowhere: the board was deleted, or it isn't in one of the player's leagues. The
+ * not-found screen, with the way back to the board's league when this session has seen it.
+ */
+function BoardNotFound({ boardId }: { boardId: string }) {
+  const leagueId = leagueOfBoard(boardId);
+  return (
+    <Screen>
+      {/* An alert, as the app's not-found screen is, so a page that turns into this one is announced. */}
+      <View accessibilityRole="alert" style={{ gap: 8 }}>
+        <Title>Board not found</Title>
+        <Body muted>It may have been deleted, or it isn’t in one of your leagues.</Body>
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {leagueId && (
+          <Action compact icon="grid" href={`/leagues/${leagueId}`} how="replace">
+            Back to the league
+          </Action>
+        )}
+        <HomeLink />
+      </View>
+    </Screen>
   );
 }
 
@@ -72,14 +131,21 @@ function BoardFrame({
 export function BoardScreen({ boardId }: { boardId: string }) {
   const board = useBoard(boardId);
   const { me } = useAuth();
+  const view = board.data;
+  const gone = !view && board.status === 404;
+  usePageTitle(
+    view ? `${view.awayTeam} at ${view.homeTeam} · ${view.leagueName}` : gone ? "Board not found" : undefined,
+  );
+  if (gone) return <BoardNotFound boardId={boardId} />;
   return (
-    <BoardFrame view={board.data} reload={board.reload}>
+    <BoardFrame view={view} reload={board.refresh}>
       <BoardPanel
         boardId={boardId}
         board={board}
         userId={me?.id ?? ""}
         avatarId={me?.avatarId}
         displayName={me?.displayName ?? "You"}
+        standalone
       />
     </BoardFrame>
   );
@@ -90,10 +156,22 @@ export function ManageBoardScreen({ boardId }: { boardId: string }) {
   const board = useBoard(boardId);
   const { me } = useAuth();
   const view = board.data;
+  const gone = !view && board.status === 404;
+  usePageTitle(
+    view
+      ? `Manage ${view.awayTeam} at ${view.homeTeam} · ${view.leagueName}`
+      : gone
+        ? "Board not found"
+        : undefined,
+  );
+  if (gone) return <BoardNotFound boardId={boardId} />;
+  // The form below is seeded from the board (the limit, the scores): it waits for this visit's own load rather
+  // than start from a remembered copy that may be out of date. A failed reload still shows the remembered board.
+  const settled = board.fresh || !!board.error;
   return (
-    <BoardFrame view={view} reload={board.reload}>
-      {!view ? (
-        board.error ? (
+    <BoardFrame view={view} reload={board.refresh}>
+      {!view || !settled ? (
+        !view && board.error ? (
           <Failure message={board.error} retry={board.reload} />
         ) : (
           <BoardSkeleton />
@@ -102,7 +180,7 @@ export function ManageBoardScreen({ boardId }: { boardId: string }) {
         <Card>
           <Heading>Board management</Heading>
           <Label>Only league commissioners can manage a board.</Label>
-          <Action link onPress={() => void go(`/boards/${boardId}`)}>
+          <Action href={`/boards/${boardId}`} how="replace">
             Go to the board
           </Action>
         </Card>
@@ -126,12 +204,19 @@ function ManageBoard({
   const [guest, setGuest] = useState("");
   const [limit, setLimit] = useState(String(view.maxPerPlayer));
   const [draft, setDraft] = useState<GameDraft>(newGameDraft);
+  // The game editor as it opened: only a choice made in it since is unsaved work.
+  const [pristine, setPristine] = useState(draft);
   const [editingGame, setEditingGame] = useState(false);
   const [sheet, setSheet] = useState<{ row: number; col: number } | null>(null);
   const changes = useSquareChanges(view.id, board.setData, board.reload);
   const open = view.phase === "open";
   const limitDirty = open && limit !== String(view.maxPerPlayer);
-  useEditsGuard(limitDirty || editingGame, () => {
+  // Neither the limit nor the game can change once the board is locked, so nothing typed there is left to save.
+  const gameDirty = open && editingGame && JSON.stringify(draft) !== JSON.stringify(pristine);
+  useEffect(() => {
+    if (!open) setEditingGame(false);
+  }, [open]);
+  useEditsGuard(limitDirty || gameDirty, () => {
     setLimit(String(view.maxPerPlayer));
     setEditingGame(false);
   });
@@ -167,6 +252,29 @@ function ManageBoard({
       setBusy(undefined);
     }
   }
+  function saveLimit() {
+    if (!limitDirty) return;
+    const value = parseLimit(limit);
+    if (value === null) return notifyError(`Squares per player go from 1 to ${MAX_SQUARES_PER_PLAYER}.`);
+    void run(
+      "limit",
+      () => request<BoardView>(`/boards/${view.id}`, { method: "PATCH", body: { maxPerPlayer: value } }),
+      "Limit saved.",
+    );
+  }
+  function saveGame() {
+    const { game, error } = gameFromDraft(draft, view.timeZone);
+    if (error) return notifyError(error);
+    void run(
+      "game",
+      async () => {
+        const next = await request<BoardView>(`/boards/${view.id}`, { method: "PATCH", body: { game } });
+        setEditingGame(false);
+        return next;
+      },
+      "Game changed.",
+    );
+  }
   function tap(row: number, col: number, square: BoardSquare | undefined) {
     if (open && !square) {
       const name = guest.trim();
@@ -190,7 +298,8 @@ function ManageBoard({
             {openSquares} of 100 squares are open. The board locks itself at kickoff if nobody locks it first.
           </Label>
           <Action
-            disabled={!!busy}
+            disabled={!!busy && busy !== "lock"}
+            busy={busy === "lock"}
             icon="lock"
             onPress={() =>
               confirm(
@@ -258,25 +367,16 @@ function ManageBoard({
               value={limit}
               onChangeText={setLimit}
               keyboardType="number-pad"
+              inputMode="numeric"
+              maxLength={3}
+              onSubmit={saveLimit}
             />
             <Label>{`It can be raised before the lock, never lowered (1 to ${MAX_SQUARES_PER_PLAYER}).`}</Label>
             <Action
               compact
-              disabled={!!busy || !limitDirty}
-              onPress={() => {
-                const value = parseLimit(limit);
-                if (value === null)
-                  return notifyError(`Squares per player go from 1 to ${MAX_SQUARES_PER_PLAYER}.`);
-                void run(
-                  "limit",
-                  () =>
-                    request<BoardView>(`/boards/${view.id}`, {
-                      method: "PATCH",
-                      body: { maxPerPlayer: value },
-                    }),
-                  "Limit saved.",
-                );
-              }}
+              disabled={(!!busy && busy !== "limit") || !limitDirty}
+              busy={busy === "limit"}
+              onPress={saveLimit}
             >
               {busy === "limit" ? "Saving…" : "Save limit"}
             </Action>
@@ -302,27 +402,14 @@ function ManageBoard({
                 draft={draft}
                 onChange={setDraft}
                 disabled={!!busy}
+                onSubmit={saveGame}
               />
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <Action
                   compact
-                  disabled={!!busy}
-                  onPress={() => {
-                    const { game, error } = gameFromDraft(draft, view.timeZone);
-                    if (error) return notifyError(error);
-                    void run(
-                      "game",
-                      async () => {
-                        const next = await request<BoardView>(`/boards/${view.id}`, {
-                          method: "PATCH",
-                          body: { game },
-                        });
-                        setEditingGame(false);
-                        return next;
-                      },
-                      "Game changed.",
-                    );
-                  }}
+                  disabled={!!busy && busy !== "game"}
+                  busy={busy === "game"}
+                  onPress={saveGame}
                 >
                   {busy === "game" ? "Saving…" : "Save game"}
                 </Action>
@@ -332,7 +419,16 @@ function ManageBoard({
               </View>
             </>
           ) : (
-            <Action compact secondary onPress={() => setEditingGame(true)}>
+            <Action
+              compact
+              secondary
+              onPress={() => {
+                const fresh = newGameDraft();
+                setDraft(fresh);
+                setPristine(fresh);
+                setEditingGame(true);
+              }}
+            >
               Change game
             </Action>
           )}
@@ -350,7 +446,8 @@ function ManageBoard({
           secondary
           danger
           icon="trash"
-          disabled={!!busy}
+          disabled={!!busy && busy !== "delete"}
+          busy={busy === "delete"}
           onPress={() =>
             confirm(
               "Delete this board?",
@@ -425,6 +522,10 @@ function ScoreCorrections({
           /^\d{1,3}$/.test(typed[period].away) &&
           home <= 200 &&
           away <= 200;
+        // Enter in either box saves the quarter, as its Save button does.
+        const submit = () => {
+          if (valid && !busy) void save(period, { homeScore: home, awayScore: away });
+        };
         return (
           <View
             key={period}
@@ -443,6 +544,9 @@ function ScoreCorrections({
                     setTyped((t) => ({ ...t, [period]: { ...t[period], away: value } }))
                   }
                   keyboardType="number-pad"
+                  inputMode="numeric"
+                  maxLength={3}
+                  onSubmit={submit}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -453,6 +557,9 @@ function ScoreCorrections({
                     setTyped((t) => ({ ...t, [period]: { ...t[period], home: value } }))
                   }
                   keyboardType="number-pad"
+                  inputMode="numeric"
+                  maxLength={3}
+                  onSubmit={submit}
                 />
               </View>
             </View>
@@ -460,8 +567,9 @@ function ScoreCorrections({
               <Action
                 compact
                 label={`Save the ${SQUARE_PERIOD_LABEL[period]} score`}
-                disabled={!!busy || !valid}
-                onPress={() => void save(period, { homeScore: home, awayScore: away })}
+                disabled={(!!busy && busy !== `score:${period}`) || !valid}
+                busy={busy === `score:${period}`}
+                onPress={submit}
               >
                 {busy === `score:${period}` ? "Saving…" : "Save"}
               </Action>

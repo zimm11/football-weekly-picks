@@ -5,14 +5,20 @@ import {
   type LeagueType,
   leagueTabPath,
 } from "@picks/shared";
-import { router, usePathname } from "expo-router";
+import { usePathname } from "expo-router";
 import type { ReactNode } from "react";
-import { Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppLink, openPath } from "../components/AppLink";
 import { Icon } from "../components/Icon";
 import { colors, fonts } from "../components/ui";
-import { confirmDiscard, hasUnsavedWork } from "../lib/unsaved";
-import { go, Select } from "./leagueUi";
+import { readLoadCache } from "../lib/loadCache";
+import { counted } from "../lib/messagePresentation";
+import { TAB_SWAP_PARAM } from "../lib/navigation";
+import { Select } from "./leagueUi";
+
+/** Dynamic Type may grow the fixed-height chrome (tab bar, header rows) this far and no further. */
+const CHROME_FONT_SCALE = 1.3;
 
 /** A league type's tabs, in order, from the registry (`LEAGUE_TYPE_INFO[type].tabs`). */
 export const leagueTabs = (type: LeagueType) =>
@@ -40,16 +46,27 @@ export function LeagueHeader({
   return (
     <View>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => go("/")}
-          style={{ minHeight: 44, flexShrink: 0, flexDirection: "row", gap: 4, alignItems: "center" }}
+        {/* On iPhone, Your leagues is already under this screen: go back down to it rather than stack another. */}
+        <AppLink
+          href="/"
+          how={Platform.OS === "web" ? "push" : "dismissTo"}
+          style={({ pressed }) => ({
+            minHeight: 44,
+            flexShrink: 0,
+            flexDirection: "row",
+            gap: 4,
+            alignItems: "center",
+            opacity: pressed ? 0.7 : 1,
+          })}
         >
           <Icon name="arrow-left" size={14} color={colors.mutedForeground} />
-          <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}>
+          <Text
+            maxFontSizeMultiplier={CHROME_FONT_SCALE}
+            style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}
+          >
             All leagues
           </Text>
-        </Pressable>
+        </AppLink>
         {season !== undefined && onSeason && (
           <Select
             compact
@@ -65,6 +82,7 @@ export function LeagueHeader({
       <Text
         accessibilityRole="header"
         numberOfLines={1}
+        maxFontSizeMultiplier={CHROME_FONT_SCALE}
         style={{
           fontFamily: fonts.displayExtraBold,
           fontSize: 30,
@@ -84,28 +102,47 @@ export function LeagueTabBar({
   type = "weekly",
   active,
   unreadCount = 0,
+  reportsWaiting,
   wide = false,
-  onLeave,
 }: {
   leagueId: string;
   /** The league's type, whose tabs the bar shows. */
   type?: LeagueType;
   active: LeagueTabId;
   unreadCount?: number;
+  /** Reports waiting for this commissioner's review; the League tab shows a dot while there are any. */
+  reportsWaiting?: number;
   wide?: boolean;
-  /** Called as a tab starts opening, once nothing unsaved stands in the way. */
-  onLeave?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const horizontal = wide && width >= 768;
   const path = usePathname();
-  async function open(tabPath: string) {
+  // Screens above the tabs (a week, a board, a thread) don't hold the league, so the bar reads the copy the
+  // league screen last loaded. Only commissioners are sent a count.
+  const reports =
+    reportsWaiting ??
+    readLoadCache<{ openReports?: number | null }>(`/leagues/${leagueId}`)?.openReports ??
+    0;
+  const badges: Partial<Record<LeagueTabId, string>> = {
+    ...(unreadCount > 0 ? { messages: counted(unreadCount, "unread thread") } : {}),
+    ...(reports > 0 ? { league: `${counted(reports, "report")} waiting` } : {}),
+  };
+  const tabs = leagueTabs(type).map((item) => ({
+    ...item,
     // A tab stays a link from the screens under it (Manage week sits under League).
-    const target = `/leagues/${leagueId}${tabPath ? `/${tabPath}` : ""}`;
-    if (path === target || (hasUnsavedWork() && !(await confirmDiscard()))) return;
-    onLeave?.();
-    router.push(target as never);
+    href: `/leagues/${leagueId}${item.path ? `/${item.path}` : ""}`,
+  }));
+  function open(target: string) {
+    // The tab you are on does nothing.
+    if (path === target) return;
+    // In a browser a tab is a link: Back walks the tabs you opened.
+    if (Platform.OS === "web") return void openPath(target);
+    // On iPhone tabs swap in place: one tab takes the other's place in the stack, without a slide, so Back
+    // leaves the league instead of replaying every tab. From a screen above the tabs (a thread, a week,
+    // a board) go back down to the tab when it is underneath.
+    if (tabs.some((item) => item.href === path)) void openPath(`${target}?${TAB_SWAP_PARAM}=1`, "replace");
+    else void openPath(target, "dismissTo");
   }
   return (
     <View
@@ -121,22 +158,19 @@ export function LeagueTabBar({
         gap: horizontal ? 4 : 0,
       }}
     >
-      {leagueTabs(type).map((item) => {
+      {tabs.map((item) => {
         const selected = item.id === active;
         const ink = selected ? colors.primary : colors.mutedForeground;
+        const badge = badges[item.id];
         return (
-          <Pressable
+          <AppLink
             key={item.id}
-            accessibilityRole="link"
+            href={item.href}
             // VoiceOver reads one label per tab, so the count goes in it; on the web the badge is its own image.
-            accessibilityLabel={
-              item.id === "messages" && unreadCount > 0 && Platform.OS !== "web"
-                ? `Messages, ${unreadCount} unread threads`
-                : item.title
-            }
+            accessibilityLabel={badge && Platform.OS !== "web" ? `${item.title}, ${badge}` : item.title}
             accessibilityState={{ selected }}
             aria-current={selected ? "page" : undefined}
-            onPress={() => void open(item.path)}
+            onPress={() => open(item.href)}
             style={({ pressed }) => ({
               flex: horizontal ? undefined : 1,
               height: horizontal ? 44 : 64,
@@ -152,10 +186,10 @@ export function LeagueTabBar({
           >
             <View>
               <Icon name={item.icon} size={horizontal ? 20 : 24} filled={selected} color={ink} />
-              {item.id === "messages" && unreadCount > 0 && (
+              {badge && (
                 <View
                   role="img"
-                  aria-label={`${unreadCount} unread threads`}
+                  aria-label={badge}
                   style={{
                     position: "absolute",
                     top: -2,
@@ -170,10 +204,13 @@ export function LeagueTabBar({
                 />
               )}
             </View>
-            <Text style={{ fontFamily: fonts.medium, fontSize: horizontal ? 14 : 11, color: ink }}>
+            <Text
+              maxFontSizeMultiplier={CHROME_FONT_SCALE}
+              style={{ fontFamily: fonts.medium, fontSize: horizontal ? 14 : 11, color: ink }}
+            >
               {item.title}
             </Text>
-          </Pressable>
+          </AppLink>
         );
       })}
     </View>

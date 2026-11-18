@@ -6,13 +6,20 @@
  * root setup (https://necolas.github.io/react-native-web/docs/setup/#root-element), as in Expo's default
  * template: the page is exactly the viewport's height, the app's ScrollViews scroll instead of the body, and
  * the root element fills the page.
+ *
+ * The colors below repeat tokens from src/components/theme.ts (a stylesheet can't import them): primary
+ * #4d7cff, foreground #f1f4fb, raised #17234a, and the fill of a text field on a card, #0a1127.
  */
 html {
   background: #030817;
+  /* The app is dark only: the browser's own pieces (scrollbars, pickers, autofill) follow. */
+  color-scheme: dark;
 }
 html,
 body {
   height: 100%;
+  /* The body never scrolls, so a pull at the top must not reload the installed app or bounce the page. */
+  overscroll-behavior: none;
 }
 body {
   overflow: hidden;
@@ -21,4 +28,68 @@ body {
   display: flex;
   height: 100%;
   flex: 1;
+}
+
+/*
+ * Controls are not text: a drag or a long press on one must not select its label or open the iPhone's
+ * link menu. Message text, other copy and text fields stay selectable.
+ */
+[role="button"],
+[role="link"],
+[role="tab"],
+[role="checkbox"],
+[role="radio"],
+[role="menuitem"],
+[role="menuitemcheckbox"],
+[role="menuitemradio"],
+[role="switch"],
+button,
+a[role] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/*
+ * Keyboard focus. The browser's own ring is a thin dark blue that disappears on navy, so every control gets
+ * a ring in the primary color, set off from the control so it also shows around a primary button. A control
+ * that sits flush inside a clipped container draws it inside instead (`ringInside` in
+ * src/components/pressState.ts sets outline-offset inline).
+ */
+[tabindex="0"]:focus-visible,
+[role="radio"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="menuitemcheckbox"]:focus-visible,
+[role="menuitemradio"]:focus-visible,
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid #4d7cff;
+  outline-offset: 2px;
+}
+/* A text field or select shows focus as a primary border: the ring is drawn over its own 1px border. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #4d7cff;
+  outline-offset: -1px;
+}
+
+/* A field the browser filled in keeps the app's colors instead of the browser's pale or grey fill. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #f1f4fb;
+  -webkit-box-shadow: 0 0 0 1000px #0a1127 inset;
+  box-shadow: 0 0 0 1000px #0a1127 inset;
+  caret-color: #f1f4fb;
+}
+
+/* Thin, dark scrollbars where there is a mouse; phones keep their own overlay bars. */
+@media (hover: hover) and (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #17234a transparent;
+  }
 }

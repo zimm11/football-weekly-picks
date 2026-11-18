@@ -52,6 +52,29 @@ describe("season selection", () => {
     expect(preferredSeasonYear([week(1, { year: 2027, status: "draft" })], now)).toBe(2026);
   });
 
+  it("opens a playoff or survivor league on this season once it has started, before any week shows", () => {
+    // Last season's four rounds are final; this season was started, and its first round comes in January.
+    const lastSeason = [19, 20, 21, 22].map((number) => week(number, { year: 2025, status: "final" }));
+    expect(preferredSeasonYear(lastSeason, now)).toBe(2025);
+    expect(preferredSeasonYear(lastSeason, now, [2026, 2025])).toBe(2026);
+    // Not started yet: stay on the finished season, so "the playoffs are over" has something to show.
+    expect(preferredSeasonYear(lastSeason, now, [2025])).toBe(2025);
+    // A season started for next year doesn't displace anything.
+    expect(preferredSeasonYear(lastSeason, now, [2027, 2025])).toBe(2025);
+    expect(preferredSeasonYear([], now, [2027])).toBe(2026);
+    // A brand-new league, and one whose current season has weeks already.
+    expect(preferredSeasonYear([], now, [2026])).toBe(2026);
+    expect(preferredSeasonYear([...lastSeason, week(11)], now, [2026, 2025])).toBe(2026);
+  });
+
+  it("keeps weekly pick'em on its latest published season, whatever is drafted", () => {
+    // Weekly leagues send no started seasons, so a draft-only current season still doesn't displace last year's.
+    const weeks = [week(18, { year: 2025, status: "final" }), week(1, { status: "draft" })];
+    expect(preferredSeasonYear(weeks, now)).toBe(2025);
+    expect(preferredSeasonYear(weeks, now, [])).toBe(2025);
+    expect(preferredSeasonYear([week(1, { status: "draft" })], now, [])).toBe(2026);
+  });
+
   it("continues the slate, offers gaps after week 18, and stops when all weeks exist", () => {
     expect(nextWeekNumber([], 18)).toBe(1);
     expect(nextWeekNumber([week(6), week(9)], 18)).toBe(10);

@@ -1,5 +1,6 @@
 import { DELETED_PLAYER_NAME, MINIMUM_AGE, SUPPORT_EMAIL } from "@picks/shared";
 import { LegalPage, type LegalSection } from "../src/components/LegalPage";
+import { usePageTitle } from "../src/lib/pageTitle";
 
 /*
  * The Privacy policy. Works signed out; the App Store listing links here, and its App Privacy answers
@@ -148,6 +149,7 @@ const sections: LegalSection[] = [
 ];
 
 export default function PrivacyPage() {
+  usePageTitle("Privacy policy");
   return (
     <LegalPage
       title="Privacy policy"

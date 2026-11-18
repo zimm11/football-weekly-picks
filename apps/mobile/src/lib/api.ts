@@ -9,6 +9,19 @@ let client: Promise<SupabaseClient> | undefined;
 export const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong. Try again.";
 
+/** An answer from the API that wasn't a success: its message, with the HTTP status (404 for something gone). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+/** The HTTP status of a failed API request; undefined when the request never got an answer (offline, timeout). */
+export const statusOf = (error: unknown) => (error instanceof ApiError ? error.status : undefined);
+
 /** Use AbortController rather than assuming the native runtime implements AbortSignal.timeout. */
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 20_000): Promise<Response> {
   const controller = new AbortController();
@@ -85,7 +98,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
     const value = response.status === 204 ? undefined : await response.json().catch(() => null);
     if (!response.ok)
-      throw new Error(typeof value?.error === "string" ? value.error : "Something went wrong. Try again.");
+      throw new ApiError(
+        typeof value?.error === "string" ? value.error : "Something went wrong. Try again.",
+        response.status,
+      );
     if (value === null) throw new Error("POW Pick’em returned an unreadable response. Try again.");
     return value as T;
   }

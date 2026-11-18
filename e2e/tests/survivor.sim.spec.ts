@@ -1,6 +1,6 @@
-import { type APIRequestContext, type Browser, expect, type Page, test } from "@playwright/test";
-import { signUp } from "./fixtures";
-import { type HarnessGame, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
+import type { APIRequestContext, Page } from "@playwright/test";
+import { expect, joinLeague, signUp, test } from "./fixtures";
+import { type HarnessGame, leagueIdOf, resetHarness, runJobs, setClock, setFeedWeek } from "./harness";
 
 /*
  * Survivor, create to winner, on the dev harness's scripted feed and clock. The pool plays the 2027 season's last
@@ -33,17 +33,6 @@ const final = (g: HarnessGame, home: number, away: number): HarnessGame => ({
   status: "final",
 });
 
-/** Signs up a second player in their own browser and joins through the invite link. */
-async function joinAs(browser: Browser, inviteUrl: string, name: string) {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto(inviteUrl);
-  await signUp(page, name);
-  await page.getByRole("button", { name: "Join league" }).click();
-  await expect(page).toHaveURL(/\/leagues\/[^/]+$/);
-  return { context, page };
-}
-
 /** Starts a survivor league from Your leagues, choosing the start week; returns its id and invite link. */
 async function createPool(page: Page, name: string, startWeek: string) {
   await page.getByRole("radio", { name: /Survivor/ }).click();
@@ -51,8 +40,8 @@ async function createPool(page: Page, name: string, startWeek: string) {
   await page.getByLabel("Start week").selectOption({ label: startWeek });
   await page.getByRole("button", { name: "Create league" }).click();
   await expect(page.getByRole("heading", { name })).toBeVisible();
-  const inviteUrl = await page.getByLabel(/Invite link/).inputValue();
-  const leagueId = new URL(page.url()).pathname.split("/")[2] ?? "";
+  const inviteUrl = await page.getByLabel("Invite link", { exact: true }).inputValue();
+  const leagueId = leagueIdOf(page.url());
   return { leagueId, inviteUrl };
 }
 
@@ -83,7 +72,7 @@ test("a survivor pool runs itself from its start week through the Wild Card roun
   await page.goto("/");
   await signUp(page, "Commish");
   const { leagueId, inviteUrl } = await createPool(page, "Last Stand", "Week 17");
-  const { context, page: pat } = await joinAs(browser, inviteUrl, "Pat");
+  const { context, page: pat } = await joinLeague(browser, inviteUrl, "Pat");
   try {
     // The first read filled the start week from the feed and opened it.
     await page.goto(`/leagues/${leagueId}`);
@@ -205,7 +194,7 @@ test("a survivor admin removes a cancelled game and enters a pick for a player",
   await page.goto("/");
   await signUp(page, "Commish");
   const { leagueId, inviteUrl } = await createPool(page, "Overrides", "Week 1");
-  const { context, page: pat } = await joinAs(browser, inviteUrl, "Pat");
+  const { context, page: pat } = await joinLeague(browser, inviteUrl, "Pat");
   try {
     await pat.goto(`/leagues/${leagueId}`);
     await expect(pat.getByRole("heading", { name: "Week 1" })).toBeVisible();

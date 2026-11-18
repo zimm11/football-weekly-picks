@@ -10,7 +10,7 @@ import {
 } from "../src/email";
 import { loadEnv, loadWorkerEnv } from "../src/env";
 import { knownErrorCode, logError, logJobRun } from "../src/logging";
-import { escapeHtml, excerpt } from "../src/templates";
+import { escapeHtml, escapeLines, excerpt, newThreadEmail } from "../src/templates";
 
 const message = {
   to: "fan@example.com",
@@ -133,6 +133,31 @@ describe("templates", () => {
   it("shortens long text at a word boundary", () => {
     expect(excerpt("short")).toBe("short");
     expect(excerpt(`${"word ".repeat(200)}`, 50)).toMatch(/^(word ){9}word…$/);
+  });
+
+  it("keeps a message's line breaks, with one blank line at most", () => {
+    expect(excerpt("First   line.\r\nSecond line. \n\n\n\nNew  paragraph.\n")).toBe(
+      "First line.\nSecond line.\n\nNew paragraph.",
+    );
+    expect(excerpt(`${"word\n".repeat(200)}`, 50)).toMatch(/^(word\n){9}word…$/);
+  });
+
+  it("turns line breaks into <br> only after escaping", () => {
+    expect(escapeLines("a <b>\n<br>")).toBe("a &lt;b&gt;<br>\n&lt;br&gt;");
+    const mail = newThreadEmail({
+      leagueName: "Sunday Crew",
+      authorName: "Pat",
+      title: "Week 3",
+      body: "Line one.\nLine <two> & more.",
+      links: {
+        action: { label: "Read and reply", url: "https://example.test/t" },
+        unsubscribeUrl: "https://example.test/u",
+        listUnsubscribeUrl: "https://example.test/l",
+        settingsUrl: "https://example.test/account",
+      },
+    });
+    expect(mail.html).toContain("Line one.<br>\nLine &lt;two&gt; &amp; more.</blockquote>");
+    expect(mail.text).toContain("Line one.\nLine <two> & more.");
   });
 });
 

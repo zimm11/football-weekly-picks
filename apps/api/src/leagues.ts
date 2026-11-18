@@ -323,6 +323,17 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
               .where(and(eq(weekRecapViews.weekId, latestFinal.id), eq(weekRecapViews.userId, c.var.user.id)))
           : [];
         const recapSeen = !!latestFinal && !!recapView && recapView.seenAt >= latestFinal.finalizedAt;
+        // A playoff or survivor season exists before its first week does (Start season, or the league's
+        // creation), and members aren't sent draft weeks: its years tell the app the season has started.
+        const startedSeasons = leagueTypeInfo(league.type).seasonOnCreate
+          ? (
+              await db
+                .select({ year: seasons.year })
+                .from(seasons)
+                .where(eq(seasons.leagueId, leagueId))
+                .orderBy(desc(seasons.year))
+            ).map((season) => season.year)
+          : [];
         const detail: LeagueDetail = {
           id: league.id,
           name: league.name,
@@ -365,6 +376,7 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
                 ...weekPickAvailability(slate, picked, clock),
               };
             }),
+          startedSeasons,
           recapWeekId: latestFinal && !recapSeen ? latestFinal.id : null,
         };
         return c.json(detail);

@@ -43,6 +43,19 @@ export function pickStatus(view: WeekView, at: Date) {
     needsPow: weekHasPow(view) && saved.pow === null && view.games.some((game) => !gameLocked(game, at)),
   };
 }
+/**
+ * What a player can still change on an open pick sheet: a pick or the POW on a game that hasn't locked
+ * (`games`; never for a playoff player the guillotine put out), and the tiebreaker guess until its game locks
+ * (`guess`). Both false once every game has kicked off or has a result: the sheet then offers no save.
+ */
+export function sheetEditable(view: WeekView, at: Date) {
+  if (view.status !== "open") return { games: false, guess: false };
+  const tiebreaker = view.games.find((game) => game.id === view.tiebreakerGameId);
+  return {
+    games: view.playoff?.mayPick !== false && view.games.some((game) => !gameLocked(game, at)),
+    guess: !!tiebreaker && !gameLocked(tiebreaker, at),
+  };
+}
 export function favoriteLine(game: Pick<Game, "homeTeam" | "awayTeam">, line: number) {
   return line === 0
     ? "Pick'em"

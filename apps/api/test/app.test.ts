@@ -424,6 +424,9 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     ] as const) {
       expect((await call(OUTSIDER, method, path + suffix, body)).status).toBe(404);
     }
+    // A thread never opened has nothing read; the watermark then follows what was marked read.
+    expect((await call<ThreadDetail>(ADMIN, "GET", path)).body.readVersion).toBe(0);
+    expect((await call<ThreadDetail>(PLAYER, "GET", path)).body.readVersion).toBe(1);
     await call(ADMIN, "POST", `${path}/read`, { version: 1 });
     const replies = await Promise.all([
       call(PLAYER, "POST", `${path}/replies`, { body: "First" }),
@@ -432,6 +435,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(replies.map((r) => r.status)).toEqual([201, 201]);
     const detail = (await call<ThreadDetail>(ADMIN, "GET", path)).body;
     expect(detail.version).toBe(3);
+    expect(detail.readVersion).toBe(1);
     expect(detail.posts.map((p) => p.position)).toEqual([1, 2, 3]);
     await call(ADMIN, "POST", `${path}/read`, { version: 1 });
     expect((await call<MessageThread[]>(ADMIN, "GET", base)).body[0]?.unread).toBe(true);

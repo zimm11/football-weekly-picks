@@ -6,6 +6,7 @@ import { notifyDone } from "../lib/notify";
 import { logoById, logoCollections } from "../lib/profileLogos";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
+import { hoverFill, pressFade } from "./pressState";
 import { SettingsHeading } from "./SettingsHeading";
 import { Body, Button, Card, colors, ErrorMessage, fonts, Sheet } from "./ui";
 
@@ -83,13 +84,15 @@ export function ProfilePicture({
                 aria-pressed={active}
                 accessibilityState={{ selected: active }}
                 onPress={() => setCollection(group)}
-                style={{
+                style={(state) => ({
                   minHeight: 44,
                   justifyContent: "center",
                   paddingHorizontal: 14,
                   borderRadius: 22,
-                  backgroundColor: active ? colors.primary : colors.raised,
-                }}
+                  backgroundColor: active
+                    ? colors.primary
+                    : hoverFill(state, colors.raised, colors.raisedHover),
+                })}
               >
                 <Text
                   style={{
@@ -115,12 +118,12 @@ export function ProfilePicture({
                 accessibilityState={{ selected, disabled: busy }}
                 disabled={busy}
                 onPress={() => void choose(logo.id)}
-                style={({ pressed }) => ({
+                style={(state) => ({
                   width: width < 520 ? "25%" : "20%",
                   alignItems: "center",
                   gap: 4,
                   paddingHorizontal: 2,
-                  opacity: pressed ? 0.7 : 1,
+                  ...pressFade(state),
                 })}
               >
                 <View

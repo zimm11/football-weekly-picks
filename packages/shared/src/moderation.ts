@@ -194,6 +194,12 @@ export type ReportItem = {
   otherReports: number;
   /** The subject is an admin of the league, so only the operator reviews it. */
   aboutAdmin: boolean;
+  /**
+   * The reviewer can open the message's thread: they are in its league and the thread is still on the board
+   * for them. False for the operator looking at a league they aren't in. Absent from servers older than the
+   * field (and for items that aren't about a message).
+   */
+  canOpen?: boolean;
 };
 
 export type ReportQueue = { items: ReportItem[] };
