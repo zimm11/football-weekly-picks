@@ -46,6 +46,15 @@ export const colors = {
    * Player avatars: eight hues the app gives no meaning to (no red, green, coral or the primary blue), each at
    * least 4.5:1 against `avatarForeground`: violet, teal, magenta, olive, brown, slate, indigo, bronze.
    */
+  /**
+   * The light ends of the squares board's fills: a square of yours runs from `primaryLight` to `primary`, a
+   * winning one from `winLight` to `win`, both under `primaryForeground` ink (5:1 and up at every stop).
+   */
+  primaryLight: "#86a4ff",
+  winLight: "#7debb9",
+  /** The band of light that sweeps across a winning square, and its clear edges. */
+  sheen: "#ffffff66",
+  sheenClear: "#ffffff00",
   avatars: ["#7c3aed", "#0e7490", "#a21caf", "#4d7c0f", "#78350f", "#475569", "#4338ca", "#a16207"],
 };
 export const fonts = {
@@ -172,6 +181,10 @@ export const elevation = {
   bar: "0 -8px 24px #00000059",
   /** A primary button or selected pick, lifted a little. */
   glowPrimary: `0 2px 8px ${palette.primary}40`,
+  /** A winning square, lifted a little. */
+  glowWin: `0 2px 8px ${palette.win}59`,
+  /** A held square's lit top edge, brighter than a card's (`cardEdge`), so the tile reads as glossy. */
+  squareEdge: "inset 0 1px 0 #ffffff33",
   /** The Pick of the Week, lifted a little. */
   glowPow: `0 2px 8px ${palette.pow}4d`,
   /**

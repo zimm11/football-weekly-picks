@@ -607,7 +607,7 @@ function QuarterResults({
 
 /**
  * Who holds squares, as the grid's legend: each name leads with a chip drawn as that player's cells are (yours
- * solid primary, everyone else's in a tint of their color), you first. Each row is a toggle that picks out
+ * solid primary, everyone else's fading from their color), you first. Each row is a toggle that picks out
  * that player's squares on the grid; pressing it again, or another row, changes or clears it.
  */
 function Players({
@@ -667,6 +667,8 @@ function Players({
                   height: 22,
                   borderRadius: radius.sm,
                   backgroundColor: tone.fill,
+                  backgroundImage: tone.gradient,
+                  boxShadow: tone.shadow,
                   alignItems: "center",
                   justifyContent: "center",
                   overflow: "hidden",

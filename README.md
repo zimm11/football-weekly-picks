@@ -309,8 +309,10 @@ lists it, any game from the feed, or teams and a kickoff typed in). The **Boards
 the ones still to finish first, each with its phase, kickoff, claimed squares (a meter while it is open), your
 count and its latest quarter score; tap one to open it. A commissioner sets one up under **Boards → New board**
 and lands on it. On a board, the home team's name and numbers run across the top and the away team's up the left
-side; from 1024px wide the grid sits on the left, fitted to the window, with the rest beside it. Your squares are
-solid blue and winning squares green; everyone else's are a tint of their avatar color, and the **Players** card
+side; from 1024px wide the grid sits on the left, fitted to the window, with the rest beside it. Each held square
+shows its holder's first name ("Chris M" when two share one), or their initials where the name doesn't fit. Your
+squares are solid blue and winning squares green, with a glow (and a sweep of light on a winner); everyone else's
+fade from their avatar color, and the **Players** card
 is the legend: tap a name to pick out that player's squares. After the draw, **Your squares** lists your number
 pairs. Once there is a score, a scoreboard row above
 the grid shows it: live for a game from the feed (refreshed every minute), else the latest quarter entered; the
