@@ -17,10 +17,10 @@ export function HowToPlaySquares() {
         <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>A 10 by 10 board on one game</Body>
         <Body muted>
           A squares league holds boards, each on one pro football game: the Super Bowl by default, or any
-          game. The home team runs across the top and the away team down the side. Tap an open square to claim
-          it, and tap yours to give it back, until the board locks. Claim a random square picks one for you.
-          Each player can hold {DEFAULT_SQUARES_PER_PLAYER} squares unless the commissioner sets another limit
-          (up to {MAX_SQUARES_PER_PLAYER}).
+          game. The Boards tab lists them; tap one to open it. The home team runs across the top and the away
+          team down the side. Tap an open square to claim it, and tap yours to give it back, until the board
+          locks. Claim a random square picks one for you. Each player can hold {DEFAULT_SQUARES_PER_PLAYER}{" "}
+          squares unless the commissioner sets another limit (up to {MAX_SQUARES_PER_PLAYER}).
         </Body>
       </Card>
       <Card>
@@ -48,7 +48,7 @@ export function HowToPlaySquares() {
       <Card>
         <Body style={{ fontSize: 18, fontFamily: fonts.semibold }}>For commissioners</Body>
         <Body muted>
-          Set up a board under New board in the League tab, then open Manage board from the board: change the
+          Set up a board with New board on the Boards tab, then open Manage board from the board: change the
           game or raise the limit before the lock (it is never lowered), claim squares for a guest without an
           account (guest squares count against nobody's limit), give back any square, Lock and draw, correct
           scores, and delete a board. A board on a scheduled game follows the schedule: if the game is moved,

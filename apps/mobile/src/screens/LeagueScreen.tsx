@@ -138,12 +138,6 @@ export function LeagueScreen({ leagueId, path = "" }: { leagueId: string; path?:
         ]}
         onSeason={chooseYear}
         seasonWidth={detail.type === "playoff" ? 156 : undefined}
-        // The type's own selector (squares' board) only on the type's own tabs, where it changes something.
-        selector={
-          tab !== "messages" && tab !== "league" && screens.HeaderSelector ? (
-            <screens.HeaderSelector league={detail} />
-          ) : undefined
-        }
       />
       {width >= 768 && (
         <LeagueTabBar
@@ -203,7 +197,11 @@ export function LeagueScreen({ leagueId, path = "" }: { leagueId: string; path?:
               league={seasonal}
               userId={userId}
               reload={league.reload}
-              adminTools={<AdminTools league={seasonal} year={year} userId={userId} reload={league.reload} />}
+              adminTools={
+                AdminTools && (
+                  <AdminTools league={seasonal} year={year} userId={userId} reload={league.reload} />
+                )
+              }
             />
           </LeagueTabScroll>
         ) : TypeTab ? (

@@ -27,6 +27,7 @@ const gameSchema = z.object({
   awayScore: z.number().int().min(0).nullable().default(null),
   status: z.enum(["scheduled", "in_progress", "final"]).optional(),
   period: z.number().int().min(0).optional(),
+  liveScore: periodScore.optional(),
   periodScores: z
     .object({ q1: periodScore, half: periodScore, q3: periodScore, final: periodScore })
     .partial()

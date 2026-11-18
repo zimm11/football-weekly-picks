@@ -9,8 +9,9 @@
 --     evening-before reminder at 7pm Eastern on 2027-02-13.
 --   * A finished board from the 2025 season's Super Bowl (KC at PHI), drawn, with four quarter results. The
 --     halftime square was empty, so that quarter has no winner, and the final includes overtime.
--- Nothing here is drawn on the open board: press Lock and draw on /boards/<id>/manage, or let it lock itself
--- at kickoff (move the API's clock with CLOCK_OVERRIDE; see the README).
+-- Both boards are listed on the league's Boards tab, the open one first; a commissioner adds another with
+-- Boards → New board. Nothing here is drawn on the open board: press Lock and draw on /boards/<id>/manage, or
+-- let it lock itself at kickoff (move the API's clock with CLOCK_OVERRIDE; see the README).
 
 insert into leagues (id, name, time_zone, invite_code, type, management)
 values ('5c5c5c5c-0000-4000-8000-000000000001', 'Squares Crew', 'America/New_York', 'local-squares', 'squares', 'auto');

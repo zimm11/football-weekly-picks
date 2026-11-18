@@ -7,21 +7,17 @@ import {
   SQUARE_PERIOD_LABEL,
   SQUARE_PERIODS,
   type SquarePeriod,
-  type ThreadPage,
 } from "@picks/shared";
 import { router } from "expo-router";
-import { type ReactNode, useEffect, useState } from "react";
-import { Text, useWindowDimensions, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Text, View } from "react-native";
 import { HomeLink } from "../../components/NotFound";
 import { Body, colors, fonts, Screen, Title } from "../../components/ui";
 import { messageOf, request } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import { setUnreadThreads, subscribeMessagesChanged, useUnreadThreads } from "../../lib/messageUnread";
 import { notifyDone, notifyError } from "../../lib/notify";
 import { usePageTitle } from "../../lib/pageTitle";
 import { boardTitle, type GameDraft, gameFromDraft, withPending } from "../../lib/squaresBoard";
-import { LeagueHeader, LeagueTabBar } from "../LeagueChrome";
-import { LeagueTabScroll } from "../LeagueTabScroll";
 import {
   Action,
   Card,
@@ -35,72 +31,13 @@ import {
   Pill,
   s,
   useEditsGuard,
-  useLeagueLoad,
 } from "../leagueUi";
-import { BoardHeading, BoardPanel, SquareSheet, useBoard, useSquareChanges } from "./BoardPanel";
-import { forgetBoard, leagueOfBoard } from "./boardChoice";
+import { BoardFrame } from "./BoardFrame";
+import { BoardHeading, BoardPanel, GameScore, SquareSheet, useBoard, useSquareChanges } from "./BoardPanel";
+import { leagueOfBoard } from "./boardLeague";
 import { GameChooser } from "./GameChooser";
 import { newGameDraft, parseLimit } from "./NewBoard";
 import { BoardSkeleton, SquaresGrid } from "./SquaresGrid";
-
-/**
- * The league's tabs on a board screen, with the Messages tab's unread count as the league's own screens show
- * it: the count the league screen last loaded when there is one, and this screen's own load otherwise (a board
- * opened straight from a link).
- */
-function BoardTabBar({ leagueId, wide }: { leagueId: string; wide?: boolean }) {
-  const known = useUnreadThreads(leagueId);
-  const unread = useLeagueLoad(
-    () => request<ThreadPage>(`/leagues/${leagueId}/messages?limit=1`),
-    `${leagueId}:unread`,
-    30_000,
-  );
-  useEffect(() => subscribeMessagesChanged(unread.reload), [unread.reload]);
-  useEffect(() => {
-    if (unread.data) setUnreadThreads(leagueId, unread.data.unreadCount);
-  }, [unread.data, leagueId]);
-  return (
-    <LeagueTabBar
-      wide={wide}
-      leagueId={leagueId}
-      type="squares"
-      active="board"
-      unreadCount={known ?? unread.data?.unreadCount ?? 0}
-    />
-  );
-}
-
-/** A board screen's frame: the league's header and tabs around the content, as the week screens have. */
-function BoardFrame({
-  view,
-  reload,
-  children,
-}: {
-  view: BoardView | undefined;
-  /** Pull to refresh: the board's `refresh`, so the spinner stays until the board has reloaded. */
-  reload: () => unknown;
-  children: ReactNode;
-}) {
-  const wide = useWindowDimensions().width >= 768;
-  return (
-    <View style={s.page}>
-      <LeagueTabScroll
-        reload={reload}
-        header={
-          view && (
-            <>
-              <LeagueHeader leagueId={view.leagueId} leagueName={view.leagueName} />
-              {wide && <BoardTabBar wide leagueId={view.leagueId} />}
-            </>
-          )
-        }
-      >
-        {children}
-      </LeagueTabScroll>
-      {view && !wide && <BoardTabBar leagueId={view.leagueId} />}
-    </View>
-  );
-}
 
 /**
  * A board link that leads nowhere: the board was deleted, or it isn't in one of the player's leagues. The
@@ -138,14 +75,13 @@ export function BoardScreen({ boardId }: { boardId: string }) {
   );
   if (gone) return <BoardNotFound boardId={boardId} />;
   return (
-    <BoardFrame view={view} reload={board.refresh}>
+    <BoardFrame league={view && { id: view.leagueId, name: view.leagueName }} reload={board.refresh}>
       <BoardPanel
         boardId={boardId}
         board={board}
         userId={me?.id ?? ""}
         avatarId={me?.avatarId}
         displayName={me?.displayName ?? "You"}
-        standalone
       />
     </BoardFrame>
   );
@@ -169,7 +105,7 @@ export function ManageBoardScreen({ boardId }: { boardId: string }) {
   // than start from a remembered copy that may be out of date. A failed reload still shows the remembered board.
   const settled = board.fresh || !!board.error;
   return (
-    <BoardFrame view={view} reload={board.refresh}>
+    <BoardFrame league={view && { id: view.leagueId, name: view.leagueName }} reload={board.refresh}>
       {!view || !settled ? (
         !view && board.error ? (
           <Failure message={board.error} retry={board.reload} />
@@ -244,7 +180,6 @@ function ManageBoard({
       // Unsaved edits on a board that is gone have nothing to go back to.
       setLimit(String(view.maxPerPlayer));
       setEditingGame(false);
-      forgetBoard(view.leagueId, view.id);
       // After the reset above has rendered, so the unsaved-work guard doesn't ask about a deleted board.
       setTimeout(() => router.replace(`/leagues/${view.leagueId}` as never), 0);
     } catch (err) {
@@ -291,6 +226,7 @@ function ManageBoard({
   return (
     <>
       <BoardHeading view={view} admin manage />
+      <GameScore view={view} />
       {open && (
         <Card label="Lock and draw">
           <Heading>Lock and draw</Heading>

@@ -27,20 +27,21 @@ test.afterEach(async ({ request }) => {
   await resetHarness(request);
 });
 
-/**
- * From Your leagues: a squares league with a board on the Super Bowl (the default game), then its Board tab.
- * Returns the league's id.
- */
-async function startBoard(page: Page) {
+async function newBoardPage(page: Page) {
   await openNewLeague(page);
   await page.getByRole("radio", { name: "Squares" }).click();
   await page.getByLabel("League name").fill("Super Bowl Squares");
   await page.getByRole("button", { name: "Create league" }).click();
+  await page.getByRole("link", { name: "Boards", exact: true }).click();
+  await page.getByRole("link", { name: "New board", exact: true }).click();
   await expect(page.getByRole("heading", { name: "New board" })).toBeVisible();
-  const leagueId = leagueIdOf(page.url());
+  return leagueIdOf(page.url());
+}
+
+async function startBoard(page: Page) {
+  const leagueId = await newBoardPage(page);
   await page.getByRole("button", { name: "Create board" }).click();
   await expect(page.getByText("Board created.")).toBeVisible();
-  await page.getByRole("link", { name: "Board", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Bills at Seahawks" })).toBeVisible();
   return leagueId;
 }
@@ -86,7 +87,7 @@ test("a board locks itself at kickoff and settles four quarters, an empty square
   const q3 = { home: h + 10, away: a + 10 };
   const final = { home: h + 16, away: a + 10 };
   const steps: [number, Partial<HarnessGame>][] = [
-    [20, { status: "in_progress", period: 2, periodScores: { q1 } }],
+    [20, { status: "in_progress", period: 2, liveScore: q1, periodScores: { q1 } }],
     [80, { status: "in_progress", period: 3, periodScores: { q1, half } }],
     [130, { status: "in_progress", period: 4, periodScores: { q1, half, q3 } }],
     [
@@ -108,6 +109,14 @@ test("a board locks itself at kickoff and settles four quarters, an empty square
     if (minutes === 20) {
       await page.reload();
       await expect(results).toContainText(`Q1BUF ${a} · SEA ${h}You won`);
+      // The feed's live score heads the board, and the square it lands on says it would win now.
+      const live = page.getByRole("region", { name: `Live score: Bills ${a}, Seahawks ${h}` });
+      const current = page.getByRole("button", { name: /won Q1, would win if the quarter ended now/ });
+      await expect(current).toContainText(/Q1\s*Now/);
+      await expect(live).toBeVisible();
+      await page.getByRole("link", { name: "Manage board" }).click();
+      await expect(live).toBeVisible();
+      await page.getByRole("link", { name: "View board" }).click();
     }
   }
   await page.reload();
@@ -153,4 +162,47 @@ test("an admin's Lock and draw locks the board before kickoff", async ({ page, r
   await remove.getByRole("button", { name: "Delete board" }).click();
   await expect(page.getByText("Board deleted.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "No boards yet" })).toBeVisible();
+});
+
+test("leaving a pending board creation keeps the list open, with a way back from a stale board", async ({
+  page,
+  request,
+  signedIn: _,
+}) => {
+  await setClock(request, "2027-02-10T17:00:00Z");
+  await setFeedWeek(request, 2026, 22, [superBowl()]);
+  await page.reload();
+  const leagueId = await newBoardPage(page);
+  const listUrl = new URL(`/leagues/${leagueId}`, page.url()).href;
+
+  // The server has created the board, but the form hasn't received its response yet.
+  let created = false;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/leagues/*/boards", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const response = await route.fetch();
+    created = response.ok();
+    await held;
+    await route.fulfill({ response });
+  });
+  await page.getByRole("button", { name: "Create board" }).click();
+  try {
+    await expect.poll(() => created).toBe(true);
+    await page.getByRole("link", { name: "All boards", exact: true }).click();
+    await expect(page.getByRole("link", { name: /^Open BUF at SEA/ })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(page.getByText("Board created.")).toBeVisible();
+  await expect(page).toHaveURL(listUrl);
+
+  // The user's first attempt to open the listed board finds it already deleted.
+  await page.route("**/api/boards/*", (route) => route.fulfill({ status: 404, json: { error: "Gone" } }));
+  await page.getByRole("link", { name: /^Open BUF at SEA/ }).click();
+  await expect(page.getByRole("heading", { name: "Board not found" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to the league" }).click();
+  await expect(page).toHaveURL(listUrl);
 });

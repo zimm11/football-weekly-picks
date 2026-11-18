@@ -6,7 +6,6 @@ import {
   leagueTabPath,
 } from "@picks/shared";
 import { usePathname } from "expo-router";
-import type { ReactNode } from "react";
 import { Platform, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppLink, openPath } from "../components/AppLink";
@@ -28,27 +27,27 @@ export function LeagueHeader({
   season,
   seasonChoices,
   onSeason,
-  selector,
   seasonWidth,
+  back = { label: "All leagues", href: "/" },
 }: {
   leagueId: string;
   leagueName: string;
   season?: number | "new";
   seasonChoices?: { value: number | "new"; label: string }[];
   onSeason?: (year: number | "new") => void;
-  /** Another type's selector in the season's place (squares' board). */
-  selector?: ReactNode;
   /** The season selector's width, when its labels are longer than a year. */
   seasonWidth?: number;
+  /** The way up from this screen: Your leagues, or for a screen inside a league (a squares board) its list. */
+  back?: { label: string; href: string };
 }) {
   // The selector rides on the "All leagues" row, so the league's name keeps the whole width under it whatever
-  // the selector says ("2026 playoffs", a board's game).
+  // the selector says ("2026 playoffs").
   return (
     <View>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        {/* On iPhone, Your leagues is already under this screen: go back down to it rather than stack another. */}
+        {/* On iPhone, the screen it names is already under this one: go back down to it rather than stack another. */}
         <AppLink
-          href="/"
+          href={back.href}
           how={Platform.OS === "web" ? "push" : "dismissTo"}
           style={({ pressed }) => ({
             minHeight: 44,
@@ -64,7 +63,7 @@ export function LeagueHeader({
             maxFontSizeMultiplier={CHROME_FONT_SCALE}
             style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.mutedForeground }}
           >
-            All leagues
+            {back.label}
           </Text>
         </AppLink>
         {season !== undefined && onSeason && (
@@ -77,7 +76,6 @@ export function LeagueHeader({
             onChange={onSeason}
           />
         )}
-        {season === undefined && selector}
       </View>
       <Text
         accessibilityRole="header"

@@ -215,14 +215,6 @@ export function currentSquare(
   return score ? winningSquare(digits, score) : null;
 }
 
-/** The board to show first: the next one still to finish (soonest kickoff), else the latest finished one. */
-export function preferredBoard<B extends { id: string; kickoff: string; phase: BoardPhase }>(
-  boards: B[],
-): B | undefined {
-  const byKickoff = [...boards].sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff));
-  return byKickoff.find((b) => b.phase !== "final") ?? byKickoff.at(-1);
-}
-
 // ---------- Requests ----------
 
 const CONTROL_CHARACTERS = /[\p{Cc}\u2028\u2029]/u;

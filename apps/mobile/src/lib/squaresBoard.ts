@@ -15,7 +15,8 @@ import { parseLeagueKickoff } from "./leagueLogic";
 
 /*
  * The squares board's presentation, as pure functions: what each cell shows and says, the optimistic claims
- * laid over the last saved board, and the board selector's labels. The screens in screens/squares/ draw them.
+ * laid over the last saved board, the grid's measurements and the Boards list's order. The screens in
+ * screens/squares/ draw them.
  */
 
 export const squareKey = (row: number, col: number) => `${row}:${col}`;
@@ -135,30 +136,39 @@ export const GRID_GAP = 2;
 
 /**
  * The grid's measurements for the width the page gives it (`contentWidth`, inside the page's `gutter` on each
- * side), so all ten columns always show: no sideways scrolling.
- * - Under 560px of screen the card runs edge to edge (`bleed`), with 6px of padding and a 24px column for the
- *   away team's numbers: 33px cells on a 393px phone, 26px at 320px. Cells may be under the 44px tap size there,
- *   because the whole board has to be in view.
- * - From 560px the card sits inside the gutter and its cells are 44px or more, growing to 56px.
+ * side), so all ten columns always show: no sideways scrolling. Left of the cells sit two narrow columns: the
+ * away team's name, turned to read up the side (`side`), then its numbers (`axis`).
+ * - Under 560px of screen the card runs edge to edge (`bleed`) with 4px of padding: 32px cells on a 390px
+ *   phone, 25px at 320px. Cells may be under the 44px tap size there, because the whole board has to be in view.
+ * - From 560px the card sits inside the gutter and its cells are 43px or more, growing to 56px.
  */
 export function gridLayout(contentWidth: number, gutter = 16) {
   const bleed = contentWidth + 2 * gutter < 560;
-  const padding = bleed ? 6 : 12;
-  const axis = bleed ? 24 : 32;
+  const padding = bleed ? 4 : 12;
+  const side = bleed ? 18 : 24;
+  const axis = bleed ? 22 : 28;
   const inner = (bleed ? contentWidth + 2 * gutter : contentWidth) - 2 * padding;
-  const cell = Math.max(16, Math.min(56, Math.floor((inner - axis - BOARD_SIZE * GRID_GAP) / BOARD_SIZE)));
+  const cell = Math.max(
+    16,
+    Math.min(56, Math.floor((inner - side - axis - BOARD_SIZE * GRID_GAP) / BOARD_SIZE)),
+  );
   return {
     bleed,
     padding,
+    /** The width of the column holding the away team's name. */
+    side,
     /** The width of the column of row numbers. */
     axis,
     cell,
-    /** The grid itself: the number column, ten cells and the gaps between them. */
-    width: axis + BOARD_SIZE * (cell + GRID_GAP),
+    /** The ten cells of a row or column, with the gaps between them. */
+    span: BOARD_SIZE * cell + (BOARD_SIZE - 1) * GRID_GAP,
+    /** The whole board: the name column, the number column, ten cells and the gaps between them. */
+    width: side + axis + BOARD_SIZE * (cell + GRID_GAP),
     /** Room for a holder's mark and a quarter's label, one above the other; a smaller cell shows one of them. */
     twoLines: cell >= 32,
     /** Type sizes that stay readable as the cell shrinks. */
     digitSize: Math.max(13, Math.min(22, Math.round(cell * 0.5))),
+    nameSize: bleed ? (cell < 28 ? 13 : 14) : 18,
     initialsSize: cell >= 52 ? 15 : cell >= 44 ? 13 : cell >= 30 ? 12 : 11,
     labelSize: cell >= 52 ? 12 : cell >= 44 ? 11 : cell >= 30 ? 10 : 9,
     /** A profile picture alone in its cell, and with a quarter's label under it. */
@@ -204,12 +214,43 @@ export function scheduleWeekAt(year: number, now: Date): number {
   return LAST_WEEK;
 }
 
-/** A board's name in the selector and lists: "BUF at SEA · Feb 14". */
+/** A board's short name, for a link's label and the admin's confirmations: "BUF at SEA · Feb 14". */
 export function boardTitle(board: Pick<BoardSummary, "homeTeam" | "awayTeam" | "kickoff">, timeZone: string) {
   const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone }).format(
     new Date(board.kickoff),
   );
   return `${board.awayTeam} at ${board.homeTeam} · ${day}`;
+}
+
+/** The Boards list's order: boards still to finish first, the soonest kickoff on top, then finished ones, latest first. */
+export function boardsInOrder<B extends Pick<BoardSummary, "kickoff" | "phase">>(boards: B[]): B[] {
+  const at = (board: B) => Date.parse(board.kickoff);
+  return [
+    ...boards.filter((b) => b.phase !== "final").sort((a, b) => at(a) - at(b)),
+    ...boards.filter((b) => b.phase === "final").sort((a, b) => at(b) - at(a)),
+  ];
+}
+
+/**
+ * The score the board shows above its grid, and what it is: the feed's live score while the game is on, else
+ * the latest quarter scored ("After Q1", "Halftime", "After Q3", "Final"). `label` names it for a screen reader
+ * ("Live score", "Score after Q1"). Null until there is a score.
+ */
+export function boardScore(view: Pick<BoardView, "live" | "quarters">) {
+  if (view.live) return { ...view.live, status: "Live", label: "Live score", live: true };
+  const latest = quarterRows(view)
+    .reverse()
+    .find((row) => row.result)?.result;
+  if (!latest) return null;
+  const name = SQUARE_PERIOD_LABEL[latest.period];
+  const settled = latest.period === "final" || latest.period === "half";
+  return {
+    homeScore: latest.homeScore,
+    awayScore: latest.awayScore,
+    status: settled ? name : `After ${name}`,
+    label: settled ? `${name} score` : `Score after ${name}`,
+    live: false,
+  };
 }
 
 /** How many squares a player can still claim, and whether the board still takes claims. */

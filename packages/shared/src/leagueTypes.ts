@@ -38,7 +38,7 @@ export type LeagueSettings = {
 export const LEAGUE_TABS = {
   picks: { title: "Picks", icon: "football" },
   pick: { title: "Pick", icon: "target" },
-  board: { title: "Board", icon: "grid" },
+  board: { title: "Boards", icon: "grid" },
   results: { title: "Results", icon: "list" },
   standings: { title: "Standings", icon: "trophy" },
   messages: { title: "Messages", icon: "chat" },

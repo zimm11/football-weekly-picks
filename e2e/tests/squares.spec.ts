@@ -37,9 +37,11 @@ test("players claim squares up to the limit on a typed-in board, and a typed sco
   const inviteUrl = await page.getByLabel("Invite link", { exact: true }).inputValue();
   // A squares league has a Board, and no Picks, Results or Standings.
   const tabs = page.getByRole("navigation", { name: "League" }).getByRole("link");
-  await expect(tabs).toHaveText(["Board", "Messages", "League"]);
+  await expect(tabs).toHaveText(["Boards", "Messages", "League"]);
 
   // The feed lists no Super Bowl here, so the commissioner types the game in, two squares a player.
+  await page.getByRole("link", { name: "Boards", exact: true }).click();
+  await page.getByRole("link", { name: "New board", exact: true }).click();
   await expect(page.getByRole("heading", { name: "New board" })).toBeVisible();
   await page.getByRole("radio", { name: "Type it in" }).click();
   await page.getByLabel("Away team (down the side)").selectOption("BUF");
@@ -48,7 +50,6 @@ test("players claim squares up to the limit on a typed-in board, and a typed sco
   await page.getByLabel("Squares per player").fill("2");
   await page.getByRole("button", { name: "Create board" }).click();
   await expect(page.getByText("Board created.")).toBeVisible();
-  await page.getByRole("link", { name: "Board", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Bills at Seahawks" })).toBeVisible();
   await tapSquare(page, "Open square, row 2, column 2", "PUT");
   await expect(page.getByRole("button", { name: "Your square, row 2, column 2", exact: true })).toBeVisible();
@@ -57,6 +58,7 @@ test("players claim squares up to the limit on a typed-in board, and a typed sco
 
   const { context, page: player, account } = await joinLeague(browser, inviteUrl, "Pat");
   try {
+    await player.getByRole("link", { name: /^Open BUF at SEA/ }).click();
     // A player lands on the board: open, the numbers not drawn, and nothing to manage it with.
     await expect(player.getByRole("heading", { name: "Bills at Seahawks" })).toBeVisible();
     await expect(player.getByText("Open", { exact: true })).toBeVisible();
@@ -95,6 +97,7 @@ test("players claim squares up to the limit on a typed-in board, and a typed sco
     await player.goto(`${leagueUrl}/standings`);
     await expect(player.getByRole("heading", { name: "Page not found" })).toBeVisible();
     await player.goto(leagueUrl);
+    await player.getByRole("link", { name: /^Open BUF at SEA/ }).click();
     await expect(player.getByRole("heading", { name: "Bills at Seahawks" })).toBeVisible();
 
     // The commissioner locks the board and the numbers are drawn, once.
@@ -151,4 +154,34 @@ test("players claim squares up to the limit on a typed-in board, and a typed sco
   } finally {
     await context.close();
   }
+});
+
+test("players choose among boards and commissioners create them on a separate screen", async ({
+  page,
+  signedIn: _,
+}) => {
+  await openNewLeague(page);
+  await page.getByRole("radio", { name: "Squares" }).click();
+  await page.getByLabel("League name").fill("Multiple boards");
+  await page.getByRole("button", { name: "Create league" }).click();
+  await page.getByRole("link", { name: "Boards", exact: true }).click();
+  for (const home of ["SEA", "KC"]) {
+    await expect(page.getByRole("button", { name: "Create board", exact: true })).toHaveCount(0);
+    await page.getByRole("link", { name: "New board", exact: true }).click();
+    await page.getByRole("radio", { name: "Type it in" }).click();
+    await page.getByLabel("Away team (down the side)").selectOption("BUF");
+    await page.getByLabel("Home team (across the top)").selectOption(home);
+    await page.getByLabel(/^Kickoff \(.* time\)$/).fill(kickoffInDays(3));
+    await page.getByRole("button", { name: "Create board" }).click();
+    // The new board's own screen (its id, not "/boards/new", where All boards is offered too).
+    await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}$/);
+    await page.getByRole("link", { name: "All boards", exact: true }).click();
+  }
+  await expect(page.getByLabel("Board", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^Open BUF at/ })).toHaveCount(2);
+  await page.getByRole("link", { name: /^Open BUF at KC/ }).click();
+  await expect(page.getByRole("heading", { name: "Bills at Chiefs" })).toBeVisible();
+  await page.getByRole("link", { name: "All boards", exact: true }).click();
+  await page.getByRole("link", { name: /^Open BUF at SEA/ }).click();
+  await expect(page.getByRole("heading", { name: "Bills at Seahawks" })).toBeVisible();
 });
