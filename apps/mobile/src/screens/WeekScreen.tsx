@@ -1,10 +1,8 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: WeekBadge and WeekCaption render children inside native Text.
 import {
-  coveringSide,
   formatLine,
   type Game,
   lineFor,
-  pickPoints,
   type Side,
   scoreSoFar,
   submitPicksSchema,
@@ -32,12 +30,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { NotFound } from "../components/NotFound";
-import { hoverFill, pressState } from "../components/pressState";
+import { hoverFill, pressState, ringInside } from "../components/pressState";
 import { TeamLogo } from "../components/TeamLogo";
 import { colors, fonts } from "../components/ui";
 import { request, statusOf } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { now as clockNow } from "../lib/clock";
+import { haptics } from "../lib/haptics";
 import { offerHomeScreen } from "../lib/homeScreen";
 import { onlyDigits } from "../lib/leagueLogic";
 import { usePageTitle } from "../lib/pageTitle";
@@ -57,6 +56,7 @@ import {
   formatRecord,
   gameDays,
   kickoffTime,
+  lockedGameRow,
   pickStatus,
   sheetEditable,
   weekHasPow,
@@ -66,7 +66,7 @@ import { LeagueHeader, LeagueTabBar } from "./LeagueChrome";
 import { MatchupSheet } from "./MatchupSheet";
 import { PlayoffStatusLine } from "./playoff/PlayoffStatus";
 import { WeekResults } from "./WeekResults";
-import { WeekAction, WeekBadge, WeekStat, w } from "./weekUi";
+import { WeekAction, WeekBadge, w } from "./weekUi";
 
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong. Try again.";
@@ -102,6 +102,12 @@ export function WeekScreen({
   const [now, setNow] = useState(clockNow);
   const [insightGame, setInsightGame] = useState<Game | null>(null);
   const [showLocks, setShowLocks] = useState(false);
+  // Locked games opened up to their full card, by id. Plain state, so a background refresh keeps them open.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  // The games already locked when this week was first shown, while something was still to pick: they fold
+  // behind one "N games locked" control. A game that locks while the player is looking stays in view as a row.
+  const folded = useRef<{ weekId: string; ids: ReadonlySet<string> } | undefined>(undefined);
+  const [showFolded, setShowFolded] = useState(false);
   const viewRef = useRef<WeekView | undefined>(undefined);
   const draftRef = useRef<PickDraft>(EMPTY);
   const serial = useRef(0);
@@ -127,6 +133,16 @@ export function WeekScreen({
     (next: WeekView, reset = false) => {
       const previous = viewRef.current;
       const wasDirty = previous && draftChanged(draftRef.current, savedDraft(previous));
+      if (folded.current?.weekId !== next.id) {
+        const at = clockNow();
+        const locked = next.games.filter((game) => gameLocked(game, at)).map((game) => game.id);
+        const pickable = sheetEditable(next, at).games;
+        folded.current = { weekId: next.id, ids: new Set(pickable ? locked : []) };
+        if (previous) {
+          setShowFolded(false);
+          setExpanded(new Set());
+        }
+      }
       viewRef.current = next;
       setView(next);
       if (reset || !previous || previous.id !== next.id || !wasDirty || next.status !== "open")
@@ -134,7 +150,11 @@ export function WeekScreen({
       else {
         const reconciled = reconcileDraft(draftRef.current, next, clockNow());
         updateDraft(reconciled.draft);
-        if (reconciled.undone.length) setMessage(undoMessage(reconciled.undone));
+        if (reconciled.undone.length) {
+          setMessage(undoMessage(reconciled.undone));
+          // While saving, the save's own outcome is felt instead.
+          if (!savingRef.current) haptics.warn();
+        }
       }
     },
     [updateDraft],
@@ -210,7 +230,10 @@ export function WeekScreen({
     if (view?.status !== "open" || savingRef.current) return;
     const reconciled = reconcileDraft(draftRef.current, view, now);
     if (draftChanged(reconciled.draft, draftRef.current)) updateDraft(reconciled.draft);
-    if (reconciled.undone.length) setMessage(undoMessage(reconciled.undone));
+    if (reconciled.undone.length) {
+      setMessage(undoMessage(reconciled.undone));
+      haptics.warn();
+    }
   }, [view, now, updateDraft]);
 
   function edit(next: PickDraft) {
@@ -220,8 +243,9 @@ export function WeekScreen({
   }
   function choose(game: Game, side: Side) {
     if (viewRef.current?.playoff?.mayPick === false) return;
-    if (!savingRef.current && !gameLocked(game, clockNow()))
-      edit({ ...draftRef.current, sides: { ...draftRef.current.sides, [game.id]: side } });
+    if (savingRef.current || gameLocked(game, clockNow())) return;
+    if (draftRef.current.sides[game.id] !== side) haptics.select();
+    edit({ ...draftRef.current, sides: { ...draftRef.current.sides, [game.id]: side } });
   }
   function togglePow(game: Game) {
     const current = viewRef.current;
@@ -229,6 +253,7 @@ export function WeekScreen({
     if (savingRef.current || gameLocked(game, clockNow()) || !draftRef.current.sides[game.id]) return;
     const savedPowGame = current.games.find((value) => value.id === savedDraft(current).pow);
     if (savedPowGame && gameLocked(savedPowGame, clockNow())) return;
+    haptics.toggle();
     edit({ ...draftRef.current, pow: draftRef.current.pow === game.id ? null : game.id });
   }
   async function save() {
@@ -245,6 +270,7 @@ export function WeekScreen({
       if (latest.status !== "open") {
         accept(latest, true);
         setMessage(`This ${weekUnit(latest)} is no longer accepting picks.`);
+        haptics.warn();
         return;
       }
       const reconciled = reconcileDraft(draftRef.current, latest, clockNow());
@@ -253,6 +279,7 @@ export function WeekScreen({
       const parsed = submitPicksSchema.safeParse(draftSubmission(reconciled.draft));
       if (!parsed.success) {
         setError(parsed.error.issues[0]?.message ?? "Check your picks.");
+        haptics.error();
         return;
       }
       const result = await request<WeekView>(`/weeks/${weekId}/picks`, { method: "PUT", body: parsed.data });
@@ -261,9 +288,15 @@ export function WeekScreen({
       // A playoff player the guillotine put out saves only their Super Bowl guess.
       const what = result.playoff?.mayPick === false ? "Guess saved." : "Picks saved.";
       setMessage(`${what}${reconciled.undone.length ? ` ${undoMessage(reconciled.undone)}` : ""}`);
+      // Saved, but a change that locked didn't make it: a warning rather than a success.
+      if (reconciled.undone.length) haptics.warn();
+      else haptics.success();
       offerHomeScreen();
     } catch (err) {
-      if (active.current) setError(errorText(err));
+      if (active.current) {
+        setError(errorText(err));
+        haptics.error();
+      }
     } finally {
       savingRef.current = false;
       if (active.current) setSaving(false);
@@ -322,6 +355,25 @@ export function WeekScreen({
   const canChange = (!closed && editable.games) || editable.guess;
   const showSaveBar =
     view.status === "open" && (!closed || !!tiebreaker) && (canChange || dirty || !!message || !!error);
+  // Games already locked when the sheet was first shown, while something was still to pick, fold behind one
+  // control (one line, whatever their number), so the games to pick start on the first screen. Kickoff order
+  // stays: shown, the rows sit where their games are. The fold stays for this visit even once the rest lock, so
+  // nothing above the player's thumb opens up by itself.
+  const foldable = view.games.filter((game) => folded.current?.ids.has(game.id) && gameLocked(game, now));
+  const folding = foldable.length > 0 && !showFolded;
+  const hidden = new Set(folding ? foldable.map((game) => game.id) : []);
+  const foldLabel = `${foldable.length} ${foldable.length === 1 ? "game" : "games"} locked`;
+  // The running tally sits inside the status card (or alone for a player the guillotine put out), one line.
+  const soFar =
+    score.wins + score.losses + score.pushes > 0 ? (
+      <SoFarLine unit={unit} score={score} hasPow={hasPow} />
+    ) : null;
+  const toggleRow = (id: string) =>
+    setExpanded((open) => {
+      const next = new Set(open);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   return (
     <KeyboardAvoidingView
       style={s.root}
@@ -384,228 +436,90 @@ export function WeekScreen({
         {view.status === "open" && (
           <>
             <PlayoffStatusLine view={view} />
-            {!closed && <PickStatusBanner view={view} dirty={dirty} now={now} canChange={editable.games} />}
-            {score.wins + score.losses + score.pushes > 0 && (
-              <View style={w.card} accessibilityLabel={`Your ${unit} so far`}>
-                <View style={[w.between, { alignItems: "baseline", flexWrap: "wrap" }]}>
-                  <Text style={s.cardTitle}>Your {unit} so far</Text>
-                  <Text style={w.muted}>
-                    {score.pending === 0
-                      ? "All your games are in"
-                      : `${score.pending} ${score.pending === 1 ? "pick" : "picks"} still to play`}
-                  </Text>
-                </View>
-                <View style={w.row} accessibilityLiveRegion="polite">
-                  <WeekStat
-                    label="Points"
-                    value={score.points}
-                    tone={score.points > 0 ? colors.win : undefined}
-                    style={s.runningStat}
-                    compact
-                  />
-                  <WeekStat label="Record" value={formatRecord(score)} style={s.runningStat} compact />
-                  {hasPow && (
-                    <WeekStat
-                      label="POW"
-                      value={
-                        score.pow
-                          ? ({ won: "Won", lost: "Lost", push: "Push", pending: "To play" } as const)[
-                              score.pow
-                            ]
-                          : "None"
-                      }
-                      tone={
-                        score.pow === "won" ? colors.win : score.pow === "pending" ? colors.pow : undefined
-                      }
-                      style={s.runningStat}
-                      compact
-                    />
-                  )}
-                </View>
-                <Text style={w.small}>
-                  {automatic
-                    ? `Unofficial until the ${unit} is final.`
-                    : "Unofficial until a commissioner finalizes the week."}
-                </Text>
-              </View>
+            {!closed ? (
+              <PickStatusBanner view={view} dirty={dirty} now={now} canChange={editable.games}>
+                {soFar}
+              </PickStatusBanner>
+            ) : (
+              soFar && <View style={w.card}>{soFar}</View>
             )}
-            <View style={{ gap: 0 }}>
+            {foldable.length > 0 && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ expanded: showLocks }}
-                aria-expanded={showLocks}
-                onPress={() => setShowLocks(!showLocks)}
-                // The fill reaches 8px past the text on each side without moving it.
-                style={(state) => [
-                  w.row,
-                  s.touch,
-                  { marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 10 },
-                  { backgroundColor: hoverFill(state) },
-                ]}
+                accessibilityLabel={foldLabel}
+                accessibilityState={{ expanded: showFolded }}
+                aria-expanded={showFolded}
+                onPress={() => setShowFolded(!showFolded)}
+                style={(state) => [s.fold, { backgroundColor: hoverFill(state, colors.card) }]}
               >
-                <Icon name="info" size={16} color={colors.mutedForeground} />
-                <Text style={s.disclosure}>How locks work</Text>
-                <View style={{ transform: [{ rotate: showLocks ? "180deg" : "0deg" }] }}>
+                <Icon name="lock" size={16} color={colors.mutedForeground} />
+                <Text style={[s.disclosure, { flex: 1 }]}>{foldLabel}</Text>
+                <Text style={s.disclosure}>{showFolded ? "Hide" : "Show"}</Text>
+                <View style={{ transform: [{ rotate: showFolded ? "180deg" : "0deg" }] }}>
                   <Icon name="chevron-down" size={12} color={colors.mutedForeground} />
                 </View>
               </Pressable>
-              {showLocks && (
-                <Text style={[w.muted, { paddingBottom: 4 }]}>
-                  {hasPow
-                    ? `Each game locks at kickoff. Until then you can change your pick and put your POW on it or take it off. Once your POW's game kicks off, your POW stays there. It is worth ${powBonus} extra ${powBonus === 1 ? "point" : "points"} if it wins. If you don't choose a POW, you don't get one.`
-                    : "The game locks at kickoff. Until then you can change your pick. The Super Bowl has no POW."}
-                </Text>
-              )}
-            </View>
-            {gameDays(view.games, view.timeZone).map((group) => (
-              <View key={group.day} style={{ gap: 8 }}>
-                <Text accessibilityRole="header" style={s.day}>
-                  {group.day}
-                </Text>
-                {group.games.map((game) => {
-                  // Kicked off (or has a result). A player the guillotine put out can't pick the rest either,
-                  // but those games aren't locked: the status line above says why.
-                  const kickedOff = gameLocked(game, now);
-                  const locked = closed || kickedOff;
-                  const scored = { ...game, kickoff: new Date(game.kickoff) };
-                  const covered = coveringSide(scored);
-                  const savedSide = saved.sides[game.id];
-                  const result =
-                    !savedSide || covered === null
-                      ? undefined
-                      : covered === "push"
-                        ? "Push"
-                        : covered === savedSide
-                          ? `Won +${pickPoints(scored, { side: savedSide, isPow: saved.pow === game.id }, view.powBonus)}`
-                          : "Lost";
-                  return (
-                    <View key={game.id} style={s.gameCard}>
+            )}
+            {gameDays(view.games, view.timeZone).map((group) => {
+              const games = group.games.filter((game) => !hidden.has(game.id));
+              if (!games.length) return null;
+              return (
+                <View key={group.day} style={{ gap: 8 }}>
+                  <Text accessibilityRole="header" style={s.day}>
+                    {group.day}
+                  </Text>
+                  {games.map((game) => {
+                    // Kicked off (or has a result): nothing on it can change, so it is a compact row that opens
+                    // to the card. A player the guillotine put out can't pick the rest either, but those games
+                    // aren't locked: they stay cards, and the status line above says why.
+                    const kickedOff = gameLocked(game, now);
+                    const controls = (
+                      <PickControls
+                        game={game}
+                        draft={draft}
+                        locked={closed || kickedOff}
+                        saving={saving}
+                        hasPow={hasPow}
+                        powFrozen={powFrozen}
+                        onChoose={choose}
+                        onPow={togglePow}
+                        onInsight={setInsightGame}
+                      />
+                    );
+                    const meta = (
                       <View style={s.gameMeta}>
                         <Text style={[w.muted, { marginRight: "auto" }]}>
                           {kickoffTime(game.kickoff, view.timeZone)}
                         </Text>
                         {game.id === view.tiebreakerGameId && <WeekBadge>Tiebreaker game</WeekBadge>}
-                        {kickedOff && covered === null && <WeekBadge icon="lock">Locked</WeekBadge>}
-                        {covered !== null && (
-                          <WeekBadge>
-                            Final {game.awayScore}–{game.homeScore}
-                          </WeekBadge>
-                        )}
-                        {result && (
-                          <WeekBadge
-                            tone={result.startsWith("Won") ? "win" : result === "Lost" ? "loss" : "outline"}
-                            icon={
-                              result.startsWith("Won") ? "check" : result === "Push" ? "equals" : undefined
-                            }
-                          >
-                            {result}
-                          </WeekBadge>
-                        )}
                         <WeekBadge tone="primary">
                           {game.points} {game.points === 1 ? "pt" : "pts"}
                         </WeekBadge>
                       </View>
-                      <View style={s.pickRow}>
-                        {(["away", "home"] as const).map((side) => {
-                          const abbr = side === "home" ? game.homeTeam : game.awayTeam;
-                          const selected = draft.sides[game.id] === side;
-                          const line = lineFor(side, game.spread ?? 0);
-                          return (
-                            <Pressable
-                              key={side}
-                              accessibilityRole="button"
-                              accessibilityLabel={`${formatLine(teamName(abbr), line)}${side === "home" ? ", home" : ""}`}
-                              accessibilityState={{ selected, disabled: locked || saving }}
-                              aria-pressed={selected}
-                              disabled={locked || saving}
-                              onPress={() => choose(game, side)}
-                              style={(state) => {
-                                const { pressed, hovered } = pressState(state);
-                                const live = hovered && !locked && !saving;
-                                return [
-                                  s.team,
-                                  live && !selected && { backgroundColor: colors.raisedHover },
-                                  selected && s.selected,
-                                  live && selected && { opacity: 0.9 },
-                                  locked && !selected && s.disabled,
-                                  pressed && s.pressed,
-                                ];
-                              }}
-                            >
-                              {selected && (
-                                <View style={s.chosen}>
-                                  <Icon name="check-circle" size={16} color={colors.primaryForeground} />
-                                </View>
-                              )}
-                              <TeamLogo team={abbr} size={36} />
-                              <View style={{ gap: 2, alignItems: "center" }}>
-                                <Text
-                                  numberOfLines={1}
-                                  adjustsFontSizeToFit
-                                  minimumFontScale={0.8}
-                                  style={[s.teamName, selected && s.selectedText]}
-                                >
-                                  {teamName(abbr)}
-                                </Text>
-                                <Text style={[s.line, selected && s.selectedText]}>
-                                  {line === 0 ? "PK" : `${line > 0 ? "+" : ""}${line}`}
-                                  {side === "home" ? " · home" : ""}
-                                </Text>
-                              </View>
-                            </Pressable>
-                          );
-                        })}
-                        {hasPow && (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`POW: ${matchup(game)}`}
-                            accessibilityState={{
-                              selected: draft.pow === game.id,
-                              disabled: locked || powFrozen || !draft.sides[game.id] || saving,
-                            }}
-                            aria-pressed={draft.pow === game.id}
-                            disabled={locked || powFrozen || !draft.sides[game.id] || saving}
-                            onPress={() => togglePow(game)}
-                            style={(state) => {
-                              const { pressed, hovered } = pressState(state);
-                              const off = locked || powFrozen || !draft.sides[game.id] || saving;
-                              return [
-                                s.pow,
-                                hovered &&
-                                  !off &&
-                                  draft.pow !== game.id && { backgroundColor: colors.raisedHover },
-                                draft.pow === game.id && s.powSelected,
-                                hovered && !off && draft.pow === game.id && { opacity: 0.9 },
-                                (locked || powFrozen || !draft.sides[game.id]) &&
-                                  draft.pow !== game.id &&
-                                  s.disabled,
-                                pressed && s.pressed,
-                              ];
-                            }}
-                          >
-                            <Text
-                              style={[s.powText, draft.pow === game.id && { color: colors.powForeground }]}
-                            >
-                              POW
-                            </Text>
-                          </Pressable>
-                        )}
+                    );
+                    if (kickedOff)
+                      return (
+                        <LockedGame
+                          key={game.id}
+                          game={game}
+                          row={lockedGameRow(game, saved, { hasPow, powBonus: view.powBonus })}
+                          expanded={expanded.has(game.id)}
+                          onToggle={() => toggleRow(game.id)}
+                        >
+                          {meta}
+                          {controls}
+                        </LockedGame>
+                      );
+                    return (
+                      <View key={game.id} style={s.gameCard}>
+                        {meta}
+                        {controls}
                       </View>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Matchup: ${matchup(game)}`}
-                        onPress={() => setInsightGame(game)}
-                        style={(state) => [s.insights, { backgroundColor: hoverFill(state) }]}
-                      >
-                        <Icon name="chart" size={16} color={colors.mutedForeground} filled />
-                        <Text style={[s.disclosure, { flex: 1 }]}>Stats & news</Text>
-                        <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
-                      </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
-            ))}
+                    );
+                  })}
+                </View>
+              );
+            })}
             {tiebreaker && (
               <View style={[w.card, { gap: 8, marginTop: 8 }]}>
                 <Text style={s.cardTitle}>Tiebreaker: total points scored in {matchup(tiebreaker)}</Text>
@@ -641,7 +555,37 @@ export function WeekScreen({
                   : `No POW this ${unit}: every game has locked.`}
               </Text>
             )}
-            <Text style={w.muted}>Everyone's picks are revealed when the {unit} closes.</Text>
+            <View style={{ gap: 0 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showLocks }}
+                aria-expanded={showLocks}
+                onPress={() => setShowLocks(!showLocks)}
+                // The fill reaches 8px past the text on each side without moving it.
+                style={(state) => [
+                  w.row,
+                  s.touch,
+                  { marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 10 },
+                  { backgroundColor: hoverFill(state) },
+                ]}
+              >
+                <Icon name="info" size={16} color={colors.mutedForeground} />
+                <Text style={s.disclosure}>How locks work</Text>
+                <View style={{ transform: [{ rotate: showLocks ? "180deg" : "0deg" }] }}>
+                  <Icon name="chevron-down" size={12} color={colors.mutedForeground} />
+                </View>
+              </Pressable>
+              {showLocks && (
+                <Text style={[w.muted, { paddingBottom: 4 }]}>
+                  {hasPow
+                    ? `Each game locks at kickoff. Until then you can change your pick and put your POW on it or take it off. Once your POW's game kicks off, your POW stays there. It is worth ${powBonus} extra ${powBonus === 1 ? "point" : "points"} if it wins. If you don't choose a POW, you don't get one.`
+                    : "The game locks at kickoff. Until then you can change your pick. The Super Bowl has no POW."}
+                </Text>
+              )}
+            </View>
+            <Text style={w.muted}>
+              Everyone's picks are revealed, and your points count, when the {unit} closes.
+            </Text>
           </>
         )}
         {error && view.status !== "open" && (
@@ -702,17 +646,223 @@ export function WeekScreen({
   );
 }
 
+/** A game's two team buttons, its POW and its Stats & news row: the card's controls, disabled once locked. */
+function PickControls({
+  game,
+  draft,
+  locked,
+  saving,
+  hasPow,
+  powFrozen,
+  onChoose,
+  onPow,
+  onInsight,
+}: {
+  game: Game;
+  draft: PickDraft;
+  /** Kicked off, has a result, or the player is out of picking. */
+  locked: boolean;
+  saving: boolean;
+  hasPow: boolean;
+  /** The saved POW's game has kicked off, so the POW stays where it is. */
+  powFrozen: boolean;
+  onChoose: (game: Game, side: Side) => void;
+  onPow: (game: Game) => void;
+  onInsight: (game: Game) => void;
+}) {
+  const powOn = draft.pow === game.id;
+  const powOff = locked || powFrozen || !draft.sides[game.id];
+  return (
+    <>
+      <View style={s.pickRow}>
+        {(["away", "home"] as const).map((side) => {
+          const abbr = side === "home" ? game.homeTeam : game.awayTeam;
+          const selected = draft.sides[game.id] === side;
+          const line = lineFor(side, game.spread ?? 0);
+          return (
+            <Pressable
+              key={side}
+              accessibilityRole="button"
+              accessibilityLabel={`${formatLine(teamName(abbr), line)}${side === "home" ? ", home" : ""}`}
+              accessibilityState={{ selected, disabled: locked || saving }}
+              aria-pressed={selected}
+              disabled={locked || saving}
+              onPress={() => onChoose(game, side)}
+              style={(state) => {
+                const { pressed, hovered } = pressState(state);
+                const live = hovered && !locked && !saving;
+                return [
+                  s.team,
+                  live && !selected && { backgroundColor: colors.raisedHover },
+                  selected && s.selected,
+                  live && selected && { opacity: 0.9 },
+                  locked && !selected && s.disabled,
+                  pressed && s.pressed,
+                ];
+              }}
+            >
+              {selected && (
+                <View style={s.chosen}>
+                  <Icon name="check-circle" size={16} color={colors.primaryForeground} />
+                </View>
+              )}
+              <TeamLogo team={abbr} size={36} />
+              <View style={{ gap: 2, alignItems: "center" }}>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  style={[s.teamName, selected && s.selectedText]}
+                >
+                  {teamName(abbr)}
+                </Text>
+                <Text style={[s.line, selected && s.selectedText]}>
+                  {line === 0 ? "PK" : `${line > 0 ? "+" : ""}${line}`}
+                  {side === "home" ? " · home" : ""}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+        {hasPow && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`POW: ${matchup(game)}`}
+            accessibilityState={{ selected: powOn, disabled: powOff || saving }}
+            aria-pressed={powOn}
+            disabled={powOff || saving}
+            onPress={() => onPow(game)}
+            style={(state) => {
+              const { pressed, hovered } = pressState(state);
+              const live = hovered && !powOff && !saving;
+              return [
+                s.pow,
+                live && !powOn && { backgroundColor: colors.raisedHover },
+                powOn && s.powSelected,
+                live && powOn && { opacity: 0.9 },
+                powOff && !powOn && s.disabled,
+                pressed && s.pressed,
+              ];
+            }}
+          >
+            <Text style={[s.powText, powOn && { color: colors.powForeground }]}>POW</Text>
+          </Pressable>
+        )}
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Matchup: ${matchup(game)}`}
+        onPress={() => onInsight(game)}
+        style={(state) => [s.insights, { backgroundColor: hoverFill(state) }]}
+      >
+        <Icon name="chart" size={16} color={colors.mutedForeground} filled />
+        <Text style={[s.disclosure, { flex: 1 }]}>Stats & news</Text>
+        <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+      </Pressable>
+    </>
+  );
+}
+
+/**
+ * A game the player can no longer change, as one compact row: the matchup, Locked or the final score, their
+ * pick with its line and POW, and Won/Lost/Push (in words and icons, never color alone) or No pick. Tapping it
+ * opens the full card below the row, read-only, Stats & news included; tapping again closes it.
+ */
+function LockedGame({
+  game,
+  row,
+  expanded,
+  onToggle,
+  children,
+}: {
+  game: Game;
+  row: ReturnType<typeof lockedGameRow>;
+  expanded: boolean;
+  onToggle: () => void;
+  /** The card's contents, shown while open. */
+  children: ReactNode;
+}) {
+  const tone = row.outcome === "won" ? "win" : row.outcome === "lost" ? "loss" : "outline";
+  return (
+    <View style={[s.gameCard, s.lockedCard]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={row.label}
+        accessibilityState={{ expanded }}
+        aria-expanded={expanded}
+        onPress={onToggle}
+        style={(state) => [s.lockedHead, { backgroundColor: hoverFill(state) }, ringInside]}
+      >
+        <View style={s.lockedLine}>
+          <View style={[w.row, { flex: 1, gap: 6 }]}>
+            <TeamLogo team={game.awayTeam} size={20} />
+            <Text style={s.abbr}>{game.awayTeam}</Text>
+            <Text style={w.small}>at</Text>
+            <TeamLogo team={game.homeTeam} size={20} />
+            <Text style={s.abbr}>{game.homeTeam}</Text>
+          </View>
+          {row.score ? (
+            <WeekBadge small>Final {row.score}</WeekBadge>
+          ) : (
+            <WeekBadge small icon="lock">
+              Locked
+            </WeekBadge>
+          )}
+          <View style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }}>
+            <Icon name="chevron-down" size={12} color={colors.mutedForeground} />
+          </View>
+        </View>
+        <View style={s.lockedLine}>
+          <View style={[w.row, { flex: 1, gap: 6, minWidth: 0 }]}>
+            {row.pick ? (
+              <>
+                <Text style={w.small}>Your pick</Text>
+                <Text
+                  numberOfLines={1}
+                  style={[s.rowPick, row.outcome === "lost" && s.lostPick, { flexShrink: 1 }]}
+                >
+                  {row.pick}
+                </Text>
+                {row.pow && (
+                  <WeekBadge tone="pow" small>
+                    POW
+                  </WeekBadge>
+                )}
+              </>
+            ) : (
+              <Text style={w.small}>No pick</Text>
+            )}
+          </View>
+          {row.result && (
+            <WeekBadge
+              small
+              tone={tone}
+              icon={row.outcome === "won" ? "check" : row.outcome === "push" ? "equals" : undefined}
+            >
+              {row.result}
+            </WeekBadge>
+          )}
+        </View>
+      </Pressable>
+      {expanded && <View style={s.lockedBody}>{children}</View>}
+    </View>
+  );
+}
+
 function PickStatusBanner({
   view,
   dirty,
   now,
   canChange,
+  children,
 }: {
   view: WeekView;
   dirty: boolean;
   now: Date;
   /** A game is still open to a pick: only then does "you can still change a pick" hold. */
   canChange: boolean;
+  /** The running tally, under the status. */
+  children?: ReactNode;
 }) {
   const { savedCount, left, missed, needsTotal, needsPow } = pickStatus(view, now);
   const extras = Number(needsTotal) + Number(needsPow);
@@ -729,7 +879,7 @@ function PickStatusBanner({
   const detail = dirty
     ? `You've made changes. Press Save to keep them. ${savedLine} so far.`
     : complete
-      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : weekHasPow(view) ? ` No POW this ${weekUnit(view)}.` : ""} Nothing more to do.${canChange ? " You can still change a pick until kickoff." : ""}`
+      ? `${missed === 0 ? `All ${view.games.length} ${view.games.length === 1 ? "game" : "games"} picked and saved.` : `${savedLine}; ${missed} ${missed === 1 ? "game" : "games"} locked without a pick.`}${pow ? ` POW: ${matchup(pow)}.` : weekHasPow(view) ? ` No POW this ${weekUnit(view)}.` : ""}${canChange ? " You can still change a pick until kickoff." : ""}`
       : `${savedLine}.${needsPow ? " Choose your POW." : ""}${needsTotal ? " Add your tiebreaker guess." : ""}`;
   const tone = dirty ? colors.destructive : complete ? colors.win : colors.primary;
   return (
@@ -744,8 +894,62 @@ function PickStatusBanner({
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={[s.cardTitle, complete && !dirty && { color: colors.win }]}>{title}</Text>
         <Text style={w.muted}>{detail}</Text>
+        {children && <View style={s.soFar}>{children}</View>}
       </View>
     </View>
+  );
+}
+
+/**
+ * The player's own week so far, in one line: points, record, POW and what is still to play. Unofficial until
+ * the week closes (the footnote under the slate says so).
+ */
+function SoFarLine({
+  unit,
+  score,
+  hasPow,
+}: {
+  unit: string;
+  score: ReturnType<typeof scoreSoFar>;
+  hasPow: boolean;
+}) {
+  const pow = score.pow
+    ? ({ won: "won", lost: "lost", push: "push", pending: "to play" } as const)[score.pow]
+    : "none";
+  const left =
+    score.pending === 0
+      ? "all your games are in"
+      : `${score.pending} ${score.pending === 1 ? "pick" : "picks"} still to play`;
+  const dot = <Text style={w.muted}> · </Text>;
+  return (
+    <Text
+      accessibilityLabel={`Your ${unit} so far: ${score.points} ${score.points === 1 ? "point" : "points"}, record ${formatRecord(score)}${hasPow ? `, POW ${pow}` : ""}, ${left}`}
+      accessibilityLiveRegion="polite"
+      style={w.muted}
+    >
+      <Text style={s.soFarTitle}>Your {unit} so far: </Text>
+      <Text style={[s.soFarValue, score.points > 0 && { color: colors.win }]}>
+        {score.points} {score.points === 1 ? "pt" : "pts"}
+      </Text>
+      {dot}
+      <Text style={s.soFarValue}>{formatRecord(score)}</Text>
+      {hasPow && (
+        <>
+          {dot}
+          <Text
+            style={[
+              s.soFarValue,
+              score.pow === "won" && { color: colors.win },
+              score.pow === "pending" && { color: colors.pow },
+            ]}
+          >
+            POW {pow}
+          </Text>
+        </>
+      )}
+      {dot}
+      {score.pending === 0 ? "All in" : `${score.pending} to play`}
+    </Text>
   );
 }
 const s = StyleSheet.create({
@@ -773,13 +977,7 @@ const s = StyleSheet.create({
   status: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, padding: 12 },
   count: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
   countText: { fontFamily: fonts.displayExtraBold, fontSize: 30, lineHeight: 32 },
-  runningStat: {
-    flex: 1,
-    backgroundColor: colors.raised,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
+
   touch: { minHeight: 44, alignSelf: "flex-start" },
   disclosure: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 19, color: colors.mutedForeground },
   day: {
@@ -791,6 +989,29 @@ const s = StyleSheet.create({
   },
   gameCard: { backgroundColor: colors.card, borderRadius: 16, padding: 12, gap: 12, overflow: "hidden" },
   gameMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  soFar: {
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  soFarTitle: { fontFamily: fonts.medium, color: colors.mutedForeground },
+  soFarValue: { fontFamily: fonts.semibold, color: colors.foreground, fontVariant: ["tabular-nums"] },
+  lockedCard: { padding: 0, gap: 0 },
+  lockedHead: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
+  lockedLine: { flexDirection: "row", alignItems: "center", gap: 8 },
+  lockedBody: { paddingHorizontal: 12, paddingBottom: 12, gap: 12 },
+  abbr: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 20, color: colors.foreground },
+  rowPick: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 18, color: colors.foreground },
+  lostPick: { textDecorationLine: "line-through", color: colors.mutedForeground },
+  fold: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
   pickRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
   team: {
     flex: 1,

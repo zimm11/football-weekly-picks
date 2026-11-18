@@ -253,7 +253,10 @@ tab for each.
    choices remain private.
 5. As each game ends, its result fills in on its own from ESPN the next time anyone opens the week
    (checked at most once a minute), and each player's sheet marks their pick **Won** (with the points
-   earned), **Lost**, or **Push** and keeps a **Your week so far** tally. An open pick sheet refreshes
+   earned), **Lost**, or **Push** and keeps a **Your week so far** tally. On the sheet a game that has
+   kicked off (or has a result) shrinks to one row with the player's pick and how it did; tap it for the
+   full card. Games already locked when the sheet opens fold behind **N games locked** while there is still
+   something to pick, so the games to pick come first. An open pick sheet refreshes
    itself every minute while games are in progress. To fetch results right away, press **Auto-fill
    results** in **Manage week**; it replaces any hand-entered score. Or enter both scores for
    each game and press **Save changes**; automatic results never overwrite a score typed in by hand. Score boxes appear once a game kicks off; before that, press

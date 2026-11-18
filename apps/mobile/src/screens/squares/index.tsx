@@ -32,7 +32,7 @@ export function SquaresBoardTab({ league, header, reload }: LeagueTabProps) {
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <Heading>Boards</Heading>
         {admin && (
-          <Action compact icon="plus" href={`/leagues/${league.id}/boards/new`}>
+          <Action compact icon="plus" href={`/boards/new?league=${league.id}`}>
             New board
           </Action>
         )}

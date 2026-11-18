@@ -500,6 +500,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   game={game}
                   view={view}
                   disabled={!!busy}
+                  saving={busy === "save"}
                   onUpdated={week.setData}
                   onPending={(pending) => setBusy(pending ? `game:${game.id}` : undefined)}
                   onDraftChange={(draft) => draftChanged(game.id, draft)}
@@ -579,6 +580,7 @@ function GameEditor({
   game,
   view,
   disabled,
+  saving,
   onUpdated,
   onPending,
   onDraftChange,
@@ -586,6 +588,8 @@ function GameEditor({
   tiebreakerChoice,
 }: {
   game: Game;
+  /** The page is saving this row's draft (Save changes): it is on its way, so leaving doesn't ask. */
+  saving: boolean;
   onDraftChange: (draft: GameDraft | null) => void;
   /** Enter in one of the row's fields: save the page's changes. */
   onSubmit: () => void;
@@ -629,7 +633,8 @@ function GameEditor({
     view.status,
   );
   const dirty = !!draftUpdate.problem || !!Object.keys(draftUpdate.changes ?? {}).length;
-  useEditsGuard(dirty && !busy, () => setEdits({}));
+  // Not while this row's draft is being saved, by the row itself or by Save changes, as on other screens.
+  useEditsGuard(dirty && !busy && !saving, () => setEdits({}));
   const name = `${game.awayTeam} at ${game.homeTeam}`;
   const showScores =
     view.status === "open" &&

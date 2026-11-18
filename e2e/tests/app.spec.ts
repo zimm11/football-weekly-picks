@@ -425,11 +425,19 @@ test("a league week from setup to results", async ({ page, browser, signedIn: _ 
   await expect(page.getByText("Changes saved.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Ready to finalize" })).toBeVisible();
 
-  // With a result in, the game is closed to picks even though it hasn't kicked off.
+  // With a result in, the game is closed to picks even though it hasn't kicked off: a compact row that says
+  // how the pick did, opening to the card with both sides disabled.
   await player.reload();
   await expect(player.getByText("Final 30–10")).toBeVisible();
+  const scored = player.getByRole("button", {
+    name: "KC at ATL, final 30–10, your pick: Falcons (+3.5), lost",
+    exact: true,
+  });
+  await expect(scored).toHaveAttribute("aria-expanded", "false");
+  await expect(player.getByRole("button", { name: "Chiefs -3.5" })).toHaveCount(0);
+  await scored.click();
   await expect(player.getByRole("button", { name: "Chiefs -3.5" })).toBeDisabled();
-  await expect(player.getByRole("button", { name: "Falcons +3.5" })).toBeDisabled();
+  await expect(player.getByRole("button", { name: "Falcons +3.5, home" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Finalize week" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Finalize week" }).click();

@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion } from "../lib/motion";
 import { NotificationBanner } from "../lib/notify";
+import { useOverlayBack } from "../lib/overlayBack";
 import { Icon } from "./Icon";
 import { hoverFill } from "./pressState";
 import { colors, fonts } from "./theme";
@@ -42,9 +43,9 @@ export function Backdrop({ onPress }: { onPress: () => void }) {
  * home-screen help are thin wrappers over it. Use one of those in a screen; use this for a new kind of sheet.
  *
  * The dim backdrop fades in place while the panel slides up (no movement when the player asked for reduced
- * motion), and both run back before the sheet goes. It closes with the ✕, a tap outside, Escape or the
- * phone's back button; in a browser the dialog is named by `title`, the keyboard focus stays inside it and
- * returns to the control that opened it. On iPhone the panel rides above the keyboard. A banner raised with
+ * motion), and both run back before the sheet goes. It closes with the ✕, a tap outside, Escape, the phone's
+ * back button or the browser's Back (`useOverlayBack`); in a browser the dialog is named by `title`, the
+ * keyboard focus stays inside it and returns to the control that opened it. On iPhone the panel rides above the keyboard. A banner raised with
  * `notifyDone`/`notifyError` while it is open shows over the sheet.
  */
 export function BottomSheet({
@@ -87,6 +88,8 @@ export function BottomSheet({
   // How far the panel travels: its own height, once it has been laid out.
   const [distance, setDistance] = useState<number>();
   const closing = useRef(false);
+  // `closing`, for rendering: a sheet sliding out on its way to `onClose` is no longer open for the browser's Back.
+  const [leaving, setLeaving] = useState(false);
   const recheck = useRef<ReturnType<typeof setTimeout>>(undefined);
   const latest = useRef({ onClose, visible });
   latest.current = { onClose, visible };
@@ -117,11 +120,13 @@ export function BottomSheet({
       const gone = () => {
         setMounted(false);
         setDistance(undefined);
+        setLeaving(false);
       };
       if (closing.current) gone();
       else run(0, gone);
     } else if (distance !== undefined) {
       closing.current = false;
+      setLeaving(false);
       run(1);
     }
   }, [visible, mounted, distance, run]);
@@ -143,16 +148,20 @@ export function BottomSheet({
     if (!exitFirst) return latest.current.onClose();
     if (closing.current) return;
     closing.current = true;
+    setLeaving(true);
     run(0, () => {
       latest.current.onClose();
       // An onClose that declined leaves the sheet open: bring it back rather than leave an unseen dialog.
       recheck.current = setTimeout(() => {
         if (!closing.current || !latest.current.visible) return;
         closing.current = false;
+        setLeaving(false);
         run(1);
       }, 60);
     });
   }, [exitFirst, run]);
+  // In a browser, Back closes the sheet the way its ✕ does, slide-out included.
+  useOverlayBack(visible && !leaving, close);
 
   if (!mounted) return null;
   // On the web, Modal's own element is the dialog; these name and describe it.

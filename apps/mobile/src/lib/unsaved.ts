@@ -1,5 +1,5 @@
 import { useIsFocused, usePreventRemove } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { guardBrowserHistory } from "./browserGuard";
 import { showConfirm } from "./confirm";
 
@@ -20,7 +20,9 @@ export function useUnsavedWork(dirty: boolean, onDiscard?: () => void) {
   const discardRef = useRef(onDiscard);
   discardRef.current = onDiscard;
   const focused = useIsFocused();
-  useEffect(() => {
+  // Joined and left as the render commits, not after the paint: `hasUnsavedWork()` is read in the very next tap,
+  // and must not still count work that has just been saved or discarded.
+  useLayoutEffect(() => {
     if (!dirty || !focused) return;
     const id = Symbol();
     drafts.set(id, () => discardRef.current?.());

@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { hoverFill } from "../components/pressState";
 import { colors, fonts } from "../components/theme";
+import { haptics } from "./haptics";
 import { useReducedMotion } from "./motion";
 
 type Notice = { message: string; kind: "status" | "alert" };
@@ -46,11 +47,15 @@ function raise(notice: Notice) {
   // The iPhone has no live regions: VoiceOver is told directly.
   if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(notice.message);
 }
+// The banner is where an outcome is said, so it is also where it is felt (on iPhone): a screen that raises it
+// doesn't add a haptic of its own for the same event.
 export function notifyDone(message: string) {
   raise({ message, kind: "status" });
+  haptics.success();
 }
 export function notifyError(message: string) {
   raise({ message, kind: "alert" });
+  haptics.error();
 }
 
 /** The notice this banner should show: the current one while it is the top banner, else none. */

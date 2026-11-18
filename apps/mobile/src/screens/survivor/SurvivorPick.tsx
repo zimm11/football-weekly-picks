@@ -19,6 +19,7 @@ import { TeamLogo } from "../../components/TeamLogo";
 import { colors, fonts } from "../../components/ui";
 import { request } from "../../lib/api";
 import { now as clockNow } from "../../lib/clock";
+import { haptics } from "../../lib/haptics";
 import { offerHomeScreen } from "../../lib/homeScreen";
 import {
   asMatchupGame,
@@ -119,6 +120,7 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
 
   function choose(game: SurvivorGameView, side: Side) {
     if (saving) return;
+    if (shown?.gameId !== game.id || shown.side !== side) haptics.select();
     setDraft({ gameId: game.id, side });
     setMessage(undefined);
     setError(undefined);
@@ -132,9 +134,11 @@ export function SurvivorPick({ league, year, userId, header, reload }: LeagueTab
       await request(`/weeks/${week.id}/survivor-pick`, { method: "PUT", body: draft });
       setDraft(null);
       setMessage("Pick saved.");
+      haptics.success();
       survivor.reload();
       offerHomeScreen("pick");
     } catch (err) {
+      haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't save your pick. Try again.");
     } finally {
       setSaving(false);

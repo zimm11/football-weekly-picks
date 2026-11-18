@@ -18,7 +18,7 @@ import { Action, Card, Failure, Heading, Input, Label, s, useEditsGuard, useLeag
 import { BoardFrame } from "./BoardFrame";
 import { GameChooser } from "./GameChooser";
 
-/** `/leagues/:id/boards/new`: a commissioner sets up a board, then lands on it. */
+/** `/boards/new?league=:id`: a commissioner sets up a board, then lands on it. */
 export function NewBoardScreen({ leagueId }: { leagueId: string }) {
   const loaded = useLeagueLoad(() => request<LeagueDetail>(`/leagues/${leagueId}`), `/leagues/${leagueId}`);
   const league = loaded.data;

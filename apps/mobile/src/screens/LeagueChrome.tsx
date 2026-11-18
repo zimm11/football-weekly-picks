@@ -13,7 +13,7 @@ import { Icon } from "../components/Icon";
 import { colors, fonts } from "../components/ui";
 import { readLoadCache } from "../lib/loadCache";
 import { counted } from "../lib/messagePresentation";
-import { TAB_SWAP_PARAM } from "../lib/navigation";
+import { useLeagueTabsNav } from "./leagueContext";
 import { Select } from "./leagueUi";
 
 /** Dynamic Type may grow the fixed-height chrome (tab bar, header rows) this far and no further. */
@@ -116,8 +116,11 @@ export function LeagueTabBar({
   const { width } = useWindowDimensions();
   const horizontal = wide && width >= 768;
   const path = usePathname();
-  // Screens above the tabs (a week, a board, a thread) don't hold the league, so the bar reads the copy the
-  // league screen last loaded. Only commissioners are sent a count.
+  // Drawn inside this league's own tab navigator (its tabs), or on a screen above it (a week, a board).
+  const tabsNav = useLeagueTabsNav();
+  const inLeague = tabsNav?.leagueId === leagueId ? tabsNav : null;
+  // Screens above the league (a week, a board) don't hold it, so the bar reads the copy the league last loaded.
+  // Only commissioners are sent a count.
   const reports =
     reportsWaiting ??
     readLoadCache<{ openReports?: number | null }>(`/leagues/${leagueId}`)?.openReports ??
@@ -131,15 +134,15 @@ export function LeagueTabBar({
     // A tab stays a link from the screens under it (Manage week sits under League).
     href: `/leagues/${leagueId}${item.path ? `/${item.path}` : ""}`,
   }));
-  function open(target: string) {
-    // The tab you are on does nothing.
-    if (path === target) return;
-    // In a browser a tab is a link: Back walks the tabs you opened.
-    if (Platform.OS === "web") return void openPath(target);
-    // On iPhone tabs swap in place: one tab takes the other's place in the stack, without a slide, so Back
-    // leaves the league instead of replaying every tab. From a screen above the tabs (a thread, a week,
-    // a board) go back down to the tab when it is underneath.
-    if (tabs.some((item) => item.href === path)) void openPath(`${target}?${TAB_SWAP_PARAM}=1`, "replace");
+  function open(target: string, tab: LeagueTabId) {
+    // In a browser a tab is a link: Back walks the tabs you opened. The tab you are on does nothing.
+    if (Platform.OS === "web") {
+      if (path !== target) void openPath(target);
+      return;
+    }
+    // On iPhone the league's tabs are its own tab navigator: they switch in place, each kept as it was, so Back
+    // leaves the league. From a screen above the league (a week, a board) go back down to the tab underneath.
+    if (inLeague) inLeague.open(tab);
     else void openPath(target, "dismissTo");
   }
   return (
@@ -168,7 +171,7 @@ export function LeagueTabBar({
             accessibilityLabel={badge && Platform.OS !== "web" ? `${item.title}, ${badge}` : item.title}
             accessibilityState={{ selected }}
             aria-current={selected ? "page" : undefined}
-            onPress={() => open(item.href)}
+            onPress={() => open(item.href, item.id)}
             style={({ pressed }) => ({
               flex: horizontal ? undefined : 1,
               height: horizontal ? 44 : 64,

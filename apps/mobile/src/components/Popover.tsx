@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion } from "../lib/motion";
+import { useOverlayBack } from "../lib/overlayBack";
 import { rovingTarget } from "../lib/rovingFocus";
 import { Backdrop } from "./BottomSheet";
 import { Icon, type IconName } from "./Icon";
@@ -98,6 +99,8 @@ export function Popover({
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const container = useRef<ComponentRef<typeof View>>(null);
   const open = !!anchor;
+  // In a browser, Back closes the menu as Escape does.
+  useOverlayBack(open, onClose);
   // Before the Modal's focus trap looks for somewhere to put the focus, which could be a disabled item: the
   // chosen item, else the first that can be used, else the popover itself.
   useEffect(() => {

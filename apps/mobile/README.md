@@ -70,6 +70,10 @@ The configured bundle identifier is `com.powpickem.app`; confirm it before creat
 
 Native and web devices use the same reminder/queue eligibility rules. Native deliveries go to Expo's push gateway and receipts are checked later. A ticket alone is not final delivery confirmation. Sign-out disconnects the device before clearing the session; a failed disconnect leaves the user signed in with an error so the next account cannot inherit it.
 
+## Haptics
+
+On iPhone the app taps back through `expo-haptics` (`src/lib/haptics.ts`; the website's `haptics.web.ts` does nothing): a selection tap when you choose a team on the pick sheet or the survivor pick, claim or release a square, or add or remove a reaction; a firmer tap when the POW goes on or off; and success, warning or error when picks are saved, a change didn't make it, or the banner reports an outcome (`notifyDone`/`notifyError`). It is a native module: Expo Go already has it, but a development client or TestFlight build made before it was added must be rebuilt to feel anything (an older build just stays still; nothing breaks). It needs no config plugin and no permission.
+
 ## Verify and release
 
 Run EAS through `pnpm mobile:eas` from the repository root; the shortcut selects `apps/mobile` automatically. EAS commands run at the repository root directly cannot find the app's Expo dependency.

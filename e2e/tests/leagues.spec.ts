@@ -239,8 +239,31 @@ test("league tabs are links that switch without reloading the league", async ({ 
     await tabs.getByRole("link", { name: tab, exact: true }).click();
     await expect(tabs.getByRole("link", { name: tab, exact: true })).toHaveAttribute("aria-current", "page");
     await expect(name).toBeVisible();
+    // Only the tab showing is in the page: the tabs opened before leave no hidden copy behind.
+    await expect(
+      page.getByRole("heading", { name: "Tab hopping", exact: true, includeHidden: true }),
+    ).toHaveCount(1);
+    await expect(page.getByRole("navigation", { name: "League", includeHidden: true })).toHaveCount(1);
+    await expect(page).toHaveTitle(`${tab} · Tab hopping · POW Pick'em`);
   }
   expect(await page.evaluate("window.loadingSeen")).toBe(false);
+
+  // The browser's Back and Forward walk the tabs that were opened, and the league stays on screen.
+  await page.goBack();
+  await expect(page).toHaveURL(`${leagueUrl}/messages`);
+  await expect(tabs.getByRole("link", { name: "Messages", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await page.goBack();
+  await expect(page).toHaveURL(`${leagueUrl}/standings`);
+  await expect(page).toHaveTitle("Standings · Tab hopping · POW Pick'em");
+  await page.goForward();
+  await expect(page).toHaveURL(`${leagueUrl}/messages`);
+  await expect(name).toBeVisible();
+  expect(await page.evaluate("window.loadingSeen")).toBe(false);
+  await tabs.getByRole("link", { name: "League", exact: true }).click();
+  await expect(page).toHaveURL(`${leagueUrl}/league`);
 
   // From a computer's keyboard, Tab moves along the tabs and Enter opens one. (Checked on the desktop project:
   // WebKit's Tab skips links unless the system setting says otherwise.)
