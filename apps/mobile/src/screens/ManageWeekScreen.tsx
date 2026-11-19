@@ -385,7 +385,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   ? `${missing} of ${view.games.length} games still need a final score.`
                   : automatic
                     ? "All final scores are entered. It finalizes by itself in a few minutes, or finalize it now."
-                    : "All final scores are entered. Finalize this week to reveal everyone's picks and update season standings."}{" "}
+                    : "All final scores are entered. Finalize this week to reveal everyone's picks to the league and update season standings."}{" "}
                 {automatic
                   ? "Results fill in automatically as games end, never over a score you typed."
                   : "Auto-filling results updates scores only; spreads stay as they were when the week opened."}
@@ -406,8 +406,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           )}
           {view.status === "final" && !automatic && (
             <Label>
-              Reopen to correct a score or spread. Picks are hidden again until you close it. Spreads stay as
-              they were when the week opened unless you edit them by hand.
+              Reopen to correct a score or spread. Picks are hidden from players again until you close it.
+              Spreads stay as they were when the week opened unless you edit them by hand.
             </Label>
           )}
           {view.status === "final" && automatic && (
@@ -423,7 +423,7 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               onPress={() =>
                 confirm(
                   "Reopen this week?",
-                  "Picks will be hidden again until the week is finalized.",
+                  "Picks will be hidden from players again until the week is finalized.",
                   "Reopen week",
                   () => {
                     void act("reopen", `/weeks/${weekId}/reopen`);
@@ -497,6 +497,10 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                 </View>
               ))}
             </View>
+            {/* Everyone's picks on the games that have kicked off, scored as they stand: commissioners only. */}
+            <Action secondary href={`/weeks/${weekId}/progress`}>
+              See results so far
+            </Action>
           </Card>
         )}
         <Failure message={week.error} retry={week.reload} />

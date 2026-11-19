@@ -52,6 +52,9 @@ async function enterScore(page: Page, game: { away: string; home: string }, away
 
 /** Finalizes the open week from its management screen, declining the announcement thread. */
 async function finalizeWeek(page: Page) {
+  // Once every score is in, Finalize and Auto-fill trade places: wait for that, or the click can land on the
+  // wrong one as they swap.
+  await expect(page.getByRole("heading", { name: "Ready to finalize" })).toBeVisible();
   await page.getByRole("button", { name: "Finalize week" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Finalize week" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("Post a league message?");
@@ -131,17 +134,20 @@ test("a game that has kicked off is locked on the pick sheet, and the rest can s
   await expect(page.getByRole("button", { name: "Chiefs -3.5" })).toBeDisabled();
 });
 
-test("a commissioner reopens a final week to correct a score, and the corrected week is recapped again", async ({
+test("a commissioner follows a week's results so far, then reopens the final week to correct a score, and the corrected week is recapped again", async ({
   page,
   browser,
   signedIn: _,
 }) => {
-  // Two players and the week closed twice.
+  // Two players, results so far, and the week closed twice.
   test.slow();
   const game = { away: "KC", home: "ATL", days: 3, spread: "3.5" };
-  const inviteUrl = await openWeek(page, "Second look", [game]);
+  const later = { away: "DAL", home: "PHI", days: 3, spread: "-2.5" };
+  const inviteUrl = await openWeek(page, "Second look", [game, later]);
   await page.getByRole("link", { name: "Make your own picks" }).click();
   await page.getByRole("button", { name: "Chiefs -3.5" }).click();
+  await page.getByRole("button", { name: "POW: KC at ATL" }).click();
+  await page.getByRole("button", { name: "Eagles -2.5, home" }).click();
   await page.getByRole("button", { name: "Save picks" }).click();
   await expect(page.getByText("Picks saved.", { exact: true })).toBeVisible();
   await dismissHomeScreenOffer(page);
@@ -149,15 +155,56 @@ test("a commissioner reopens a final week to correct a score, and the corrected 
   const { context, page: player } = await joinLeague(browser, inviteUrl, "Pat");
   try {
     await player.getByRole("button", { name: "Falcons +3.5, home" }).click();
+    await player.getByRole("button", { name: "Eagles -2.5, home" }).click();
     await player.getByRole("button", { name: "Save picks" }).click();
     await expect(player.getByText("Picks saved.", { exact: true })).toBeVisible();
     await dismissHomeScreenOffer(player);
 
-    // The first score has the Chiefs covering: the commissioner wins, and Pat's recap says so.
+    // The first score has the Chiefs covering. A game with a score is locked, though neither has kicked off.
     await page.getByRole("link", { name: "Manage week" }).click();
-    await expect(page.getByRole("row", { name: /Pat/ })).toContainText("1 of 1");
+    await expect(page.getByRole("row", { name: /Pat/ })).toContainText("2 of 2");
     await page.getByRole("button", { name: "Enter score for KC at ATL" }).click();
     await enterScore(page, game, "30", "10");
+    await expect(page.getByRole("link", { name: "See results so far" })).toBeVisible();
+
+    // While the week is open the commissioner sees the results so far, from the Results tab: everyone's pick
+    // on the scored game, and nothing on the game still to play.
+    await page.getByRole("link", { name: "Results", exact: true }).click();
+    await page.getByRole("link", { name: "Week 1 results so far, commissioners only" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Week 1 · Results so far" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Summary so far" })).toBeVisible();
+    const soFar = page.getByRole("table", { name: "Results so far" });
+    const commishRow = soFar.getByRole("row", { name: /Commish/ });
+    const patRow = soFar.getByRole("row", { name: /Pat/ });
+    await expect(commishRow).toContainText("KC POW");
+    await expect(patRow).toContainText("ATL");
+    // Both took the Eagles, but that game hasn't kicked off: each cell is held back, not drawn as a pick.
+    await expect(soFar.getByLabel("DAL at PHI, hidden until kickoff.", { exact: true })).toHaveCount(2);
+    await expect(commishRow).not.toContainText("PHI");
+    await expect(patRow).not.toContainText("PHI");
+    // Nothing is claimed before the week is final.
+    await expect(soFar.getByLabel("Won the week")).toHaveCount(0);
+    await expect(soFar.getByText("LPL", { exact: true })).toHaveCount(0);
+    const progressUrl = page.url();
+
+    // The player has no such row, and the page's address gives them only the rule.
+    const leagueUrl = player.url();
+    await player.getByRole("link", { name: "Results", exact: true }).click();
+    await expect(player.getByText("No week has closed yet.")).toBeVisible();
+    await expect(player.getByRole("link", { name: /results so far/ })).toHaveCount(0);
+    await player.goto(progressUrl);
+    await expect(player.getByRole("heading", { name: "Results so far", exact: true })).toBeVisible();
+    await expect(
+      player.getByText("Only league commissioners see a week's results before it is final."),
+    ).toBeVisible();
+    await expect(player.getByRole("link", { name: "Go to the week" })).toBeVisible();
+    await expect(player.getByRole("table", { name: "Results so far" })).toHaveCount(0);
+    await player.goto(leagueUrl);
+
+    // The second game is scored too, and the commissioner wins the week; Pat's recap says so.
+    await page.getByRole("link", { name: "Manage week", exact: true }).click();
+    await page.getByRole("button", { name: "Enter score for DAL at PHI" }).click();
+    await enterScore(page, later, "17", "20");
     await finalizeWeek(page);
 
     await player.reload();
@@ -171,12 +218,12 @@ test("a commissioner reopens a final week to correct a score, and the corrected 
     await expect(player.getByRole("table", { name: "Week results" })).toBeVisible();
     const weekUrl = player.url();
 
-    // Reopened: the picks are private again, and the scored game stays closed to picks.
+    // Reopened: the picks are private from players again, and the scored games stay closed to picks.
     await page.getByRole("button", { name: "Reopen week" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Reopen week" }).click();
     await expect(page.getByText("Week reopened.")).toBeVisible();
     await player.reload();
-    // The scored game is the week's only one, so nothing is folded: its row says how Pat's pick did.
+    // Every game is scored, so nothing is left to pick and nothing is folded: the row says how Pat's pick did.
     // The row is a scoreboard: each side's score beside its team, and "Final".
     await expect(player.getByRole("button", { name: /^KC at ATL, final 30–10,/ })).toContainText("Final");
     const scored = player.getByRole("button", {

@@ -389,6 +389,15 @@ export type WeekView = {
     | null;
   /** Everyone's picks and scores. Null until the week is final. */
   results: WeekResults | null;
+  /**
+   * Admins only, on an open week: the results as they stand. It holds each player's pick only on games that have
+   * locked (`isLocked`), their POW only once its game has, and their guess only once the tiebreaker game has;
+   * scored from the games with a result. Nobody is the winner yet (`isWinner` false). Null for anyone else and in
+   * any other status. A field of its own because older apps read `results` as final without checking the status.
+   * `lockedGameIds` names the games it covers, as the server judged them: the app tells a held-back pick from no
+   * pick by it, never by the device's clock. Optional: an older API doesn't send it.
+   */
+  resultsSoFar?: (WeekResults & { lockedGameIds: string[] }) | null;
   /** The league's type and how it is run. Absent from older servers: read as weekly, hands-on. */
   leagueType?: LeagueType;
   management?: LeagueManagement;

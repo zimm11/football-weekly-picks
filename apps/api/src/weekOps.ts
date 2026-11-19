@@ -241,7 +241,10 @@ export async function finalizeWeek(
   if (input.actorId) await markRecapSeen(tx, input.weekId, input.actorId, input.at);
 }
 
-/** Reopens a final week for corrections; picks are hidden again until it is finalized again. */
+/**
+ * Reopens a final week for corrections. Players' picks are hidden from each other again until it is finalized
+ * again; the league's admins see the picks on locked games, as on any open week (`resultsSoFar`).
+ */
 export async function reopenWeek(db: Store, weekId: string) {
   await db.update(weeks).set({ status: "open", finalizedAt: null }).where(eq(weeks.id, weekId));
 }

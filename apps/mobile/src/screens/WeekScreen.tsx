@@ -580,8 +580,8 @@ export function WeekScreen({
               <Text style={s.cardTitle}>Awaiting finalization</Text>
               <Text style={w.muted}>
                 {automatic
-                  ? "All final scores are in. It finalizes by itself in a few minutes; picks stay private until then."
-                  : "All final scores are entered. Picks stay private and this week does not count in standings until the commissioner finalizes it."}
+                  ? "All final scores are in. It finalizes by itself in a few minutes, and everyone's picks are revealed then."
+                  : "All final scores are entered. Everyone's picks are revealed, and this week counts in standings, once the commissioner finalizes it."}
               </Text>
             </View>
           )}

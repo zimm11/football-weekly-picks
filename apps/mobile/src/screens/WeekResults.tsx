@@ -1,11 +1,8 @@
 // biome-ignore-all lint/correctness/noReactNativeRawText: WeekBadge and WeekCaption render children inside native Text.
 import {
   coveringSide,
-  formatLine,
   type Game,
-  lineFor,
   lowPointLosers,
-  pickPoints,
   tiebreakerTotal,
   type WeekView,
   weekAwards,
@@ -19,20 +16,57 @@ import { TeamLogo } from "../components/TeamLogo";
 import { tabular } from "../components/theme";
 import { colors, fonts } from "../components/ui";
 import { matchup } from "../lib/pickDraft";
-import { sharedName, statColumns, tileRows } from "../lib/resultsPresentation";
+import {
+  breakdownLine,
+  provisionalPowValue,
+  resultGuess,
+  resultPickCell,
+  resultsTileLabels,
+  revealedGames,
+  sharedName,
+  statColumns,
+  tileRows,
+} from "../lib/resultsPresentation";
 import { formatRecord, ordinal, rowsOf } from "../lib/weekPresentation";
 import { StatTile } from "./leagueUi";
 import { WeekBadge, WeekCaption, w } from "./weekUi";
 
 type Results = NonNullable<WeekView["results"]>;
-export function WeekResults({ view, userId }: { view: WeekView; userId?: string }) {
+/**
+ * A week's results: the summary tiles, a card per player with every pick, the awards and game by game. Drawn
+ * from `view.results` once the week is final; `provisional` draws a commissioner's results so far on an open
+ * week (`view.resultsSoFar`) instead, claiming nothing final: no winner, no Low Point Loser, no awards, and a
+ * game the server didn't reveal (not in its `lockedGameIds`) held back, never "no pick". Never the device's clock.
+ */
+export function WeekResults({
+  view,
+  userId,
+  provisional = false,
+}: {
+  view: WeekView;
+  userId?: string;
+  provisional?: boolean;
+}) {
   const { width } = useWindowDimensions();
-  if (view.status !== "final" || !view.results) return null;
-  const results = view.results;
+  const results = provisional
+    ? view.status === "open"
+      ? view.resultsSoFar
+      : null
+    : view.status === "final"
+      ? view.results
+      : null;
+  if (!results) return null;
+  // The games whose picks the server sent, as it judged them (results so far only; an older server: none).
+  const lockedGameIds = provisional ? (view.resultsSoFar?.lockedGameIds ?? []) : [];
   const me = results.entries.find((entry) => entry.userId === userId);
   const { topPoints, averagePoints } = weekSummary(results.entries);
-  const actual = tiebreakerTotal(view.games.find((game) => game.id === view.tiebreakerGameId));
-  const myPow = view.games.find((game) => game.id === me?.powGameId);
+  const tiebreakerGame = view.games.find((game) => game.id === view.tiebreakerGameId);
+  const actual = tiebreakerTotal(tiebreakerGame);
+  // So far, the commissioner's own POW is theirs to see before its game locks (their own picks).
+  const myPowId = provisional
+    ? (me?.powGameId ?? view.myPicks.find((pick) => pick.isPow)?.gameId)
+    : me?.powGameId;
+  const myPow = view.games.find((game) => game.id === myPowId);
   const powPush = myPow && coveringSide({ ...myPow, kickoff: new Date(myPow.kickoff) }) === "push";
   const winners = results.entries.filter((entry) => entry.isWinner);
   const powHits = results.entries.filter((entry) => entry.powWon).length;
@@ -40,25 +74,38 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
   const playoff = view.leagueType === "playoff";
   // A playoff round before the Super Bowl has no tiebreaker game, so nothing to guess or show.
   const hasTiebreaker = !playoff || !!view.tiebreakerGameId;
+  const tiebreakerLocked = !!view.tiebreakerGameId && lockedGameIds.includes(view.tiebreakerGameId);
   const players = results.entries.length;
-  // The top score's owner: the week's winner (ties broken), or in a playoff round everyone on the top score.
-  const topNames = playoff
-    ? results.entries.filter((entry) => entry.points === topPoints).map((entry) => entry.displayName)
-    : winners.map((entry) => entry.displayName);
+  const words = resultsTileLabels({ provisional, playoff });
+  // The top score's owner: the week's winner (ties broken), or in a playoff round (and so far) everyone on the
+  // top score.
+  const topNames =
+    playoff || provisional
+      ? results.entries.filter((entry) => entry.points === topPoints).map((entry) => entry.displayName)
+      : winners.map((entry) => entry.displayName);
+  const myGuess = provisional ? (me?.tiebreakerGuess ?? view.myTiebreakerTotal) : me?.tiebreakerGuess;
   const tiles: { label: string; value: ReactNode; detail?: string }[] = [
     ...(me
       ? [
-          { label: "Your finish", value: ordinal(me.rank), detail: `of ${players}` },
+          { label: words.place, value: ordinal(me.rank), detail: `of ${players}` },
           { label: "Your points", value: me.points, detail: formatRecord(me) },
           {
             label: "Your POW",
-            value: me.powGameId ? (me.powWon ? "Won" : powPush ? "Push" : "Lost") : "None",
+            value: provisional
+              ? provisionalPowValue(myPow, me.powWon)
+              : me.powGameId
+                ? me.powWon
+                  ? "Won"
+                  : powPush
+                    ? "Push"
+                    : "Lost"
+                : "None",
             detail: myPow ? matchup(myPow) : undefined,
           },
         ]
       : []),
     {
-      label: playoff ? "Top score" : "Winning score",
+      label: words.top,
       value: topPoints ?? "—",
       detail: sharedName(topNames),
     },
@@ -72,14 +119,15 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
           {
             label: "Tiebreaker total",
             value: actual ?? "—",
-            detail: me?.tiebreakerGuess != null ? `You: ${me.tiebreakerGuess}` : undefined,
+            detail: myGuess != null ? `You: ${myGuess}` : undefined,
           },
         ]
       : []),
   ];
+  const shownGames = revealedGames(view.games, { provisional, lockedGameIds });
   return (
     <View style={{ gap: 16 }}>
-      <View role="region" aria-label="Week summary" style={{ gap: 8 }}>
+      <View role="region" aria-label={provisional ? "Summary so far" : "Week summary"} style={{ gap: 8 }}>
         {tileRows(tiles, statColumns(width)).map((row) => (
           <View key={row.items[0]?.label} style={s.statRow}>
             {row.items.map((tile) => (
@@ -93,7 +141,7 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
         ))}
       </View>
       {/* One row per player, laid out as cards. */}
-      <View role="table" aria-label="Week results" style={{ gap: 12 }}>
+      <View role="table" aria-label={provisional ? "Results so far" : "Week results"} style={{ gap: 12 }}>
         {results.entries.map((entry) => (
           <PlayerResult
             key={entry.userId}
@@ -105,21 +153,26 @@ export function WeekResults({ view, userId }: { view: WeekView; userId?: string 
             playoff={playoff}
             hasTiebreaker={hasTiebreaker}
             powBonus={view.powBonus}
+            provisional={provisional}
+            lockedGameIds={lockedGameIds}
+            tiebreakerLocked={tiebreakerLocked}
           />
         ))}
       </View>
-      <WeekAwardCards view={view} />
-      <View style={{ gap: 12 }}>
-        <WeekCaption>Game by game</WeekCaption>
-        {rowsOf(view.games, width >= 768 ? 2 : 1).map((row) => (
-          <View key={row[0]?.id} style={s.statRow}>
-            {row.map((game) => (
-              <GameBreakdown key={game.id} game={game} results={results} />
-            ))}
-            {row.length === 1 && width >= 768 && <View style={{ flex: 1 }} />}
-          </View>
-        ))}
-      </View>
+      {!provisional && <WeekAwardCards view={view} />}
+      {(!provisional || shownGames.length > 0) && (
+        <View style={{ gap: 12 }}>
+          <WeekCaption>Game by game</WeekCaption>
+          {rowsOf(shownGames, width >= 768 ? 2 : 1).map((row) => (
+            <View key={row[0]?.id} style={s.statRow}>
+              {row.map((game) => (
+                <GameBreakdown key={game.id} game={game} results={results} provisional={provisional} />
+              ))}
+              {row.length === 1 && width >= 768 && <View style={{ flex: 1 }} />}
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -133,6 +186,9 @@ function PlayerResult({
   playoff = false,
   hasTiebreaker = true,
   powBonus,
+  provisional = false,
+  lockedGameIds = [],
+  tiebreakerLocked = true,
 }: {
   entry: Results["entries"][number];
   results: Results;
@@ -142,15 +198,21 @@ function PlayerResult({
   playoff?: boolean;
   hasTiebreaker?: boolean;
   powBonus?: number;
+  /** Results so far: nobody has won or lost the week yet, and games not in `lockedGameIds` are held back. */
+  provisional?: boolean;
+  /** Results so far: the games the server revealed picks on. */
+  lockedGameIds?: string[];
+  /** Results so far: the tiebreaker game has locked, so a missing guess means none. */
+  tiebreakerLocked?: boolean;
 }) {
   const [gridWidth, setGridWidth] = useState(0);
-  const lpl = !playoff && lowPointLosers(results.entries).includes(entry.userId);
+  const lpl = !playoff && !provisional && lowPointLosers(results.entries).includes(entry.userId);
   return (
     <View role="row" style={[s.playerCard, mine && s.mine]}>
       <View role="cell" style={{ gap: 12 }}>
         <View style={s.playerHeading}>
           <View style={[w.row, { gap: 4, width: 44 }]}>
-            {entry.isWinner && (
+            {entry.isWinner && !provisional && (
               <View accessibilityLabel={playoff ? "Top score" : "Won the week"}>
                 <Icon name="trophy" size={16} color={colors.win} filled />
               </View>
@@ -185,7 +247,9 @@ function PlayerResult({
               <Text style={[w.small, { fontFamily: fonts.medium }]}>
                 Tiebreaker{actual === null ? "" : ` (${actual})`}
               </Text>
-              <Text style={s.cell}>{entry.tiebreakerGuess ?? "—"}</Text>
+              <Text style={s.cell}>
+                {resultGuess(entry.tiebreakerGuess, { provisional, tiebreakerLocked })}
+              </Text>
             </View>
           ) : (
             <View style={{ flex: 1 }} />
@@ -196,21 +260,17 @@ function PlayerResult({
             const pick = results.picks.find(
               (value) => value.userId === entry.userId && value.gameId === game.id,
             );
-            const scored = { ...game, kickoff: new Date(game.kickoff) };
-            const covered = coveringSide(scored);
-            const outcome = !pick
-              ? "none"
-              : covered === null
-                ? "pending"
-                : covered === pick.side
-                  ? "won"
-                  : covered === "push"
-                    ? "push"
-                    : "lost";
-            const abbr = pick ? (pick.side === "home" ? game.homeTeam : game.awayTeam) : null;
             const pow = entry.powGameId === game.id;
-            const earned = pick ? pickPoints(scored, { side: pick.side, isPow: pow }, powBonus) : null;
-            const label = `${matchup(game)}, ${pick && abbr ? formatLine(abbr, lineFor(pick.side, game.spread ?? 0)) : "No pick"}${pow ? ", POW" : ""}, ${outcome === "none" ? "no pick" : outcome}${earned === null ? "" : `, ${earned} points`}. Final ${game.awayScore ?? "pending"} to ${game.homeScore ?? "pending"}.`;
+            const {
+              outcome,
+              team: abbr,
+              label,
+            } = resultPickCell(game, pick, {
+              pow,
+              powBonus,
+              provisional,
+              revealed: lockedGameIds.includes(game.id),
+            });
             return (
               <View
                 accessible
@@ -249,6 +309,9 @@ function PlayerResult({
                       </View>
                     )}
                   </>
+                ) : outcome === "hidden" ? (
+                  // Held back until kickoff: a lock, never the "—" of a game that locked without a pick.
+                  <Icon name="lock" size={16} color={colors.mutedForeground} />
                 ) : (
                   <Text style={w.muted}>—</Text>
                 )}
@@ -365,7 +428,16 @@ export function WeekAwardCards({
   );
 }
 
-function GameBreakdown({ game, results }: { game: Game; results: Results }) {
+function GameBreakdown({
+  game,
+  results,
+  provisional = false,
+}: {
+  game: Game;
+  results: Results;
+  /** Results so far: a game without a result says so rather than that nobody got it right. */
+  provisional?: boolean;
+}) {
   const picks = results.picks.filter((pick) => pick.gameId === game.id);
   const away = picks.filter((pick) => pick.side === "away").length;
   const home = picks.length - away;
@@ -425,7 +497,7 @@ function GameBreakdown({ game, results }: { game: Game; results: Results }) {
       </View>
       <View style={[w.row, { gap: 12 }]}>
         <Text style={w.muted}>
-          {covered === "push" ? "Nobody scored" : `${right} of ${results.entries.length} got it right`}
+          {breakdownLine({ covered, right, players: results.entries.length, provisional })}
         </Text>
         {pows > 0 && (
           <View style={w.row}>

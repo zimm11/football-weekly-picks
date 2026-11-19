@@ -315,6 +315,88 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect(others.flatMap((r) => r.players.map((p) => p.userId))).toEqual([ADMIN]);
   });
 
+  it("shows the admin a round's results so far with the round's POW bonus, and a player nothing", async () => {
+    at("2026-11-23T12:00:00Z");
+    const leagueId = await t.createLeague(ADMIN, { name: "Bracket so far", type: "playoff" });
+    await t.join(PAT, leagueId);
+    await t.join(SAM, leagueId);
+    t.feed.set("2026:19", wildCard());
+    expect(
+      (await t.call(ADMIN, "POST", `/leagues/${leagueId}/playoff/rounds`, { year: 2026, number: 19 })).status,
+    ).toBe(201);
+    await t.runAutomation("playoff", [leagueId]);
+    const wc = await round(leagueId, 19);
+    expect(wc.status).toBe("open");
+    const gameId = (externalId: string) => wc.games.find((g) => g.externalId === externalId)?.id ?? "";
+
+    // Pat and Sam take every home side, with the POW on the Saturday late game (wc2), which the clock reaches
+    // second. The API takes a tiebreaker guess in any round, though a round before the Super Bowl has no
+    // tiebreaker: Pat guesses 60 and Sam 37.
+    at("2027-01-12T12:00:00Z");
+    expect((await pick(PAT, leagueId, 19, "wc2", 60)).body.myTiebreakerTotal).toBe(60);
+    expect((await pick(SAM, leagueId, 19, "wc2", 37)).body.myTiebreakerTotal).toBe(37);
+
+    // Saturday evening: the first game has kicked off and the admin has typed its score (BUF -3 wins 24–17).
+    // Only that pick shows; the POW's game hasn't kicked off, so Pat has no POW yet as far as the admin can see.
+    at("2027-01-17T00:30:00Z");
+    await t.call(ADMIN, "PATCH", `/games/${gameId("wc1")}`, { homeScore: 24, awayScore: 17 });
+    let view = (await t.call<WeekView>(ADMIN, "GET", `/weeks/${wc.id}`)).body;
+    expect(view).toMatchObject({ status: "open", results: null, powBonus: 3, tiebreakerGameId: null });
+    expect(view.resultsSoFar?.lockedGameIds).toEqual([gameId("wc1")]);
+    expect(view.resultsSoFar?.picks.map((p) => [p.userId, p.gameId, p.side]).sort()).toEqual(
+      [
+        [PAT, gameId("wc1"), "home"],
+        [SAM, gameId("wc1"), "home"],
+      ].sort(),
+    );
+    expect(view.resultsSoFar?.entries.map((e) => [e.displayName, e.points, e.powGameId, e.isWinner])).toEqual(
+      [
+        ["Pat", 1, null, false],
+        ["Sam", 1, null, false],
+        ["Commish", 0, null, false],
+      ],
+    );
+
+    // The POW's game has kicked off and ended (PIT -3 wins 24–17): 1 point and the Traditional bonus of 3.
+    at("2027-01-17T04:30:00Z");
+    await t.call(ADMIN, "PATCH", `/games/${gameId("wc2")}`, { homeScore: 24, awayScore: 17 });
+    view = (await t.call<WeekView>(ADMIN, "GET", `/weeks/${wc.id}`)).body;
+    expect(view.resultsSoFar?.lockedGameIds).toEqual([gameId("wc1"), gameId("wc2")]);
+    expect(view.resultsSoFar?.picks.map((p) => p.gameId).sort()).toEqual(
+      [gameId("wc1"), gameId("wc1"), gameId("wc2"), gameId("wc2")].sort(),
+    );
+    expect(view.resultsSoFar?.entries.find((e) => e.userId === PAT)).toMatchObject({
+      points: 1 + 1 + 3,
+      wins: 2,
+      powGameId: gameId("wc2"),
+      powWon: true,
+      tiebreakerGuess: null,
+      isWinner: false,
+    });
+
+    // Every game has kicked off, and the Monday game, which would be the tiebreaker in a weekly league, has a
+    // score (KC 20–17, total 37: Sam's guess exactly). Still no guess shows, and none decides a place: Pat and Sam
+    // are level and share first.
+    at("2027-01-19T02:00:00Z");
+    await t.call(ADMIN, "PATCH", `/games/${gameId("wc6")}`, { homeScore: 20, awayScore: 17 });
+    view = (await t.call<WeekView>(ADMIN, "GET", `/weeks/${wc.id}`)).body;
+    expect(view.status).toBe("open");
+    expect([...(view.resultsSoFar?.lockedGameIds ?? [])].sort()).toEqual(wc.games.map((g) => g.id).sort());
+    expect(view.resultsSoFar?.picks).toHaveLength(12);
+    expect(
+      view.resultsSoFar?.entries.map((e) => [e.displayName, e.points, e.tiebreakerGuess, e.rank]),
+    ).toEqual([
+      ["Pat", 5, null, 1],
+      ["Sam", 5, null, 1],
+      ["Commish", 0, null, 3],
+    ]);
+
+    // The player sees only their own picks.
+    const patView = (await t.call<WeekView>(PAT, "GET", `/weeks/${wc.id}`)).body;
+    expect(patView).toMatchObject({ results: null, resultsSoFar: null, submissions: null });
+    expect(patView.myPicks).toHaveLength(6);
+  });
+
   it("keeps the format until the first Wild Card kickoff, and guards its routes by type", async () => {
     at("2026-11-21T12:00:00Z");
     const leagueId = await t.createLeague(ADMIN, { name: "Format", type: "playoff" });

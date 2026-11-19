@@ -1,10 +1,19 @@
 import {
+  coveringSide,
+  formatLine,
+  type Game,
   type LeagueManagement,
   type LeagueType,
+  lineFor,
   PLAYOFF_ROUNDS,
+  pickPoints,
+  type Side,
+  type WeekPhase,
   type WeekStatus,
   weekLabel,
 } from "@picks/shared";
+import { matchup } from "./pickDraft";
+import type { PickOutcome } from "./weekPresentation";
 
 /*
  * How results, standings and the recap are laid out and worded, as pure functions: the stat tiles' rows, the
@@ -219,4 +228,135 @@ export function noWeekOpen(league: BetweenWeeksLeague): {
         : "Set up a week"
       : null;
   return { title: "No week is open", detail, action };
+}
+
+/*
+ * Results so far: a commissioner's view of an open week (`WeekView.resultsSoFar`). The server sends each player's
+ * pick only on games that have locked, and names those games (`lockedGameIds`, as the server judged them). Any
+ * other game is held back rather than read as "no pick", and nothing is claimed as an outcome: no winner, no Low
+ * Point Loser, no awards. What is held back is the server's word, never this device's clock: a clock running
+ * ahead, or a copy remembered from before a kickoff, would otherwise say a player has no pick when they do.
+ */
+
+/**
+ * The weeks the Results tab lists above the final ones for a commissioner: open weeks with a game under way or
+ * every score in (`underway`, `awaiting`), latest first. None for a player, and none that hasn't kicked off.
+ */
+export function inProgressWeeks<T extends { number: number; status: WeekStatus; phase: WeekPhase }>(
+  weeks: T[],
+  admin: boolean,
+): T[] {
+  if (!admin) return [];
+  return weeks
+    .filter((w) => w.status === "open" && (w.phase === "underway" || w.phase === "awaiting"))
+    .sort((a, b) => b.number - a.number);
+}
+
+/** The words the results page's summary tiles use: a final week's outcome, or where things stand so far. */
+export function resultsTileLabels({ provisional, playoff }: { provisional: boolean; playoff: boolean }) {
+  return provisional
+    ? { place: "Your place", top: "Top score so far" }
+    : { place: "Your finish", top: playoff ? "Top score" : "Winning score" };
+}
+
+/** A pick cell's outcome: a pick's own (`PickOutcome`), or `hidden` when the server hasn't revealed its game. */
+export type ResultCellOutcome = PickOutcome | "hidden";
+
+/**
+ * One player's cell for one game on the results page, and its accessible name. On a final week (and on a
+ * locked game so far) it is the pick against its line, the POW, the outcome and the points; "no pick" when there
+ * is none. Results so far, a game the server didn't reveal (`revealed` false: not in `lockedGameIds`) is
+ * `hidden` (its picks are held back until kickoff), never "no pick".
+ */
+export function resultPickCell(
+  game: Game,
+  pick: { side: Side } | undefined,
+  {
+    pow,
+    powBonus,
+    provisional = false,
+    revealed = true,
+  }: { pow: boolean; powBonus?: number; provisional?: boolean; revealed?: boolean },
+): { outcome: ResultCellOutcome; team: string | null; earned: number | null; label: string } {
+  if (provisional && !revealed)
+    return { outcome: "hidden", team: null, earned: null, label: `${matchup(game)}, hidden until kickoff.` };
+  const scored = { ...game, kickoff: new Date(game.kickoff) };
+  const covered = coveringSide(scored);
+  const outcome: PickOutcome = !pick
+    ? "none"
+    : covered === null
+      ? "pending"
+      : covered === pick.side
+        ? "won"
+        : covered === "push"
+          ? "push"
+          : "lost";
+  const team = pick ? (pick.side === "home" ? game.homeTeam : game.awayTeam) : null;
+  const earned = pick ? pickPoints(scored, { side: pick.side, isPow: pow }, powBonus) : null;
+  const final = game.homeScore !== null && game.awayScore !== null;
+  const tail =
+    provisional && !final
+      ? " Not final yet."
+      : ` Final ${game.awayScore ?? "pending"} to ${game.homeScore ?? "pending"}.`;
+  const label = `${matchup(game)}, ${pick && team ? formatLine(team, lineFor(pick.side, game.spread ?? 0)) : "No pick"}${pow ? ", POW" : ""}, ${outcome === "none" ? "no pick" : outcome}${earned === null ? "" : `, ${earned} points`}.${tail}`;
+  return { outcome, team, earned, label };
+}
+
+/**
+ * A player's tiebreaker guess on the results page: the guess, "—" for none, or, results so far, "Shows at
+ * kickoff" while the tiebreaker game hasn't locked (the server holds guesses back until then).
+ */
+export function resultGuess(
+  guess: number | null,
+  {
+    provisional = false,
+    tiebreakerLocked = true,
+  }: { provisional?: boolean; tiebreakerLocked?: boolean } = {},
+): string {
+  if (guess !== null) return String(guess);
+  return provisional && !tiebreakerLocked ? "Shows at kickoff" : "—";
+}
+
+/**
+ * Game by game's line under a game's split: how many got it right, "Nobody scored" on a push, and, results so
+ * far, "Result pending" until the game has a result (rather than "0 of 4 got it right").
+ */
+export function breakdownLine({
+  covered,
+  right,
+  players,
+  provisional = false,
+}: {
+  covered: Side | "push" | null;
+  right: number;
+  players: number;
+  provisional?: boolean;
+}): string {
+  if (covered === "push") return "Nobody scored";
+  if (provisional && covered === null) return "Result pending";
+  return `${right} of ${players} got it right`;
+}
+
+/**
+ * The games results so far can say anything about: those the server revealed (`lockedGameIds`), in the
+ * week's order. A final week shows every game.
+ */
+export function revealedGames(
+  games: Game[],
+  { provisional = false, lockedGameIds = [] }: { provisional?: boolean; lockedGameIds?: string[] } = {},
+): Game[] {
+  if (!provisional) return games;
+  return games.filter((game) => lockedGameIds.includes(game.id));
+}
+
+/**
+ * The commissioner's POW tile, results so far: Won, Lost or Push once its game has a result, To play before,
+ * None without one. `won` is the entry's `powWon`.
+ */
+export function provisionalPowValue(powGame: Game | undefined, won: boolean): string {
+  if (!powGame) return "None";
+  const covered = coveringSide({ ...powGame, kickoff: new Date(powGame.kickoff) });
+  if (covered === null) return "To play";
+  if (covered === "push") return "Push";
+  return won ? "Won" : "Lost";
 }

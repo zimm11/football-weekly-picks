@@ -70,6 +70,11 @@ export type AuthCallback = NonNullable<ReturnType<typeof authCallback>>;
 
 /** Pages a sign-in or an emailed link may return to besides the notification destinations below. */
 const RETURN_PAGES = ["/account", "/leagues/new"];
+/**
+ * Pages with an id a sign-in may return to that no notification opens, so they stay out of `DESTINATION` (and
+ * `push-sw.js`): a week's results so far, a commissioner's page.
+ */
+const RETURN_PATTERNS = [/^\/weeks\/[a-zA-Z0-9-]+\/progress$/];
 
 /**
  * Where to go after signing in or opening an emailed link (`?next=`): an in-app path from the allowlist (a
@@ -78,7 +83,11 @@ const RETURN_PAGES = ["/account", "/leagues/new"];
 export function nextPath(value: unknown): string | null {
   if (typeof value !== "string" || !value.startsWith("/")) return null;
   const path = value.replace(/\/$/, "") || "/";
-  return RETURN_PAGES.includes(path) || internalPath(value) ? value : null;
+  return RETURN_PAGES.includes(path) ||
+    RETURN_PATTERNS.some((pattern) => pattern.test(path)) ||
+    internalPath(value)
+    ? value
+    : null;
 }
 
 /** `link` carrying `next` (when it is a valid `nextPath`), for an emailed link's redirect or `/login`. */

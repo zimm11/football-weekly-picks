@@ -14,6 +14,7 @@ import {
 } from "@picks/db";
 import {
   type GameInsights,
+  isLocked,
   type LeagueDetail,
   MAX_LEAGUE_MEMBERS,
   MAX_LEAGUES_PER_USER,
@@ -1002,7 +1003,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     await call(ADMIN, "PATCH", path, { role: "admin" });
     const view = await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`);
     expect(view.status).toBe(200);
-    expect(view.body).toMatchObject({ role: "admin", status: "draft", results: null });
+    expect(view.body).toMatchObject({ role: "admin", status: "draft", results: null, resultsSoFar: null });
     expect((await call(PLAYER, "PATCH", `/games/${game.thu}`, { points: 3 })).status).toBe(200);
     // Revoking access changes permissions without changing membership or picks.
     await call(ADMIN, "PATCH", path, { role: "member" });
@@ -1047,7 +1048,13 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
 
   it("opens the week for picks", async () => {
     expect((await call(ADMIN, "PUT", `/weeks/${weekId}/picks`, picksBody({}))).status).toBe(409);
-    expect((await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/open`)).body.status).toBe("open");
+    // The response itself is the opened week: its admin gets the (empty) results so far.
+    const opened = (await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/open`)).body;
+    expect(opened).toMatchObject({
+      status: "open",
+      results: null,
+      resultsSoFar: { picks: [], lockedGameIds: [] },
+    });
     expect((await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body.status).toBe("open");
   });
 
@@ -1205,19 +1212,111 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(weeks).toMatchObject([{ id: weekId, status: "open", gameCount: 3, myPickCount: 2 }]);
   });
 
-  it("hides other players' picks while the week is open", async () => {
+  /**
+   * Checks everything an admin's view of an open week says about anyone's picks, read from the structure the app
+   * receives: every object naming a player sits where it may (submissions, or the results so far), every pick and
+   * POW in it is on a game locked at `at`, a guess shows only once the tiebreaker game has locked, nobody is the
+   * winner, `results` stays null, and `lockedGameIds` names exactly the games locked at `at`. Returns the
+   * (player, game, side) picks it found, for the test to compare.
+   */
+  const expectOnlyLockedShown = (view: WeekView, at: Date) => {
+    const locked = new Set(
+      view.games
+        .filter((g) =>
+          isLocked({ kickoff: new Date(g.kickoff), final: g.homeScore !== null && g.awayScore !== null }, at),
+        )
+        .map((g) => g.id),
+    );
+    expect(view.status).toBe("open");
+    expect(view.results).toBeNull();
+    // The server names the games it judged locked: exactly those locked at `at`, in slate order.
+    const lockedGameIds = view.resultsSoFar?.lockedGameIds;
+    expect(lockedGameIds).toEqual(view.games.map((g) => g.id).filter((id) => locked.has(id)));
+    const found: { path: string; obj: Record<string, unknown> }[] = [];
+    const walk = (value: unknown, path: string) => {
+      if (Array.isArray(value)) for (const item of value) walk(item, `${path}[]`);
+      else if (value && typeof value === "object") {
+        const obj = value as Record<string, unknown>;
+        if ("userId" in obj) found.push({ path, obj });
+        for (const [key, inner] of Object.entries(obj)) walk(inner, `${path}.${key}`);
+      }
+    };
+    walk(view, "");
+    const shown: string[] = [];
+    for (const { path, obj } of found) {
+      if (path === ".submissions[]") {
+        expect(Object.keys(obj).sort()).toEqual(["avatarId", "displayName", "hasPow", "pickCount", "userId"]);
+      } else if (path === ".resultsSoFar.picks[]") {
+        expect(Object.keys(obj).sort()).toEqual(["gameId", "side", "userId"]);
+        expect(lockedGameIds).toContain(obj.gameId);
+        shown.push(`${obj.userId} ${obj.gameId} ${obj.side}`);
+      } else if (path === ".resultsSoFar.entries[]") {
+        if (obj.powGameId !== null) expect(lockedGameIds).toContain(obj.powGameId);
+        if (obj.tiebreakerGuess !== null) expect(lockedGameIds).toContain(view.tiebreakerGameId);
+        expect(obj.isWinner).toBe(false);
+      } else {
+        throw new Error(`A player is named at ${path}`);
+      }
+    }
+    return shown.sort();
+  };
+  const pickOf = (userId: string, key: "thu" | "sun" | "mon", side: "home" | "away") =>
+    `${userId} ${game[key]} ${side}`;
+
+  it("hides other players' picks while the week is open, and shows its admins only the locked games", async () => {
+    // A player sees nothing of anyone else's.
     const playerView = (await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body;
-    expect(playerView.results).toBeNull();
-    expect(playerView.submissions).toBeNull();
+    expect(playerView).toMatchObject({ results: null, resultsSoFar: null, submissions: null });
     expect(JSON.stringify(playerView)).not.toContain(ADMIN);
 
-    // The admin sees who has picked, but not what.
+    // The admin sees who has picked...
     const adminView = (await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body;
     expect(adminView.results).toBeNull();
     expect(adminView.submissions).toEqual([
       { userId: ADMIN, displayName: "Commish", avatarId: null, pickCount: 2, hasPow: true },
       { userId: PLAYER, displayName: "Pat", avatarId: null, pickCount: 2, hasPow: true },
     ]);
+    expect(adminView.myTiebreakerTotal).toBe(41);
+
+    // ...and, before any game has kicked off, everyone at zero and nothing about a pick, a POW or a guess.
+    now = WEDNESDAY;
+    const early = (await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body;
+    expect(expectOnlyLockedShown(early, now)).toEqual([]);
+    const zero = {
+      points: 0,
+      wins: 0,
+      losses: 0,
+      pushes: 0,
+      powWon: false,
+      mondayWins: 0,
+      sundayNightWins: 0,
+    };
+    expect(early.resultsSoFar).toEqual({
+      entries: [
+        { ...zero, userId: ADMIN, displayName: "Commish", avatarId: null, removed: false },
+        { ...zero, userId: PLAYER, displayName: "Pat", avatarId: null, removed: false },
+      ].map((e) => ({ ...e, powGameId: null, tiebreakerGuess: null, rank: 1, isWinner: false })),
+      picks: [],
+      lockedGameIds: [],
+    });
+    expect(early.myTiebreakerTotal).toBe(41);
+
+    // Sunday morning: Thursday has kicked off (no result yet). Only its picks show: the admin's, and their POW on
+    // it. Pat's Sunday pick, Monday pick and Monday POW stay hidden, and so do both guesses.
+    now = SUNDAY_7AM;
+    const thursday = (await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body;
+    expect(expectOnlyLockedShown(thursday, now)).toEqual([pickOf(ADMIN, "thu", "home")]);
+    expect(
+      thursday.resultsSoFar?.entries.map((e) => [e.displayName, e.points, e.powGameId, e.tiebreakerGuess]),
+    ).toEqual([
+      ["Commish", 0, game.thu, null],
+      ["Pat", 0, null, null],
+    ]);
+    // The player still learns nothing.
+    expect((await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body).toMatchObject({
+      results: null,
+      resultsSoFar: null,
+    });
 
     const standings = (await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings`)).body;
     expect(standings.weeks).toEqual([]);
@@ -1287,6 +1386,105 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     now = SUNDAY_7AM;
   });
 
+  it("scores an admin's results so far from the locked games, and shows the guesses once Monday locks", async () => {
+    const adminView = async () => (await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body;
+    const table = (view: WeekView) =>
+      view.resultsSoFar?.entries.map((e) => [
+        e.displayName,
+        e.points,
+        e.wins,
+        e.losses,
+        e.powGameId,
+        e.powWon,
+        e.tiebreakerGuess,
+        e.rank,
+      ]);
+
+    // Thursday is in: NYG (-2.5) won 21–17, so the admin's POW there earns 3 + 5. Pat had no Thursday pick.
+    let view = await adminView();
+    expect(expectOnlyLockedShown(view, now)).toEqual([pickOf(ADMIN, "thu", "home")]);
+    expect(table(view)).toEqual([
+      ["Commish", 8, 1, 0, game.thu, true, null, 1],
+      ["Pat", 0, 0, 0, null, false, null, 2],
+    ]);
+    expect((await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body.resultsSoFar).toBeNull();
+
+    // A score entered before kickoff locks a game: Monday's shows Pat's pick and POW there and, as the tiebreaker
+    // game, both guesses. BAL (-4.5) won 27–20, total 47: Pat earns 3 + 5, level with the admin on points and
+    // wins, and ahead on the closer guess (50 to 41). Still nobody is the winner, and `results` stays null.
+    view = (await call<WeekView>(ADMIN, "PATCH", `/games/${game.mon}`, { homeScore: 27, awayScore: 20 }))
+      .body;
+    expect(expectOnlyLockedShown(view, now)).toEqual(
+      [pickOf(ADMIN, "thu", "home"), pickOf(PLAYER, "mon", "home")].sort(),
+    );
+    expect(table(view)).toEqual([
+      ["Pat", 8, 1, 0, game.mon, true, 50, 1],
+      ["Commish", 8, 1, 0, game.thu, true, 41, 2],
+    ]);
+    // Clearing the score unlocks Monday again, and hides it again.
+    view = (await call<WeekView>(ADMIN, "PATCH", `/games/${game.mon}`, { homeScore: null, awayScore: null }))
+      .body;
+    expect(expectOnlyLockedShown(view, now)).toEqual([pickOf(ADMIN, "thu", "home")]);
+    expect(table(view)?.map((row) => [row[0], row[4], row[6]])).toEqual([
+      ["Commish", game.thu, null],
+      ["Pat", null, null],
+    ]);
+    // A reveal isn't one-way: the next read judges the locks afresh, and still shows nothing of Monday.
+    view = await adminView();
+    expect(expectOnlyLockedShown(view, now)).toEqual([pickOf(ADMIN, "thu", "home")]);
+    expect(view.resultsSoFar?.lockedGameIds).toEqual([game.thu]);
+    expect(table(view)?.map((row) => [row[0], row[4], row[6]])).toEqual([
+      ["Commish", game.thu, null],
+      ["Pat", null, null],
+    ]);
+
+    // The same for the guesses: pointing the tiebreaker at Thursday, which has locked, shows them; pointing it
+    // back at Monday, which hasn't, hides them again.
+    view = (await call<WeekView>(ADMIN, "PATCH", `/weeks/${weekId}`, { tiebreakerGameId: game.thu })).body;
+    expect(view.tiebreakerGameId).toBe(game.thu);
+    view = await adminView();
+    expectOnlyLockedShown(view, now);
+    expect(table(view)?.map((row) => [row[0], row[6], row[7]])).toEqual([
+      ["Commish", 41, 1],
+      ["Pat", 50, 2],
+    ]);
+    await call(ADMIN, "PATCH", `/weeks/${weekId}`, { tiebreakerGameId: game.mon });
+    view = await adminView();
+    expect(view.tiebreakerGameId).toBe(game.mon);
+    expectOnlyLockedShown(view, now);
+    expect(table(view)?.map((row) => row[6])).toEqual([null, null]);
+    expect((await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body.resultsSoFar).toBeNull();
+
+    // At Sunday's kickoff both Sunday picks show; the guesses wait for Monday's.
+    now = SUN;
+    view = await adminView();
+    expect(expectOnlyLockedShown(view, now)).toEqual(
+      [pickOf(ADMIN, "thu", "home"), pickOf(ADMIN, "sun", "home"), pickOf(PLAYER, "sun", "away")].sort(),
+    );
+    expect(table(view)?.map((row) => [row[0], row[4], row[6]])).toEqual([
+      ["Commish", game.thu, null],
+      ["Pat", null, null],
+    ]);
+
+    // Monday kicks off: every pick, Pat's POW and both guesses show. Only Thursday has a result.
+    now = MON;
+    view = await adminView();
+    expect(expectOnlyLockedShown(view, now)).toEqual(
+      [
+        pickOf(ADMIN, "thu", "home"),
+        pickOf(ADMIN, "sun", "home"),
+        pickOf(PLAYER, "sun", "away"),
+        pickOf(PLAYER, "mon", "home"),
+      ].sort(),
+    );
+    expect(table(view)).toEqual([
+      ["Commish", 8, 1, 0, game.thu, true, 41, 1],
+      ["Pat", 0, 0, 0, game.mon, false, 50, 2],
+    ]);
+    expect(view.myTiebreakerTotal).toBe(41);
+    now = SUNDAY_7AM;
+  });
+
   it("pulls results from the provider and closes the week", async () => {
     expect((await call(ADMIN, "POST", `/weeks/${weekId}/finalize`)).status).toBe(409); // no scores yet
     expect((await call(PLAYER, "POST", `/weeks/${weekId}/results`)).status).toBe(403);
@@ -1329,6 +1527,8 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(PLAYER, "POST", `/weeks/${weekId}/recap/seen`)).status).toBe(200);
     const closed = await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/finalize`);
     expect(closed.body.status).toBe("final");
+    expect(closed.body.resultsSoFar).toBeNull();
+    expect(closed.body.results?.entries).toHaveLength(2);
 
     // The player is offered the recap until they have been shown it; the admin saw the results on closing.
     expect(await recapOf(ADMIN)).toBeNull();
@@ -1364,6 +1564,11 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
       },
     ]);
     expect(view.results?.picks).toHaveLength(4);
+    // A final week's results are `results`, for everyone: nobody gets results so far.
+    expect(view.resultsSoFar).toBeNull();
+    const adminView = (await call<WeekView>(ADMIN, "GET", `/weeks/${weekId}`)).body;
+    expect(adminView.resultsSoFar).toBeNull();
+    expect(adminView.results?.entries.map((e) => e.isWinner)).toEqual([true, false]);
 
     // No more picks or edits once the week is closed.
     expect((await call(PLAYER, "PUT", `/weeks/${weekId}/picks`, picksBody({}))).status).toBe(409);
@@ -1677,6 +1882,21 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect((await call(ADMIN, "POST", `/weeks/${weekId}/import`)).status).toBe(409); // closed
     const reopened = (await call<WeekView>(ADMIN, "POST", `/weeks/${weekId}/reopen`)).body;
     expect(reopened).toMatchObject({ status: "open", results: null });
+    // Reopened, the week is open again: its admin gets the results so far (every game has a result, so every
+    // pick shows, but there is no winner until it closes again), and the player gets nothing of anyone's.
+    expect(expectOnlyLockedShown(reopened, now)).toHaveLength(4);
+    expect(reopened.resultsSoFar?.entries.map((e) => [e.displayName, e.points, e.rank, e.isWinner])).toEqual([
+      ["Pat", 9, 1, false],
+      ["Commish", 8, 2, false],
+    ]);
+    const playerView = (await call<WeekView>(PLAYER, "GET", `/weeks/${weekId}`)).body;
+    expect(playerView).toMatchObject({
+      status: "open",
+      results: null,
+      resultsSoFar: null,
+      submissions: null,
+    });
+    expect(JSON.stringify(playerView)).not.toContain(ADMIN);
 
     // Players picked against these spreads: a reopened week can't re-pull them, only edit them by hand.
     expect(reopened.games.map((g) => g.spread)).toEqual([-2.5, 3.5, -4.5]);

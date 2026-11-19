@@ -61,8 +61,8 @@ const adminSteps = [
     "Check kickoffs, spreads, and point values. Kickoffs you type are in the league's time zone, and a game moved to a new slot takes that slot's points unless you set them yourself. Add or remove games, choose the tiebreaker game if needed, and press Save changes after edits. When the slate is ready, press Open week for picks. Players can now find it on their Picks tab, and you're offered a league message to announce it.",
   ],
   [
-    "Make your picks and check submissions",
-    "Use Make your own picks to fill out the same sheet as everyone else. Return to Manage week to see who has picked and whether they chose a POW. Other players' picks remain private.",
+    "Make your picks and follow the week",
+    "Use Make your own picks to fill out the same sheet as everyone else. Return to Manage week to see who has picked and whether they chose a POW. Once games kick off, open the week on the Results tab, or follow the link in Manage week, for the results so far: each player's pick on every game that has locked, and the points as they stand. Only commissioners see this until the week is final, and it never shows a pick on a game that hasn't locked.",
   ],
   [
     "Record scores and finalize the week",
@@ -70,7 +70,7 @@ const adminSteps = [
   ],
   [
     "Correct results when needed",
-    "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't auto-filled again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, other players' picks are hidden and the week is excluded from standings.",
+    "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't auto-filled again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, players' picks are hidden from each other again (you still see the results so far) and the week is excluded from standings.",
   ],
 ];
 /** What every league shares, whatever its game. */
@@ -408,8 +408,8 @@ export default function HowToPlay() {
               <Body style={{ fontFamily: fonts.semibold }}>Season standings</Body>
               <GuideNote>
                 Points from closed weeks, then POWs won, wins, Monday wins, and Sunday night wins. Remaining
-                ties share a rank. Picks stay private until the week is final; commissioners can see
-                submission status, never other players’ choices.
+                ties share a rank. Picks stay private from other players until the week is final.
+                Commissioners see who has picked, and each pick once its game locks, with the points so far.
               </GuideNote>
             </RuleCard>
           </View>
@@ -425,7 +425,8 @@ export default function HowToPlay() {
             <Body muted>
               An Automatic league needs only Start season on the League tab; see Automatic or hands-on above.
               In a Hands-on league the commissioners run each week: Draft → Accepting picks → Games underway →
-              Awaiting finalization → Final. Finalizing is their action, so results stay private until then.
+              Awaiting finalization → Final. Finalizing is their action, so results stay private from players
+              until then.
             </Body>
             <GuideSteps items={adminSteps} collapsible />
           </View>

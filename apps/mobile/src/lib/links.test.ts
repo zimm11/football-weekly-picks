@@ -94,9 +94,12 @@ describe("native link boundaries", () => {
       "/join/abc",
       "/leagues/abc",
       "/weeks/abc/manage",
+      "/weeks/abc/progress",
       "/boards/abc",
     ])
       expect(nextPath(path)).toBe(path);
+    // A week's results so far is a page to return to, not a notification's destination.
+    expect(internalPath("/weeks/abc/progress")).toBeNull();
     for (const path of [
       "https://evil.test",
       "//evil.test/account",
@@ -105,6 +108,9 @@ describe("native link boundaries", () => {
       "/operator",
       "/login",
       "/leagues/../operator",
+      "/weeks/abc/progress?x=1",
+      "/weeks/../progress",
+      "/weeks/abc/progress/extra",
       "javascript:alert(1)",
       "",
       null,

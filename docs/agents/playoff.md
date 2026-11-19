@@ -12,7 +12,7 @@ Code: rules in `packages/shared/src/playoff.ts` (`roundPoints`, `guillotineStatu
 
 ## Scoring
 
-- `roundPoints` is 1/2/3/4 for weeks 19–22. The POW bonus is `PLAYOFF_POW_BONUS` (Traditional 3, Guillotine 1), passed to `scoreWeek` through `roundPowBonus`.
+- `roundPoints` is 1/2/3/4 for weeks 19–22. The POW bonus is `PLAYOFF_POW_BONUS` (Traditional 3, Guillotine 1), passed to `scoreWeek` through `roundPowBonus`. An admin's results so far on an open round (`WeekView.resultsSoFar`, `docs/agents/weekly.md`) score it the same way.
 - The format (`seasons.settings.format`, Start season) can't change after the first Wild Card kickoff.
 - **The Super Bowl round has no POW in either format** (`roundHasPow`): the pick sheet hides it, the week view says `playoff.pow: false`, a save that names one is refused, and scoring ignores one saved before.
 - **Champion:** points, wins, then the Super Bowl total guess (the `tiebreaker_guesses` row on week 22; on equal distance the guess that didn't go over), shared when still level. There is no round winner (`isWinner` false) or Low Point Loser. The week view's tiebreaker game is null before the Super Bowl.
@@ -22,7 +22,7 @@ Code: rules in `packages/shared/src/playoff.ts` (`roundPoints`, `guillotineStatu
 
 - A losing POW, or none once every game of the round has locked, puts a player out from the next round. A push survives; the round's picks still score; the Super Bowl puts nobody out. A late joiner is out by having no POW.
 - `PUT /weeks/:id/picks` refuses an eliminated player any change but their guess (**Save guess** in the Super Bowl).
-- **Status is never stored.** A player's own (`WeekView.playoff.me`) comes from their own picks, as soon as a POW game ends. Everyone's is in the playoff standings, from final rounds only, so the privacy rule holds.
+- **Status is never stored.** A player's own (`WeekView.playoff.me`) comes from their own picks, as soon as a POW game ends. Everyone's is in the playoff standings, from final rounds only, so the privacy rule holds. The one exception is the admins' results so far: they show each POW once its game has locked, so an admin can tell who is on course to go out before the round is final. That is intended; the standings' status still counts final rounds only.
 
 ## Notifications
 

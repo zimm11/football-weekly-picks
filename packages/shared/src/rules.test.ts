@@ -10,12 +10,14 @@ import {
   hasResult,
   isLocked,
   pickPoints,
+  revealedSoFar,
   type ScoredGame,
   type ScoredPick,
   scoreSoFar,
   scoreWeek,
   seasonStandings,
   tiebreakerTotal,
+  weekSoFar,
 } from "./rules";
 import { zonedTimeToUtc } from "./time";
 
@@ -441,6 +443,211 @@ describe("scoreSoFar", () => {
       points: final?.points,
       wins: final?.wins,
       pending: 0,
+    });
+  });
+});
+
+describe("results so far", () => {
+  // Thursday is final (home covers). Sunday 1pm is under way. Sunday night hasn't kicked off but has a result
+  // already entered (away covers), so it is locked. Monday, the tiebreaker, can still be picked.
+  const games: ScoredGame[] = [
+    { id: "thu", kickoff: THU, spread: -3.5, points: 3, homeScore: 27, awayScore: 10 },
+    { id: "sun", kickoff: SUN_1PM, spread: -3.5, points: 1, homeScore: null, awayScore: null },
+    { id: "snf", kickoff: SUN_NIGHT, spread: -3.5, points: 2, homeScore: 10, awayScore: 30 },
+    { id: "mon", kickoff: MON, spread: -3.5, points: 3, homeScore: null, awayScore: null },
+  ];
+  const SUN_4PM = et(2026, 11, 15, 16);
+  const WED = et(2026, 11, 11, 12);
+  const pick = (userId: string, gameId: string, side: "home" | "away", isPow = false): ScoredPick => ({
+    userId,
+    gameId,
+    side,
+    isPow,
+  });
+  const guesses = [
+    { userId: "a", total: 41 },
+    { userId: "b", total: 50 },
+  ];
+  const reveal = (now: Date, over: { games?: ScoredGame[]; tiebreakerGameId?: string | null } = {}) =>
+    revealedSoFar({
+      games: over.games ?? games,
+      picks: [
+        pick("a", "thu", "home"),
+        pick("a", "sun", "home"),
+        pick("a", "snf", "away"),
+        pick("a", "mon", "home"),
+      ],
+      guesses,
+      tiebreakerGameId: over.tiebreakerGameId === undefined ? "mon" : over.tiebreakerGameId,
+      now,
+    });
+  const shownGames = (r: ReturnType<typeof reveal>) => r.picks.map((p) => p.gameId);
+
+  describe("revealedSoFar", () => {
+    it("shows nothing before the first game locks", () => {
+      const before = games.map((g) => ({ ...g, homeScore: null, awayScore: null }));
+      expect(reveal(WED, { games: before })).toEqual({ lockedGameIds: [], picks: [], guesses: [] });
+    });
+
+    it("shows picks on games that have kicked off or have a result, and no others", () => {
+      expect(shownGames(reveal(SUN_4PM))).toEqual(["thu", "sun", "snf"]);
+      expect(reveal(SUN_4PM).lockedGameIds).toEqual(["thu", "sun", "snf"]);
+      // A game locks at the instant of kickoff.
+      expect(shownGames(reveal(SUN_1PM))).toEqual(["thu", "sun", "snf"]);
+      expect(shownGames(reveal(new Date(SUN_1PM.getTime() - 1)))).toEqual(["thu", "snf"]);
+      expect(reveal(new Date(SUN_1PM.getTime() - 1)).lockedGameIds).toEqual(["thu", "snf"]);
+    });
+
+    it("is judged afresh: a result cleared before kickoff hides the game's picks again", () => {
+      const cleared = games.map((g) => (g.id === "snf" ? { ...g, homeScore: null, awayScore: null } : g));
+      expect(reveal(SUN_4PM, { games: cleared })).toMatchObject({ lockedGameIds: ["thu", "sun"] });
+      expect(shownGames(reveal(SUN_4PM, { games: cleared }))).toEqual(["thu", "sun"]);
+    });
+
+    it("never shows a pick on a game no longer on the slate", () => {
+      const r = revealedSoFar({
+        games,
+        picks: [pick("a", "gone", "home", true)],
+        guesses: [],
+        tiebreakerGameId: "mon",
+        now: SUN_4PM,
+      });
+      expect(r.picks).toEqual([]);
+    });
+
+    it("shows the guesses only once the tiebreaker game locks, by the clock or by a result", () => {
+      expect(reveal(SUN_4PM).guesses).toEqual([]);
+      expect(reveal(new Date(MON.getTime() - 1)).guesses).toEqual([]);
+      expect(reveal(MON).guesses).toEqual(guesses);
+      const monFinal = games.map((g) => (g.id === "mon" ? { ...g, homeScore: 24, awayScore: 20 } : g));
+      expect(reveal(SUN_4PM, { games: monFinal }).guesses).toEqual(guesses);
+    });
+
+    it("shows no guesses without a tiebreaker game on the slate", () => {
+      expect(reveal(MON, { tiebreakerGameId: null }).guesses).toEqual([]);
+      expect(reveal(MON, { tiebreakerGameId: "gone" }).guesses).toEqual([]);
+    });
+  });
+
+  describe("weekSoFar", () => {
+    const soFar = (
+      picks: ScoredPick[],
+      now = SUN_4PM,
+      over: { guesses?: typeof guesses; powBonus?: number } = {},
+    ) =>
+      weekSoFar({
+        games,
+        picks,
+        guesses: over.guesses ?? guesses,
+        userIds: ["a", "b"],
+        tiebreakerGameId: "mon",
+        powBonus: over.powBonus,
+        now,
+      });
+    // a: Thursday home as the POW (3 + 5), Monday away. b: Sunday away, Monday home as the POW.
+    const picks = [
+      pick("a", "thu", "home", true),
+      pick("a", "mon", "away"),
+      pick("b", "sun", "away"),
+      pick("b", "mon", "home", true),
+    ];
+
+    it("scores only the locked games, and keeps a POW and the guesses hidden until their games lock", () => {
+      const { entries, picks: shown, lockedGameIds } = soFar(picks);
+      expect(lockedGameIds).toEqual(["thu", "sun", "snf"]);
+      expect(entries).toEqual([
+        {
+          userId: "a",
+          points: 8,
+          wins: 1,
+          losses: 0,
+          pushes: 0,
+          powGameId: "thu",
+          powWon: true,
+          mondayWins: 0,
+          sundayNightWins: 0,
+          tiebreakerGuess: null,
+          rank: 1,
+          isWinner: false,
+        },
+        {
+          userId: "b",
+          points: 0,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+          powGameId: null,
+          powWon: false,
+          mondayWins: 0,
+          sundayNightWins: 0,
+          tiebreakerGuess: null,
+          rank: 2,
+          isWinner: false,
+        },
+      ]);
+      // Without the POW flag: an entry's powGameId says it, once its game has locked.
+      expect(shown).toEqual([
+        { userId: "a", gameId: "thu", side: "home" },
+        { userId: "b", gameId: "sun", side: "away" },
+      ]);
+    });
+
+    it("says nothing that depends on a pick, POW or guess that can still change", () => {
+      // Whatever a and b have on Monday (a side, b's POW, or nothing), and whatever they guessed, the results so
+      // far are exactly the same: entries (points, counts, POW, guess, rank, order) and picks.
+      const locked = picks.filter((p) => p.gameId !== "mon");
+      const baseline = soFar(locked, SUN_4PM, { guesses: [] });
+      const variants: [ScoredPick[], { userId: string; total: number }[]][] = [
+        [picks, guesses],
+        [[...locked, pick("a", "mon", "home"), pick("b", "mon", "away", true)], [{ userId: "b", total: 44 }]],
+        [[...locked, pick("b", "mon", "away")], [{ userId: "a", total: 99 }]],
+      ];
+      for (const [variant, variantGuesses] of variants) {
+        expect(soFar(variant, SUN_4PM, { guesses: variantGuesses })).toEqual(baseline);
+      }
+    });
+
+    it("ranks on the tiebreaker once it has locked and has a result, and still names no winner", () => {
+      const monFinal = games.map((g) => (g.id === "mon" ? { ...g, homeScore: 24, awayScore: 20 } : g)); // total 44
+      const level = [pick("a", "thu", "home"), pick("b", "thu", "home")];
+      const { entries } = weekSoFar({
+        games: monFinal,
+        picks: level,
+        guesses,
+        userIds: ["a", "b"],
+        tiebreakerGameId: "mon",
+        now: SUN_4PM,
+      });
+      expect(entries.map((e) => [e.userId, e.tiebreakerGuess, e.rank, e.isWinner])).toEqual([
+        ["a", 41, 1, false],
+        ["b", 50, 2, false],
+      ]);
+    });
+
+    it("matches the final scoring once every game is in, apart from the winner", () => {
+      const finished = games.map((g) => ({
+        ...g,
+        homeScore: g.homeScore ?? 24,
+        awayScore: g.awayScore ?? 10,
+      }));
+      const input = { games: finished, picks, guesses, userIds: ["a", "b"], tiebreakerGameId: "mon" };
+      expect(weekSoFar({ ...input, now: SUN_4PM }).entries).toEqual(
+        scoreWeek(input).map((e) => ({ ...e, isWinner: false })),
+      );
+    });
+
+    it("uses the round's POW bonus, and leaves out picks of players it isn't scoring", () => {
+      const { entries, picks: shown } = weekSoFar({
+        games,
+        picks: [...picks, pick("c", "thu", "away")],
+        guesses: [],
+        userIds: ["a", "b"],
+        tiebreakerGameId: null,
+        powBonus: PLAYOFF_POW_BONUS.traditional,
+        now: SUN_4PM,
+      });
+      expect(entries.find((e) => e.userId === "a")?.points).toBe(3 + PLAYOFF_POW_BONUS.traditional);
+      expect(shown.some((p) => p.userId === "c")).toBe(false);
     });
   });
 });
