@@ -77,7 +77,8 @@ jobs:
   # Full stack: local Supabase, DB-backed API tests, Playwright E2E against the Worker.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Room for the browser install's retries (below) ahead of about eight minutes of tests.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -107,8 +108,25 @@ jobs:
       - name: DB-backed API tests
         run: pnpm --filter @picks/api test
 
+      # WebKit's system packages come from Ubuntu's mirrors, which now and then answer 503, serve a stale index or
+      # slow to a crawl. A failure here fails `e2e`, and on main that skips the deploy, so apt retries each
+      # download and the whole install gets three tries of five minutes (a healthy one takes under a minute).
       - name: Install Playwright browsers
-        run: pnpm playwright:install
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' |
+            sudo tee /etc/apt/apt.conf.d/80-ci-retries > /dev/null
+          for attempt in 1 2 3; do
+            if timeout --kill-after=10 300 pnpm playwright:install; then exit 0; fi
+            echo "::warning::Installing Playwright's browsers failed or stalled (attempt $attempt of 3)."
+            [ "$attempt" = 3 ] && break
+            # A timed-out attempt can leave apt running as root, holding its locks.
+            sudo pkill -9 -x apt-get || true
+            sudo pkill -9 -x dpkg || true
+            sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
+            sudo dpkg --configure -a || true
+            sleep 20
+          done
+          exit 1
 
       # Against the production build in the Workers runtime (`pnpm worker:dev`), as every E2E run is.
       - name: E2E tests
