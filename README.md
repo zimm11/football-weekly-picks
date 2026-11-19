@@ -5,8 +5,8 @@ against the spread, choose a Pick of the Week (POW), and compete for weekly wins
 A league commissioner prepares each slate and publishes the results.
 
 The app supports regular-season weeks 1–18, invite-only leagues run by one or more commissioners, multiple
-seasons, private picks until finalization, and season standings with a week-by-week history. Each game has
-a matchup sheet with team stats, injuries, news, and each team's chance to win. Finalized weeks hand out
+seasons, picks hidden from other players until finalization, and season standings with a week-by-week history.
+Each game has a matchup sheet with team stats, injuries, news, and each team's chance to win. Finalized weeks hand out
 awards and name a Low Point Loser, and each league has a message board. The interface is phone-first and
 dark, and the website can be added to a phone's home screen. One Expo (React Native) app is both the website
 and the iPhone app.
@@ -255,7 +255,7 @@ tab for each.
    tiebreaker game's combined score in that game's card, and press **Save picks**. A partial sheet can be
    saved and completed later; the status card at the top says what is saved and what is left. **Stats & news** on a game opens its matchup sheet. Then try the player account. The
    commissioner's management screen shows submission counts and whether a POW was chosen; other players'
-   choices remain private.
+   choices stay hidden from the commissioner until each game kicks off (step 5).
 5. As each game ends, its result fills in on its own from ESPN the next time anyone opens the week
    (checked at most once a minute), and each player's sheet marks their pick **Won** (with the points
    earned), **Lost**, or **Push**, and its status card keeps a tally of points, record, POW and picks still to play. On the sheet a game that has
@@ -267,13 +267,15 @@ tab for each.
    each game and press **Save changes**; automatic results never overwrite a score typed in by hand. Score boxes appear once a game kicks off; before that, press
    **Enter score** on the game to record a result early. Results imports update games originally imported from ESPN;
    manually added games need manually entered scores. Recording a result closes that game to picks
-   immediately.
+   immediately. As the commissioner, open **Results** (or the link from **Manage week**) for the results so far:
+   each player's pick on every game that has kicked off or has a result, and the points and places as they stand.
+   Players don't see it; season standings, the recap and awards wait for the week to be final.
 6. When every game has a score, press **Finalize week** and confirm. This reveals everyone's picks,
    names the weekly winner and any Low Point Loser, hands out the week's awards, and includes the week in
    standings. The app again offers to post a league message, with final results shown beside the draft
    for reference. Each other player sees a one-time results recap the next time they open the league.
-   **Reopen week** lets you correct a score or spread. While reopened, other players' picks are hidden
-   again and the week is
+   **Reopen week** lets you correct a score or spread. While reopened, players' picks are hidden from each
+   other again (commissioners see the results so far) and the week is
    excluded from standings until finalized again; the corrected week is then recapped again.
 7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
    with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. The reply box stays at the bottom of the thread, and new replies appear on their own. Commissioners can open a thread's **⋯** menu and choose **Pin announcement** to keep it at the top of the board, or **Delete thread** to permanently remove it after confirming. Deletion returns you to the message board.
@@ -584,10 +586,13 @@ Each finalized week names its winner and hands out these, all worked out from th
 
 The stored week lifecycle is `draft → open → final`; only a commissioner finalizes a week. The interface derives
 additional phases such as **Games underway** and **Awaiting finalization** from kickoffs and scores.
-Picks stay private until finalization, including from commissioners. Removing a member, or a member leaving,
-preserves their history. Finalizing a week records who it is scored for (everyone in the league at its last
-kickoff, plus anyone who picked), so leaving or rejoining later never changes a closed week; finalizing again
-after a reopen only adds players. Weeks closed before that record existed use membership dates instead.
+Picks stay private from other players until finalization. A league's commissioners see each pick once its game
+kicks off or has a result, with the week's points as they stand; before that they see only who has picked and
+whether they chose a POW. Season standings, the recap, awards and league events count only final weeks. This holds
+for playoff rounds too. Removing a member, or a member leaving, preserves their history. Finalizing a week records
+who it is scored for (everyone in the league at its last kickoff, plus anyone who picked), so leaving or
+rejoining later never changes a closed week; finalizing again after a reopen only adds players. Weeks closed
+before that record existed use membership dates instead.
 
 ## Architecture and repository layout
 

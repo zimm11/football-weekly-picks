@@ -58,7 +58,7 @@ export function HowToPlayPlayoff() {
           {`A Pick of the Week (POW) is optional each round before the Super Bowl. A winning one adds ${PLAYOFF_POW_BONUS.traditional} points.`}
         </Item>
         <Item title="Guillotine">
-          {`A POW is required every round before the Super Bowl, and a winning one adds ${PLAYOFF_POW_BONUS.guillotine} point. If your POW loses, or you have none when the round's last game kicks off, you're out of picking from the next round. A push keeps you in. Your picks that round still count, you keep your points and your place, and you can still guess the Super Bowl's total. You see your own POW result as soon as its game ends; everyone else learns who is out when the round is final. Joining after a round has locked means no POW for it, so you're out of picking. The Super Bowl has one game and no POW, so nobody goes out in it.`}
+          {`A POW is required every round before the Super Bowl, and a winning one adds ${PLAYOFF_POW_BONUS.guillotine} point. If your POW loses, or you have none when the round's last game kicks off, you're out of picking from the next round. A push keeps you in. Your picks that round still count, you keep your points and your place, and you can still guess the Super Bowl's total. You see your own POW result as soon as its game ends; the other players learn who is out when the round is final, though commissioners see each POW once its game kicks off. Joining after a round has locked means no POW for it, so you're out of picking. The Super Bowl has one game and no POW, so nobody goes out in it.`}
         </Item>
         <Item title="The champion">
           Most points after the Super Bowl, then most games won, then the closest guess at the Super Bowl's

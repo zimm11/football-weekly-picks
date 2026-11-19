@@ -60,7 +60,7 @@ This file holds only what every task needs. Each area has its own doc; read it b
 
 Privacy and data:
 
-- **Picks are private until the league type's reveal point** (`LEAGUE_TYPE_INFO[type].reveal`). Weekly and playoff: no endpoint returns another player's picks, points or standings contribution for a week that isn't `final`. Survivor: a pick shows from its team's kickoff; before that the API says nothing about it, not even that one exists, admins included. A squares board is public.
+- **Picks are private until the league type's reveal point** (`LEAGUE_TYPE_INFO[type].reveal`). Weekly and playoff: no endpoint returns another player's picks, points or standings contribution for a week that isn't `final`, except that the league's admins see each pick on a game that has locked, with the week's points as they stand (`WeekView.resultsSoFar`); see `docs/agents/weekly.md`. Survivor: a pick shows from its team's kickoff; before that the API says nothing about it, not even that one exists, admins included. A squares board is public.
 - Email and push payloads carry league names and thread titles, never a pick, a team, a square, a message body or whether the reader is in or out.
 - Never hard-delete an `auth.users` row: it cascades through every table. Account deletion soft-deletes.
 - Don't score past weeks from the current member list; a closed week is scored for who was in the league when it was played (`week_participants`).

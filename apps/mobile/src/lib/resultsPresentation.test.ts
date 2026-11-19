@@ -1,9 +1,17 @@
+import type { Game } from "@picks/shared";
 import { describe, expect, it } from "vitest";
 import {
+  breakdownLine,
   draftCards,
+  inProgressWeeks,
   noWeekOpen,
   playoffRoundSteps,
+  provisionalPowValue,
   recapTitle,
+  resultGuess,
+  resultPickCell,
+  resultsTileLabels,
+  revealedGames,
   sentenceCase,
   sharedName,
   standingLine,
@@ -223,5 +231,134 @@ describe("the Picks tab between weeks", () => {
     expect(noWeekOpen(league("auto", [], false)).detail).toBe(
       "Weeks open by themselves on Tuesday at 9 AM Eastern, with that morning's lines.",
     );
+  });
+});
+
+describe("results so far", () => {
+  const kickoff = "2026-11-15T18:00:00.000Z";
+  const game = (over: Partial<Game> = {}): Game => ({
+    id: "g1",
+    homeTeam: "KC",
+    awayTeam: "BUF",
+    kickoff,
+    spread: -3.5,
+    points: 1,
+    homeScore: null,
+    awayScore: null,
+    ...over,
+  });
+
+  it("lists a commissioner's open weeks once a game is under way, latest first, and nothing for a player", () => {
+    const weeks = [
+      { id: "a", number: 9, status: "final" as const, phase: "final" as const },
+      { id: "b", number: 10, status: "open" as const, phase: "underway" as const },
+      { id: "c", number: 12, status: "open" as const, phase: "accepting" as const },
+      { id: "d", number: 11, status: "open" as const, phase: "awaiting" as const },
+      { id: "e", number: 13, status: "draft" as const, phase: "draft" as const },
+    ];
+    expect(inProgressWeeks(weeks, true).map((w) => w.id)).toEqual(["d", "b"]);
+    expect(inProgressWeeks(weeks, false)).toEqual([]);
+    expect(inProgressWeeks([], true)).toEqual([]);
+  });
+
+  it("words the tiles as an outcome only once the week is final", () => {
+    expect(resultsTileLabels({ provisional: false, playoff: false })).toEqual({
+      place: "Your finish",
+      top: "Winning score",
+    });
+    expect(resultsTileLabels({ provisional: false, playoff: true }).top).toBe("Top score");
+    expect(resultsTileLabels({ provisional: true, playoff: false })).toEqual({
+      place: "Your place",
+      top: "Top score so far",
+    });
+    expect(resultsTileLabels({ provisional: true, playoff: true }).top).toBe("Top score so far");
+  });
+
+  it("names a final week's cell as it always has", () => {
+    const won = game({ homeScore: 27, awayScore: 20 });
+    expect(resultPickCell(won, { side: "home" }, { pow: true })).toEqual({
+      outcome: "won",
+      team: "KC",
+      earned: 6,
+      label: "BUF at KC, KC -3.5, POW, won, 6 points. Final 20 to 27.",
+    });
+    expect(resultPickCell(won, { side: "away" }, { pow: false }).label).toBe(
+      "BUF at KC, BUF +3.5, lost, 0 points. Final 20 to 27.",
+    );
+    expect(resultPickCell(won, undefined, { pow: false })).toEqual({
+      outcome: "none",
+      team: null,
+      earned: null,
+      label: "BUF at KC, No pick, no pick. Final 20 to 27.",
+    });
+  });
+
+  it("holds back a game the server didn't reveal, and shows no pick only on one it did", () => {
+    expect(resultPickCell(game(), undefined, { pow: false, provisional: true, revealed: false })).toEqual({
+      outcome: "hidden",
+      team: null,
+      earned: null,
+      label: "BUF at KC, hidden until kickoff.",
+    });
+    expect(resultPickCell(game(), undefined, { pow: false, provisional: true, revealed: true }).outcome).toBe(
+      "none",
+    );
+    // A final week never holds a cell back.
+    expect(resultPickCell(game(), undefined, { pow: false, revealed: false }).outcome).toBe("none");
+  });
+
+  it("shows a revealed pick, pending until its game has a result", () => {
+    const cell = resultPickCell(game(), { side: "home" }, { pow: true, provisional: true, revealed: true });
+    expect(cell.outcome).toBe("pending");
+    expect(cell.label).toBe("BUF at KC, KC -3.5, POW, pending. Not final yet.");
+    expect(
+      resultPickCell(
+        game({ homeScore: 24, awayScore: 21 }),
+        { side: "away" },
+        {
+          pow: false,
+          provisional: true,
+          revealed: true,
+        },
+      ).label,
+    ).toBe("BUF at KC, BUF +3.5, won, 1 points. Final 21 to 24.");
+  });
+
+  it("says a guess shows at kickoff only while the tiebreaker game hasn't locked", () => {
+    expect(resultGuess(45)).toBe("45");
+    expect(resultGuess(null)).toBe("—");
+    expect(resultGuess(null, { provisional: true, tiebreakerLocked: false })).toBe("Shows at kickoff");
+    expect(resultGuess(null, { provisional: true, tiebreakerLocked: true })).toBe("—");
+    expect(resultGuess(38, { provisional: true, tiebreakerLocked: false })).toBe("38");
+  });
+
+  it("says a game's result is pending so far, rather than that nobody got it right", () => {
+    expect(breakdownLine({ covered: "home", right: 2, players: 4 })).toBe("2 of 4 got it right");
+    expect(breakdownLine({ covered: "push", right: 0, players: 4 })).toBe("Nobody scored");
+    expect(breakdownLine({ covered: null, right: 0, players: 4 })).toBe("0 of 4 got it right");
+    expect(breakdownLine({ covered: null, right: 0, players: 4, provisional: true })).toBe("Result pending");
+    expect(breakdownLine({ covered: "away", right: 1, players: 4, provisional: true })).toBe(
+      "1 of 4 got it right",
+    );
+  });
+
+  it("goes game by game over the games the server revealed only, so far", () => {
+    const early = game({ id: "early", kickoff: "2026-11-15T13:00:00.000Z" });
+    const late = game({ id: "late", kickoff: "2026-11-16T01:00:00.000Z" });
+    const games = [early, game(), late];
+    expect(
+      revealedGames(games, { provisional: true, lockedGameIds: ["g1", "early"] }).map((g) => g.id),
+    ).toEqual(["early", "g1"]);
+    expect(revealedGames(games, { provisional: true, lockedGameIds: [] })).toEqual([]);
+    expect(revealedGames(games, { provisional: true })).toEqual([]);
+    expect(revealedGames(games, { provisional: false })).toEqual(games);
+  });
+
+  it("puts the commissioner's own POW as it stands", () => {
+    expect(provisionalPowValue(undefined, false)).toBe("None");
+    expect(provisionalPowValue(game(), false)).toBe("To play");
+    expect(provisionalPowValue(game({ homeScore: 27, awayScore: 20 }), true)).toBe("Won");
+    expect(provisionalPowValue(game({ homeScore: 27, awayScore: 20 }), false)).toBe("Lost");
+    expect(provisionalPowValue(game({ homeScore: 23, awayScore: 20, spread: -3 }), false)).toBe("Push");
   });
 });

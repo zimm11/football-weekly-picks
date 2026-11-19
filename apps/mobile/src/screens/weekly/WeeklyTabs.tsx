@@ -22,6 +22,7 @@ import { haptics } from "../../lib/haptics";
 import {
   type DraftCard,
   draftCards,
+  inProgressWeeks,
   noWeekOpen,
   type RecapMood,
   recapTitle,
@@ -37,6 +38,7 @@ import {
   EmptyState,
   Failure,
   Label,
+  Pill,
   RowLink,
   Sheet,
   Skeleton,
@@ -130,7 +132,7 @@ export function PicksPanel({
               {automatic
                 ? `All scores are in. The ${unit} finalizes by itself in a few minutes.`
                 : admin
-                  ? "All final scores are entered. Finalize the week to reveal picks and update standings."
+                  ? "All final scores are entered. Finalize the week to reveal picks to everyone and update standings."
                   : "All scores are in. Your commissioner will finalize the week to publish results."}
             </Label>
             {admin && !automatic && (
@@ -206,6 +208,35 @@ export function PicksPanel({
     </LeagueTabScroll>
   );
 }
+/**
+ * For a commissioner, a row for each week (or round) under way, above the final ones on the Results tab: its
+ * results so far (`/weeks/:id/progress`), marked in progress and commissioners only. Nothing for a player.
+ */
+export function InProgressRows({ league }: { league: LeagueDetail }) {
+  const weeks = inProgressWeeks(league.weeks, league.role === "admin");
+  if (!weeks.length) return null;
+  return (
+    <View style={{ gap: 8 }}>
+      {weeks.map((week) => (
+        <RowLink
+          key={week.id}
+          href={`/weeks/${week.id}/progress`}
+          label={`${weekLabel(week.number)} results so far, commissioners only`}
+        >
+          <View style={{ flex: 1, gap: 4 }}>
+            {/* The pill sits beside the name, so the row keeps the final rows' height on a phone. */}
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <Text style={[s.subtitle, { fontSize: 24 }]}>{weekLabel(week.number)}</Text>
+              <Pill tone="primary">In progress</Pill>
+            </View>
+            <Text style={s.muted}>Results so far · Only commissioners see this</Text>
+          </View>
+        </RowLink>
+      ))}
+    </View>
+  );
+}
+
 export function SeasonPanel({
   league,
   year,
@@ -229,6 +260,7 @@ export function SeasonPanel({
         {show === "results" ? "Results" : "Standings"}
       </Text>
       <Failure message={standings.error} retry={standings.reload} />
+      {show === "results" && <InProgressRows league={league} />}
       {standings.data &&
         (show === "results" ? (
           standings.data.weeks.length ? (

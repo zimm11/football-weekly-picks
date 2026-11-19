@@ -331,6 +331,71 @@ export function pickPoints(
   return covered === pick.side ? game.points + (pick.isPow ? powBonus : 0) : 0;
 }
 
+// ---------- Results so far (admins, while a week is open) ----------
+
+type RevealableGame = { id: string; kickoff: Date; homeScore: number | null; awayScore: number | null };
+
+/**
+ * What a league's admins may see of other players' picks in a week that is still open, at `now`: each pick on a
+ * game that has locked (kicked off, or has a result: `isLocked`), and so a POW only once its game has locked; and
+ * the tiebreaker guesses only once the tiebreaker game has locked. A pick or guess that can still change stays
+ * hidden. A pick on a game no longer on the slate is never shown. Players see none of this until the week is final.
+ * `lockedGameIds` are the games judged locked, in slate order: the ones whose picks are shown. The rule is judged
+ * afresh on every call, so a game whose result is cleared before kickoff is hidden again.
+ */
+export function revealedSoFar<P extends { gameId: string }, G>(input: {
+  games: RevealableGame[];
+  picks: P[];
+  guesses: G[];
+  tiebreakerGameId: string | null;
+  now: Date;
+}): { lockedGameIds: string[]; picks: P[]; guesses: G[] } {
+  const { games, picks, guesses, tiebreakerGameId, now } = input;
+  const lockedGameIds = games
+    .filter((g) => isLocked({ kickoff: g.kickoff, final: hasResult(g) }, now))
+    .map((g) => g.id);
+  const locked = new Set(lockedGameIds);
+  return {
+    lockedGameIds,
+    picks: picks.filter((p) => locked.has(p.gameId)),
+    guesses: tiebreakerGameId !== null && locked.has(tiebreakerGameId) ? guesses : [],
+  };
+}
+
+/**
+ * An open week's results as they stand, for its admins: `scoreWeek` over only what `revealedSoFar` shows, so no
+ * point, count, POW, guess or rank depends on a pick that can still change. Nobody is the winner yet. `picks`
+ * are the revealed picks of the players in `userIds`, without the POW flag (an entry's `powGameId` carries it), and
+ * `lockedGameIds` the games they cover.
+ */
+export function weekSoFar(input: {
+  games: (ScoredGame & RevealableGame)[];
+  picks: ScoredPick[];
+  guesses: { userId: string; total: number }[];
+  userIds: string[];
+  tiebreakerGameId: string | null;
+  powBonus?: number;
+  now: Date;
+}): { entries: WeekEntry[]; picks: (PickInput & { userId: string })[]; lockedGameIds: string[] } {
+  const { userIds, tiebreakerGameId, powBonus } = input;
+  const revealed = revealedSoFar(input);
+  const players = new Set(userIds);
+  return {
+    entries: scoreWeek({
+      games: input.games,
+      picks: revealed.picks,
+      guesses: revealed.guesses,
+      userIds,
+      tiebreakerGameId,
+      powBonus,
+    }).map((e) => ({ ...e, isWinner: false })),
+    picks: revealed.picks
+      .filter((p) => players.has(p.userId))
+      .map((p) => ({ userId: p.userId, gameId: p.gameId, side: p.side })),
+    lockedGameIds: revealed.lockedGameIds,
+  };
+}
+
 export type SeasonEntry = {
   userId: string;
   points: number;

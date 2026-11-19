@@ -34,7 +34,7 @@ import {
 } from "../leagueUi";
 import { ordinal, record, StickyTable } from "../SeasonDashboard";
 import { WeekAwardCards } from "../WeekResults";
-import { RecapActions, RecapHeadline, useSelectedSeason } from "../weekly/WeeklyTabs";
+import { InProgressRows, RecapActions, RecapHeadline, useSelectedSeason } from "../weekly/WeeklyTabs";
 import { RoundStrip } from "./PlayoffWaiting";
 
 /*
@@ -156,6 +156,7 @@ export function PlayoffResults({ league, header, reload }: LeagueTabProps) {
         <Text accessibilityRole="header" style={s.title}>
           Results
         </Text>
+        <InProgressRows league={league} />
         {finished.length === 0 ? (
           <Card>
             <RoundStrip weeks={league.weeks} />

@@ -118,7 +118,8 @@ export type GuillotineStatus = {
  * already made in the round that put a player out still score.
  *
  * Privacy is the caller's: pass a player their own picks from every round, but other players' only from final
- * rounds, so everyone else learns who is out when the round is final.
+ * rounds, so the other players learn who is out when the round is final. (A league's admins see each pick once its
+ * game has locked, in the week view's results so far, so they can tell sooner from the locked POWs.)
  */
 export function guillotineStatus(input: {
   rounds: GuillotineRound[];

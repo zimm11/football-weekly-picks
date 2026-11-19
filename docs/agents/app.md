@@ -15,7 +15,7 @@ How `apps/mobile` is put together: routes, the league's tabs, and the plumbing e
 ## Routes
 
 - `/` Your leagues (signed out: the home page, which pitches weekly pick'em with an example pick whose caption comes from the real point rules, `exampleCaption` in `src/lib/landing.ts`). `/leagues/new`, `/join/<code>`.
-- `/leagues/:id` and its tabs (below). `/weeks/:id` is one week as every player sees it, `/weeks/:id/manage` the admin's week management. `/boards/:id`, `/boards/:id/manage` and `/boards/new?league=:id` are squares'.
+- `/leagues/:id` and its tabs (below). `/weeks/:id` is one week as every player sees it, `/weeks/:id/manage` the admin's week management, `/weeks/:id/progress` the admin's results so far of an open week. `/boards/:id`, `/boards/:id/manage` and `/boards/new?league=:id` are squares'.
 - `/account` is **Settings** (`/notifications` shows it too, for old links), `/change-name`, `/reset-password`, `/unsubscribe?token=`, `/feedback` (at most `FEEDBACK_DAILY_LIMIT` a day), `/operator` (a 404 for anyone not in `OPERATOR_USER_IDS`).
 - `/`, `/login`, `/how-to-play`, `/terms`, `/privacy` and `/unsubscribe` work signed out.
 - How to play (`app/how-to-play.tsx`) has one tab per league type; `?section=<type>` selects one and the tab sets it back, so links and Back keep the tab. Each type's text is its own `HowToPlay<Type>.tsx`, built from `src/components/Guide.tsx`.
