@@ -339,8 +339,7 @@ function Matchup({
     <>
       {comparison.length > 0 && (
         <Section title="Team stats">
-          {/* In a wide sheet the two columns stay close enough to read across. */}
-          <View style={{ width: "100%", maxWidth: 440, alignSelf: "center" }}>
+          <View>
             <View style={[w.row, { paddingBottom: 8 }]}>
               <TeamHeading team={game.awayTeam} />
               <View style={{ width: 32 }} />
