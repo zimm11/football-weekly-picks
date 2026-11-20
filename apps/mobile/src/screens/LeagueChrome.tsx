@@ -44,65 +44,64 @@ export function LeagueHeader({
   /** The way up from this screen: Your leagues, or for a screen inside a league (a squares board) its list. */
   back?: { label: string; href: string };
 }) {
-  // The selector rides on the "All leagues" row, so the league's name keeps the whole width under it whatever
-  // the selector says ("2026 playoffs").
+  // One row: the way up, the league's name, and the season selector at the far end. The name takes what the
+  // other two leave.
   return (
-    <View>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center" }}>
         {/* On iPhone, the screen it names is already under this one: go back down to it rather than stack another. */}
         <AppLink
           href={back.href}
           how={Platform.OS === "web" ? "push" : "dismissTo"}
+          // The arrow alone, named for where it goes.
+          accessibilityLabel={back.label}
           style={({ pressed }) => ({
-            minHeight: 44,
+            width: 44,
+            height: 44,
             flexShrink: 0,
-            flexDirection: "row",
-            gap: 4,
+            // 44px to touch, with the arrow itself on the page's left edge and the name close beside it.
+            marginLeft: -12,
+            marginRight: -4,
             alignItems: "center",
+            justifyContent: "center",
             opacity: pressed ? 0.7 : 1,
             ...webTransition(["opacity"]),
           })}
         >
-          {(state) => {
-            const ink = pressState(state).hovered ? colors.foreground : colors.mutedForeground;
-            return (
-              <>
-                <Icon name="arrow-left" size={14} color={ink} />
-                <Text
-                  maxFontSizeMultiplier={CHROME_FONT_SCALE}
-                  style={{
-                    fontFamily: fonts.medium,
-                    fontSize: 14,
-                    color: ink,
-                    ...webTransition(["color"]),
-                  }}
-                >
-                  {back.label}
-                </Text>
-              </>
-            );
-          }}
+          {(state) => (
+            <Icon
+              name="arrow-left"
+              size={20}
+              color={pressState(state).hovered ? colors.foreground : colors.mutedForeground}
+            />
+          )}
         </AppLink>
-        {season !== undefined && onSeason && (
-          <Select
-            compact
-            compactWidth={seasonWidth}
-            label="Season"
-            value={season}
-            choices={seasonChoices ?? [{ value: season, label: String(season) }]}
-            onChange={onSeason}
-          />
-        )}
+        {/* Smaller than the page's own title under it, and allowed a second line so a long name can be read. */}
+        <Text
+          accessibilityRole="header"
+          numberOfLines={2}
+          maxFontSizeMultiplier={CHROME_FONT_SCALE}
+          style={{
+            ...type.heading,
+            flex: 1,
+            minWidth: 0,
+            fontFamily: fonts.displayExtraBold,
+            color: colors.foreground,
+          }}
+        >
+          {leagueName}
+        </Text>
       </View>
-      {/* Smaller than the page's own title under it, and allowed a second line so a long name can be read. */}
-      <Text
-        accessibilityRole="header"
-        numberOfLines={2}
-        maxFontSizeMultiplier={CHROME_FONT_SCALE}
-        style={{ ...type.heading, fontFamily: fonts.displayExtraBold, color: colors.foreground }}
-      >
-        {leagueName}
-      </Text>
+      {season !== undefined && onSeason && (
+        <Select
+          compact
+          compactWidth={seasonWidth}
+          label="Season"
+          value={season}
+          choices={seasonChoices ?? [{ value: season, label: String(season) }]}
+          onChange={onSeason}
+        />
+      )}
     </View>
   );
 }
