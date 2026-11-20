@@ -13,6 +13,7 @@ import {
   mayUseManagement,
   parseSeasonSettings,
   readSeasonSettings,
+  resultsSoFarAudience,
 } from "./leagueTypes";
 
 describe("league type registry", () => {
@@ -81,6 +82,22 @@ describe("management", () => {
     // A request without management: hands-on for weekly (the old web build), automatic for the rest.
     expect(defaultManagement("weekly")).toBe("manual");
     expect(defaultManagement("survivor")).toBe("auto");
+  });
+});
+
+describe("results so far", () => {
+  it("shows them to everyone in a league that runs itself, and in a Hands-on one only once it is turned on", () => {
+    expect(resultsSoFarAudience({ management: "manual", shareResultsSoFar: false })).toBe("admins");
+    expect(resultsSoFarAudience({ management: "manual", shareResultsSoFar: true })).toBe("everyone");
+    // The setting is kept while a league runs itself, but decides nothing.
+    expect(resultsSoFarAudience({ management: "auto", shareResultsSoFar: false })).toBe("everyone");
+    expect(resultsSoFarAudience({ management: "auto", shareResultsSoFar: true })).toBe("everyone");
+  });
+
+  it("is a change a league update can carry alone", () => {
+    expect(updateLeagueSchema.safeParse({ shareResultsSoFar: false }).success).toBe(true);
+    expect(updateLeagueSchema.safeParse({ shareResultsSoFar: "yes" }).success).toBe(false);
+    expect(updateLeagueSchema.safeParse({}).success).toBe(false);
   });
 });
 

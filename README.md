@@ -5,7 +5,8 @@ against the spread, choose a Pick of the Week (POW), and compete for weekly wins
 A league commissioner prepares each slate and publishes the results.
 
 The app supports regular-season weeks 1–18, invite-only leagues run by one or more commissioners, multiple
-seasons, picks hidden from other players until finalization, and season standings with a week-by-week history.
+seasons, picks hidden from other players until kickoff (or, if a Hands-on league prefers, until finalization),
+and season standings with a week-by-week history.
 Each game has a matchup sheet with team stats, injuries, news, and each team's chance to win. Finalized weeks hand out
 awards and name a Low Point Loser, and each league has a message board. The interface is phone-first and
 dark, and the website can be added to a phone's home screen. One Expo (React Native) app is both the website
@@ -269,13 +270,15 @@ tab for each.
    manually added games need manually entered scores. Recording a result closes that game to picks
    immediately. As the commissioner, open **Results** (or the link from **Manage week**) for the results so far:
    each player's pick on every game that has kicked off or has a result, and the points and places as they stand.
-   Players don't see it; season standings, the recap and awards wait for the week to be final.
+   In this Hands-on league players don't see it until you turn on **Show players the results so far** in the
+   **League** tab's settings (try it, then look at the player's **Results** tab); in a league that runs itself
+   every player does. Season standings, the recap and awards wait for the week to be final.
 6. When every game has a score, press **Finalize week** and confirm. This reveals everyone's picks,
    names the weekly winner and any Low Point Loser, hands out the week's awards, and includes the week in
    standings. The app again offers to post a league message, with final results shown beside the draft
    for reference. Each other player sees a one-time results recap the next time they open the league.
    **Reopen week** lets you correct a score or spread. While reopened, players' picks are hidden from each
-   other again (commissioners see the results so far) and the week is
+   other again unless the league shows players the results so far (commissioners always see them) and the week is
    excluded from standings until finalized again; the corrected week is then recapped again.
 7. Open **Messages** to start a thread or reply. A dot on the tab and an **Unread** label mark threads
    with posts you haven't opened. Tap the smiley under a message or reply to add 👍, 😂, 🔥, 🎉, 😮, 🙏 or 🏈; tap a reaction shown on the message to join it, or tap yours again to remove it. Use **Quote reply** to include a message with your reply, or **Remove quote** to drop it while keeping your draft. The reply box stays at the bottom of the thread, and new replies appear on their own. Commissioners can open a thread's **⋯** menu and choose **Pin announcement** to keep it at the top of the board, or **Delete thread** to permanently remove it after confirming. Deletion returns you to the message board.
@@ -586,10 +589,12 @@ Each finalized week names its winner and hands out these, all worked out from th
 
 The stored week lifecycle is `draft → open → final`; only a commissioner finalizes a week. The interface derives
 additional phases such as **Games underway** and **Awaiting finalization** from kickoffs and scores.
-Picks stay private from other players until finalization. A league's commissioners see each pick once its game
-kicks off or has a result, with the week's points as they stand; before that they see only who has picked and
-whether they chose a POW. Season standings, the recap, awards and league events count only final weeks. This holds
-for playoff rounds too. Removing a member, or a member leaving, preserves their history. Finalizing a week records
+A pick stays private while it can still change. A league's commissioners see each pick once its game kicks off or
+has a result, with the week's points as they stand; before that they see only who has picked and whether they
+chose a POW. In a league that runs itself (Automatic weekly pick'em, and every playoff league) every player sees
+those results so far too. In a Hands-on league players wait for finalization, unless a commissioner turns on
+**Show players the results so far** in the League tab's settings. Season standings, the recap, awards and league
+events count only final weeks. Removing a member, or a member leaving, preserves their history. Finalizing a week records
 who it is scored for (everyone in the league at its last kickoff, plus anyone who picked), so leaving or
 rejoining later never changes a closed week; finalizing again after a reopen only adds players. Weeks closed
 before that record existed use membership dates instead.

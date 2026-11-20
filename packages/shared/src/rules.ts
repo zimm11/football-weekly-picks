@@ -331,15 +331,16 @@ export function pickPoints(
   return covered === pick.side ? game.points + (pick.isPow ? powBonus : 0) : 0;
 }
 
-// ---------- Results so far (admins, while a week is open) ----------
+// ---------- Results so far (while a week is open; who sees them is `resultsSoFarAudience`) ----------
 
 type RevealableGame = { id: string; kickoff: Date; homeScore: number | null; awayScore: number | null };
 
 /**
- * What a league's admins may see of other players' picks in a week that is still open, at `now`: each pick on a
- * game that has locked (kicked off, or has a result: `isLocked`), and so a POW only once its game has locked; and
- * the tiebreaker guesses only once the tiebreaker game has locked. A pick or guess that can still change stays
- * hidden. A pick on a game no longer on the slate is never shown. Players see none of this until the week is final.
+ * What may be seen of other players' picks in a week that is still open, at `now`, by whoever the league shows
+ * its results so far (`resultsSoFarAudience`: its admins, or everyone): each pick on a game that has locked (kicked
+ * off, or has a result: `isLocked`), and so a POW only once its game has locked; and the tiebreaker guesses only
+ * once the tiebreaker game has locked. A pick or guess that can still change stays hidden. A pick on a game no
+ * longer on the slate is never shown. Anyone else sees none of this until the week is final.
  * `lockedGameIds` are the games judged locked, in slate order: the ones whose picks are shown. The rule is judged
  * afresh on every call, so a game whose result is cleared before kickoff is hidden again.
  */
@@ -363,10 +364,10 @@ export function revealedSoFar<P extends { gameId: string }, G>(input: {
 }
 
 /**
- * An open week's results as they stand, for its admins: `scoreWeek` over only what `revealedSoFar` shows, so no
- * point, count, POW, guess or rank depends on a pick that can still change. Nobody is the winner yet. `picks`
- * are the revealed picks of the players in `userIds`, without the POW flag (an entry's `powGameId` carries it), and
- * `lockedGameIds` the games they cover.
+ * An open week's results as they stand, for whoever sees them: `scoreWeek` over only what `revealedSoFar` shows,
+ * so no point, count, POW, guess or rank depends on a pick that can still change. Nobody is the winner yet.
+ * `picks` are the revealed picks of the players in `userIds`, without the POW flag (an entry's `powGameId` carries
+ * it), and `lockedGameIds` the games they cover.
  */
 export function weekSoFar(input: {
   games: (ScoredGame & RevealableGame)[];

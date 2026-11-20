@@ -14,6 +14,7 @@ import {
   revealedGames,
   sentenceCase,
   sharedName,
+  sharesResultsSoFar,
   standingLine,
   statColumns,
   tileRows,
@@ -248,7 +249,7 @@ describe("results so far", () => {
     ...over,
   });
 
-  it("lists a commissioner's open weeks once a game is under way, latest first, and nothing for a player", () => {
+  it("lists the open weeks once a game is under way, latest first, and nothing for someone who doesn't see them", () => {
     const weeks = [
       { id: "a", number: 9, status: "final" as const, phase: "final" as const },
       { id: "b", number: 10, status: "open" as const, phase: "underway" as const },
@@ -259,6 +260,13 @@ describe("results so far", () => {
     expect(inProgressWeeks(weeks, true).map((w) => w.id)).toEqual(["d", "b"]);
     expect(inProgressWeeks(weeks, false)).toEqual([]);
     expect(inProgressWeeks([], true)).toEqual([]);
+  });
+
+  it("follows the server's word on who sees the results so far", () => {
+    expect(sharesResultsSoFar({ resultsSoFarFor: "everyone" })).toBe(true);
+    expect(sharesResultsSoFar({ resultsSoFarFor: "admins" })).toBe(false);
+    // An older server says nothing: commissioners only, whatever the league's management.
+    expect(sharesResultsSoFar({})).toBe(false);
   });
 
   it("words the tiles as an outcome only once the week is final", () => {

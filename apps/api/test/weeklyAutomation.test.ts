@@ -193,6 +193,96 @@ describe.skipIf(!process.env.DATABASE_URL)("Automatic weekly pick'em (requires `
     ).toBe(409);
   });
 
+  it("shows every player an open week's results so far, each pick only once its game has locked", async () => {
+    const leagueId = await startedLeague("Open book");
+    at(OPENS.toISOString());
+    await t.runAutomation("weekly", [leagueId]);
+    const w13 = await week(leagueId, 13);
+    expect(w13.status).toBe("open");
+    const [thu = "", sun = "", mon = ""] = w13.games.map((g) => g.id);
+    const save = (user: string, side: "home" | "away", powGameId: string, tiebreakerTotal: number) =>
+      t.call<WeekView>(user, "PUT", `/weeks/${w13.id}/picks`, {
+        picks: [thu, sun, mon].map((gameId) => ({ gameId, side })),
+        powGameId,
+        tiebreakerTotal,
+      });
+    expect((await save(ADMIN, "home", thu, 41)).status).toBe(200);
+    expect((await save(PAT, "away", mon, 50)).status).toBe(200);
+    const viewOf = async (user: string) => (await t.call<WeekView>(user, "GET", `/weeks/${w13.id}`)).body;
+    const shown = (view: WeekView) => ({
+      locked: view.resultsSoFar?.lockedGameIds,
+      picks: view.resultsSoFar?.picks.map((p) => `${p.userId} ${p.gameId} ${p.side}`).sort(),
+      entries: Object.fromEntries(
+        (view.resultsSoFar?.entries ?? []).map((e) => [e.displayName, [e.powGameId, e.tiebreakerGuess]]),
+      ),
+    });
+
+    // A league that runs itself shows them to everyone, whatever its Hands-on setting says.
+    expect((await t.call<LeagueDetail>(PAT, "GET", `/leagues/${leagueId}`)).body).toMatchObject({
+      management: "auto",
+      shareResultsSoFar: false,
+      resultsSoFarFor: "everyone",
+    });
+
+    // Wednesday: nothing has kicked off, so nothing about anyone's pick, POW or guess. Who has picked stays the
+    // admins' alone.
+    at("2026-12-02T12:00:00Z");
+    let view = await viewOf(PAT);
+    expect(view).toMatchObject({
+      status: "open",
+      results: null,
+      submissions: null,
+      resultsSoFarFor: "everyone",
+      myTiebreakerTotal: 50,
+    });
+    expect(shown(view)).toEqual({
+      locked: [],
+      picks: [],
+      entries: { Commish: [null, null], Pat: [null, null] },
+    });
+    expect((await viewOf(ADMIN)).submissions).toHaveLength(2);
+    expect((await t.call(SAM, "GET", `/weeks/${w13.id}`)).status).toBe(404);
+
+    // Thursday's game kicks off: both Thursday picks and the admin's POW on it. Pat's Monday POW, the Sunday and
+    // Monday picks and both guesses wait for their own kickoffs.
+    at("2026-12-04T02:00:00Z");
+    view = await viewOf(PAT);
+    expect(shown(view)).toEqual({
+      locked: [thu],
+      picks: [`${ADMIN} ${thu} home`, `${PAT} ${thu} away`].sort(),
+      entries: { Commish: [thu, null], Pat: [null, null] },
+    });
+    expect(view.resultsSoFar?.entries.every((e) => !e.isWinner)).toBe(true);
+    expect(view.resultsSoFar).toEqual((await viewOf(ADMIN)).resultsSoFar);
+    expect(view.myPicks).toHaveLength(3);
+
+    // Monday's kickoff: everything, guesses included. The week is still open, and nothing counts in the standings.
+    at("2026-12-08T01:30:00Z");
+    view = await viewOf(PAT);
+    expect(shown(view)).toMatchObject({
+      locked: [thu, sun, mon],
+      entries: { Commish: [thu, 41], Pat: [mon, 50] },
+    });
+    expect(view.resultsSoFar?.picks).toHaveLength(6);
+    expect(view).toMatchObject({ status: "open", results: null });
+    const standings = await t.call<Standings>(PAT, "GET", `/leagues/${leagueId}/standings?year=2026`);
+    expect(standings.body.weeks).toEqual([]);
+
+    // Switched to Hands-on, the league's own setting decides: off until an admin turns it on.
+    const change = (user: string, changes: Record<string, unknown>) =>
+      t.call(user, "PATCH", `/leagues/${leagueId}`, changes);
+    expect((await change(ADMIN, { management: "manual" })).status).toBe(200);
+    expect(await viewOf(PAT)).toMatchObject({ resultsSoFar: null, resultsSoFarFor: "admins" });
+    expect((await viewOf(ADMIN)).resultsSoFar?.picks).toHaveLength(6);
+    expect((await change(PAT, { shareResultsSoFar: true })).status).toBe(403);
+    expect((await change(ADMIN, { shareResultsSoFar: true })).status).toBe(200);
+    view = await viewOf(PAT);
+    expect(view.resultsSoFarFor).toBe("everyone");
+    expect(view.resultsSoFar).toEqual((await viewOf(ADMIN)).resultsSoFar);
+    expect((await change(ADMIN, { shareResultsSoFar: false })).status).toBe(200);
+    expect((await viewOf(PAT)).resultsSoFar).toBeNull();
+  });
+
   it("tells the admins once about a missing line a day before kickoff, and opens as soon as it is typed in", async () => {
     t.feed.set(
       "2026:13",

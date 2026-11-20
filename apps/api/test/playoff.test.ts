@@ -103,7 +103,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect((await pick(SAM, leagueId, 19, "wc6")).status).toBe(200);
     expect((await pick(LEE, leagueId, 19, null)).status).toBe(200);
 
-    // Monday night is under way: Lee sees for himself that he's out, but nobody else learns it yet.
+    // Monday night is under way: Lee sees for himself that he's out. The standings say nothing until the round is
+    // final; the round's results so far, which every player of a league that runs itself is sent, show each POW
+    // now that every game has kicked off, and that Lee has none.
     at("2027-01-19T02:00:00Z");
     await t.runAutomation("playoff", [leagueId]);
     const leeView = (await t.call<WeekView>(LEE, "GET", `/weeks/${wc.id}`)).body;
@@ -111,7 +113,15 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     const patView = (await t.call<WeekView>(PAT, "GET", `/weeks/${wc.id}`)).body;
     expect(patView.results).toBeNull();
     expect(patView.myPicks.length).toBe(6);
-    expect(JSON.stringify(patView)).not.toContain(SAM);
+    expect(patView.submissions).toBeNull();
+    expect(
+      Object.fromEntries((patView.resultsSoFar?.entries ?? []).map((e) => [e.displayName, e.powGameId])),
+    ).toEqual({
+      Commish: null,
+      Lee: null,
+      Pat: wc.games.find((g) => g.externalId === "wc1")?.id,
+      Sam: wc.games.find((g) => g.externalId === "wc6")?.id,
+    });
     expect(statusOf(await standings(PAT, leagueId), LEE)?.status).toMatchObject({ state: "in" });
 
     // The results are in: the round is final, and the Divisional round is prepared and opened.
@@ -315,7 +325,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect(others.flatMap((r) => r.players.map((p) => p.userId))).toEqual([ADMIN]);
   });
 
-  it("shows the admin a round's results so far with the round's POW bonus, and a player nothing", async () => {
+  it("shows everyone a round's results so far with the round's POW bonus, and only the admin who has picked", async () => {
     at("2026-11-23T12:00:00Z");
     const leagueId = await t.createLeague(ADMIN, { name: "Bracket so far", type: "playoff" });
     await t.join(PAT, leagueId);
@@ -337,7 +347,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
     expect((await pick(SAM, leagueId, 19, "wc2", 37)).body.myTiebreakerTotal).toBe(37);
 
     // Saturday evening: the first game has kicked off and the admin has typed its score (BUF -3 wins 24–17).
-    // Only that pick shows; the POW's game hasn't kicked off, so Pat has no POW yet as far as the admin can see.
+    // Only that pick shows; the POW's game hasn't kicked off, so Pat has no POW yet as far as anyone can see.
     at("2027-01-17T00:30:00Z");
     await t.call(ADMIN, "PATCH", `/games/${gameId("wc1")}`, { homeScore: 24, awayScore: 17 });
     let view = (await t.call<WeekView>(ADMIN, "GET", `/weeks/${wc.id}`)).body;
@@ -355,6 +365,14 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
         ["Sam", 1, null, false],
         ["Commish", 0, null, false],
       ],
+    );
+    // A playoff league runs itself, so every player is sent the same: Sam can't see Pat's POW before its game
+    // kicks off either. It has no setting to turn that off.
+    let samView = (await t.call<WeekView>(SAM, "GET", `/weeks/${wc.id}`)).body;
+    expect(samView).toMatchObject({ results: null, submissions: null, resultsSoFarFor: "everyone" });
+    expect(samView.resultsSoFar).toEqual(view.resultsSoFar);
+    expect((await t.call(ADMIN, "PATCH", `/leagues/${leagueId}`, { shareResultsSoFar: false })).status).toBe(
+      409,
     );
 
     // The POW's game has kicked off and ended (PIT -3 wins 24–17): 1 point and the Traditional bonus of 3.
@@ -391,10 +409,11 @@ describe.skipIf(!process.env.DATABASE_URL)("Playoff pick'em (requires `pnpm db:s
       ["Commish", 0, null, 3],
     ]);
 
-    // The player sees only their own picks.
-    const patView = (await t.call<WeekView>(PAT, "GET", `/weeks/${wc.id}`)).body;
-    expect(patView).toMatchObject({ results: null, resultsSoFar: null, submissions: null });
-    expect(patView.myPicks).toHaveLength(6);
+    // A player is sent the same results so far, and still no submission counts.
+    samView = (await t.call<WeekView>(SAM, "GET", `/weeks/${wc.id}`)).body;
+    expect(samView).toMatchObject({ results: null, submissions: null, myTiebreakerTotal: 37 });
+    expect(samView.resultsSoFar).toEqual(view.resultsSoFar);
+    expect(samView.myPicks).toHaveLength(6);
   });
 
   it("keeps the format until the first Wild Card kickoff, and guards its routes by type", async () => {

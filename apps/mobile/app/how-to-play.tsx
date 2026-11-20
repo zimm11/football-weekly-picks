@@ -47,7 +47,7 @@ const playerSteps = [
   ],
   [
     "Check results and the season race",
-    "As each game ends, its result shows on your pick sheet: Won with the points you earned, Lost, or Push. Your week so far adds up your points, record, and POW; it's unofficial until the week is final. Once it is, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
+    "As each game ends, its result shows on your pick sheet: Won with the points you earned, Lost, or Push. Your week so far adds up your points, record, and POW; it's unofficial until the week is final. In an Automatic league, or a Hands-on one whose commissioners turn it on, Results also lists the week in progress: everyone's picks on the games that have kicked off, and the points so far. Once the week is final, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
   ],
 ];
 /** Weekly pick'em, for admins of a Hands-on league (an Automatic league does all of this by itself). */
@@ -62,7 +62,7 @@ const adminSteps = [
   ],
   [
     "Make your picks and follow the week",
-    "Use Make your own picks to fill out the same sheet as everyone else. Return to Manage week to see who has picked and whether they chose a POW. Once games kick off, open the week on the Results tab, or follow the link in Manage week, for the results so far: each player's pick on every game that has locked, and the points as they stand. Only commissioners see this until the week is final, and it never shows a pick on a game that hasn't locked.",
+    "Use Make your own picks to fill out the same sheet as everyone else. Return to Manage week to see who has picked and whether they chose a POW. Once games kick off, open the week on the Results tab, or follow the link in Manage week, for the results so far: each player's pick on every game that has locked, and the points as they stand. It never shows a pick on a game that hasn't locked. Only commissioners see it until the week is final, unless you turn on Show players the results so far in the League tab's settings: then every player gets the same page.",
   ],
   [
     "Record scores and finalize the week",
@@ -70,7 +70,7 @@ const adminSteps = [
   ],
   [
     "Correct results when needed",
-    "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't auto-filled again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, players' picks are hidden from each other again (you still see the results so far) and the week is excluded from standings.",
+    "Use Reopen week in Manage week, correct the score or spread, and save. Spreads aren't auto-filled again once a week is open; correct one by typing the new line. Close the week again to publish the corrected results. While reopened, the week is excluded from standings, and players' picks are hidden from each other again unless the league shows players the results so far (you still see them).",
   ],
 ];
 /** What every league shares, whatever its game. */
@@ -408,8 +408,14 @@ export default function HowToPlay() {
               <Body style={{ fontFamily: fonts.semibold }}>Season standings</Body>
               <GuideNote>
                 Points from closed weeks, then POWs won, wins, Monday wins, and Sunday night wins. Remaining
-                ties share a rank. Picks stay private from other players until the week is final.
-                Commissioners see who has picked, and each pick once its game locks, with the points so far.
+                ties share a rank.
+              </GuideNote>
+              <Body style={{ fontFamily: fonts.semibold }}>Who sees your picks</Body>
+              <GuideNote>
+                Nobody, while you can still change them. In an Automatic league everyone sees each pick once
+                its game kicks off, with the points so far. In a Hands-on league only commissioners do until
+                the week is final, unless they turn on Show players the results so far. Commissioners also see
+                who has picked.
               </GuideNote>
             </RuleCard>
           </View>
@@ -425,8 +431,9 @@ export default function HowToPlay() {
             <Body muted>
               An Automatic league needs only Start season on the League tab; see Automatic or hands-on above.
               In a Hands-on league the commissioners run each week: Draft → Accepting picks → Games underway →
-              Awaiting finalization → Final. Finalizing is their action, so results stay private from players
-              until then.
+              Awaiting finalization → Final. Finalizing is their action: the week counts once they do, and
+              players see each other's picks then, or as games kick off if the commissioners turn on Show
+              players the results so far.
             </Body>
             <GuideSteps items={adminSteps} collapsible />
           </View>

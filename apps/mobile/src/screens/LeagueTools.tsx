@@ -17,6 +17,7 @@ import { AutoGrowInput } from "../components/AutoGrowInput";
 import { Avatar } from "../components/Avatar";
 import { ReportSheet, type ReportTarget, setBlocked } from "../components/Moderation";
 import { type Anchor, Menu, MenuItem } from "../components/Popover";
+import { PreferenceToggle } from "../components/PreferenceToggle";
 import { fonts } from "../components/ui";
 import { request } from "../lib/api";
 import { pageOrigin } from "../lib/config";
@@ -47,7 +48,7 @@ const MANAGEMENT_LABEL: Record<LeagueManagement, string> = {
 };
 /** What the chosen way of running it means, under the select. */
 const MANAGEMENT_DETAIL: Record<LeagueManagement, string> = {
-  auto: "Weeks set up, open and close themselves.",
+  auto: "Weeks set up, open and close themselves. Everyone sees each pick once its game kicks off.",
   manual: "You set up, open and finalize each week.",
 };
 /** Whether this browser (or the phone) has a share sheet. A computer's browser usually has none. */
@@ -86,7 +87,10 @@ export function LeagueTools({
 }) {
   const [name, setName] = useState(league.name),
     [timeZone, setTimeZone] = useState(league.timeZone),
-    [management, setManagement] = useState(league.management);
+    [management, setManagement] = useState(league.management),
+    // A Hands-on league's choice, held only once it is touched: until then the box shows what the league says,
+    // so a remembered copy of the league from before the setting existed can't leave it reading "off".
+    [shareEdit, setShareEdit] = useState<boolean>();
   const [busy, setBusy] = useState<string>(),
     [error, setError] = useState<string>(),
     [copied, setCopied] = useState(false),
@@ -101,12 +105,22 @@ export function LeagueTools({
     adminCount = league.members.filter((m) => m.role === "admin").length,
     // Only weekly pick'em has a choice.
     managementOptions = managementChoices(league.type),
+    // Only a Hands-on league chooses who sees the results so far: while Automatic is selected the stored
+    // choice is left as it is (the server ignores it), and an older server has no such setting.
+    sharingChoice = league.shareResultsSoFar !== undefined && management === "manual",
+    shareSoFar = shareEdit ?? league.shareResultsSoFar ?? false,
+    sharingChanged = sharingChoice && shareSoFar !== league.shareResultsSoFar,
     dirty =
-      admin && (name !== league.name || timeZone !== league.timeZone || management !== league.management);
+      admin &&
+      (name !== league.name ||
+        timeZone !== league.timeZone ||
+        management !== league.management ||
+        sharingChanged);
   useEditsGuard(dirty && busy !== "settings", () => {
     setName(league.name);
     setTimeZone(league.timeZone);
     setManagement(league.management);
+    setShareEdit(undefined);
   });
   const base = `/leagues/${league.id}`,
     // The web build links to the site serving it (a local server too); the phone app to production.
@@ -234,6 +248,7 @@ export function LeagueTools({
       name,
       timeZone,
       ...(management !== league.management && { management }),
+      ...(sharingChanged && { shareResultsSoFar: shareSoFar }),
     });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message);
     setError(undefined);
@@ -414,6 +429,15 @@ export function LeagueTools({
               />
               <Label>{MANAGEMENT_DETAIL[management]}</Label>
             </View>
+          )}
+          {sharingChoice && (
+            <PreferenceToggle
+              label="Show players the results so far"
+              description="While a week is open, everyone sees each pick once its game kicks off, and the points as they stand. Off, only commissioners do."
+              checked={shareSoFar}
+              disabled={!!busy}
+              onChange={setShareEdit}
+            />
           )}
           <Failure message={error} />
           <Action

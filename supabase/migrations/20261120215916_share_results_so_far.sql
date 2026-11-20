@@ -1,0 +1,1 @@
+ALTER TABLE "leagues" ADD COLUMN "share_results_so_far" boolean DEFAULT false NOT NULL;

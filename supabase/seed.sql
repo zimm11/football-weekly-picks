@@ -27,8 +27,10 @@
 -- (loaded after this one) rather than editing this file.
 -- No push subscriptions are seeded; VAPID is unset locally, so devices can't subscribe.
 -- Later weeks are deliberately absent: create them in the app so the import from ESPN gets exercised.
--- To see a commissioner's results so far, open a week, save picks as two players, and enter a score: once a game
--- locks, Commish's Results tab lists the week in progress, with each player's pick on that game only.
+-- To see the results so far, open a week, save picks as two players, and enter a score: once a game locks,
+-- Commish's Results tab lists the week in progress, with each player's pick on that game only. The league is
+-- Hands-on, so players get the same row only after Commish turns on League settings → Show players the results
+-- so far; in a league that runs itself (the playoff seed) every player has it.
 -- Moderation: everyone but Alex has agreed to the Terms of use, so Alex sees the terms sheet before a first post.
 -- One thread ("Week 9 talk") has a reply from Sam that Alex reported as spam, so the League tab's Reports card
 -- (as Commish) has an item. Sam has blocked Alex. Screening is off locally (no Workers AI), so nothing is refused.

@@ -69,7 +69,10 @@ export type LeagueTypeInfo<T extends LeagueType = LeagueType> = {
   seasonOnCreate: boolean;
   /** How the league can be run, the default for a new league first. Only weekly pick'em offers hands-on. */
   management: readonly LeagueManagement[];
-  /** When another player's pick becomes visible. */
+  /**
+   * When another player's picks become visible. A pick'em league (`final`) may show each pick sooner, once its
+   * game has locked: see `resultsSoFarAudience`.
+   */
   reveal: RevealPoint;
   /** The league's tabs in order. The first is the league's own URL, `/leagues/:id`. */
   tabs: readonly LeagueTabId[];
@@ -148,6 +151,24 @@ export function managementChoices(type: LeagueType): LeagueManagement[] {
 /** What a create request without `management` means: hands-on for weekly (the old web build), else automatic. */
 export const defaultManagement = (type: LeagueType): LeagueManagement =>
   type === "weekly" ? "manual" : "auto";
+
+// ---------- Results so far ----------
+
+/** Who sees an open pick'em week's results so far (`WeekView.resultsSoFar`): its league's admins, or every player. */
+export type ResultsSoFarAudience = "admins" | "everyone";
+
+/**
+ * Who sees an open pick'em week's results so far: each pick once its game has locked, with the points as they
+ * stand. Everyone in a league that runs itself (an Automatic weekly league, any playoff league). In a Hands-on
+ * league its admins, and its players too once an admin turns `shareResultsSoFar` on; the setting is kept but
+ * ignored while the league runs itself.
+ */
+export function resultsSoFarAudience(league: {
+  management: LeagueManagement;
+  shareResultsSoFar: boolean;
+}): ResultsSoFarAudience {
+  return league.management === "auto" || league.shareResultsSoFar ? "everyone" : "admins";
+}
 
 // ---------- Settings and weeks ----------
 

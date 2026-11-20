@@ -5,6 +5,7 @@ import {
   type LeagueManagement,
   type LeagueType,
   leagueTypeInfo,
+  type ResultsSoFarAudience,
 } from "./leagueTypes";
 import type { ModerationStatus, PostState } from "./moderation";
 import type { PlayoffWeekInfo } from "./playoff";
@@ -151,9 +152,18 @@ export const updateLeagueSchema = z
     timeZone: timeZoneSchema.optional(),
     /** Weekly pick'em only: switch between Automatic and Hands-on. */
     management: z.enum(LEAGUE_MANAGEMENT).optional(),
+    /**
+     * Weekly pick'em only: whether a Hands-on league's players, and not only its admins, see an open week's
+     * results so far. Kept, but ignored, while the league is Automatic (see `resultsSoFarAudience`).
+     */
+    shareResultsSoFar: z.boolean().optional(),
   })
   .refine(
-    (v) => v.name !== undefined || v.timeZone !== undefined || v.management !== undefined,
+    (v) =>
+      v.name !== undefined ||
+      v.timeZone !== undefined ||
+      v.management !== undefined ||
+      v.shareResultsSoFar !== undefined,
     "Nothing to change",
   );
 
@@ -318,6 +328,18 @@ export type LeagueDetail = {
   timeZone: string;
   type: LeagueType;
   management: LeagueManagement;
+  /**
+   * A Hands-on league's setting: its players see an open week's results so far, as its admins always do. Stored
+   * for any weekly league, but it decides nothing while the league runs itself. Optional: an older API doesn't
+   * send it.
+   */
+  shareResultsSoFar?: boolean;
+  /**
+   * Who sees an open pick'em week's results so far in this league (`resultsSoFarAudience`): the server's word,
+   * which the app follows rather than working it out. Absent from an older API, and from squares and survivor:
+   * read as admins only.
+   */
+  resultsSoFarFor?: ResultsSoFarAudience;
   role: Role;
   /** Only admins see the invite code. */
   inviteCode: string | null;
@@ -390,14 +412,20 @@ export type WeekView = {
   /** Everyone's picks and scores. Null until the week is final. */
   results: WeekResults | null;
   /**
-   * Admins only, on an open week: the results as they stand. It holds each player's pick only on games that have
-   * locked (`isLocked`), their POW only once its game has, and their guess only once the tiebreaker game has;
-   * scored from the games with a result. Nobody is the winner yet (`isWinner` false). Null for anyone else and in
-   * any other status. A field of its own because older apps read `results` as final without checking the status.
-   * `lockedGameIds` names the games it covers, as the server judged them: the app tells a held-back pick from no
-   * pick by it, never by the device's clock. Optional: an older API doesn't send it.
+   * On an open week, for whoever `resultsSoFarFor` names: the results as they stand. It holds each player's pick
+   * only on games that have locked (`isLocked`), their POW only once its game has, and their guess only once the
+   * tiebreaker game has; scored from the games with a result. Nobody is the winner yet (`isWinner` false). Null
+   * for anyone else and in any other status. A field of its own because older apps read `results` as final
+   * without checking the status. `lockedGameIds` names the games it covers, as the server judged them: the app
+   * tells a held-back pick from no pick by it, never by the device's clock. Optional: an older API doesn't send
+   * it.
    */
   resultsSoFar?: (WeekResults & { lockedGameIds: string[] }) | null;
+  /**
+   * Who is sent `resultsSoFar` in this league: its admins only, or every player (a league that runs itself, or a
+   * Hands-on one whose admins turned it on). Absent from an older API: read as admins only.
+   */
+  resultsSoFarFor?: ResultsSoFarAudience;
   /** The league's type and how it is run. Absent from older servers: read as weekly, hands-on. */
   leagueType?: LeagueType;
   management?: LeagueManagement;

@@ -145,6 +145,7 @@ erDiagram
     text invite_code UK
     text type
     text management
+    boolean share_results_so_far
     timestamptz created_at
   }
   message_posts {
@@ -440,6 +441,7 @@ A group of players who pick against each other, run by league admins.
 | `invite_code` | text | no | unique | Anyone holding this code can join. Admins can rotate it. |
 | `type` | text | no |  | The game the league plays, fixed when it is created: weekly (pick'em every regular-season week), playoff (pick'em over the four postseason rounds), squares (boards on single games) or survivor. Rows from before league types, and creates from old clients, are weekly. One of: `weekly`, `playoff`, `squares`, `survivor`. Has a default. |
 | `management` | text | no |  | Who does a week's chores. auto: the feed imports, opens and finalizes each week by itself. manual: the admins do (today's hands-on game). Only a weekly league may be manual; existing leagues stay manual. One of: `auto`, `manual`. Has a default. |
+| `share_results_so_far` | boolean | no |  | A Hands-on league's choice: its players, and not only its admins, see an open week's results so far (each pick once its game has locked, with the points as they stand). A league that runs itself always shows them to everyone, whatever this says. Has a default. |
 | `created_at` | timestamptz | no |  | Has a default. |
 
 ### `message_posts`

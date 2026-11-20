@@ -40,11 +40,13 @@ import { Action, Card, Failure, Input, Select, Skeleton, s, useEditsGuard, useLe
 const MANAGEMENT_CHOICES = {
   auto: {
     title: "Automatic",
-    detail: "Weeks set themselves up from the schedule, open Tuesday morning and close after the last game.",
+    detail:
+      "Weeks set themselves up from the schedule, open Tuesday morning and close after the last game. Picks show to everyone at kickoff.",
   },
   manual: {
     title: "Hands-on",
-    detail: "Full control of each week: you set the slate and spreads, and open and close it.",
+    detail:
+      "Full control of each week: you set the slate and spreads, open and close it, and choose when picks show.",
   },
 } as const;
 const PLAYOFF_FORMATS: { value: PlayoffFormat; title: string; detail: string }[] = [

@@ -139,6 +139,12 @@ export const leagues = pgTable(
      * admins do (today's hands-on game). Only a weekly league may be manual; existing leagues stay manual.
      */
     management: text({ enum: LEAGUE_MANAGEMENT_VALUES }).notNull().default("manual"),
+    /**
+     * A Hands-on league's choice: its players, and not only its admins, see an open week's results so far (each
+     * pick once its game has locked, with the points as they stand). A league that runs itself always shows them
+     * to everyone, whatever this says.
+     */
+    shareResultsSoFar: boolean().notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [

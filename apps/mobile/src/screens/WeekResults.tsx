@@ -34,9 +34,10 @@ import { WeekBadge, WeekCaption, w } from "./weekUi";
 type Results = NonNullable<WeekView["results"]>;
 /**
  * A week's results: the summary tiles, a card per player with every pick, the awards and game by game. Drawn
- * from `view.results` once the week is final; `provisional` draws a commissioner's results so far on an open
- * week (`view.resultsSoFar`) instead, claiming nothing final: no winner, no Low Point Loser, no awards, and a
- * game the server didn't reveal (not in its `lockedGameIds`) held back, never "no pick". Never the device's clock.
+ * from `view.results` once the week is final; `provisional` draws the results so far on an open week instead
+ * (`view.resultsSoFar`, sent to whoever may see them), claiming nothing final: no winner, no Low Point Loser, no
+ * awards, and a game the server didn't reveal (not in its `lockedGameIds`) held back, never "no pick". Never the
+ * device's clock.
  */
 export function WeekResults({
   view,
@@ -62,7 +63,7 @@ export function WeekResults({
   const { topPoints, averagePoints } = weekSummary(results.entries);
   const tiebreakerGame = view.games.find((game) => game.id === view.tiebreakerGameId);
   const actual = tiebreakerTotal(tiebreakerGame);
-  // So far, the commissioner's own POW is theirs to see before its game locks (their own picks).
+  // So far, the viewer's own POW is theirs to see before its game locks (their own picks).
   const myPowId = provisional
     ? (me?.powGameId ?? view.myPicks.find((pick) => pick.isPow)?.gameId)
     : me?.powGameId;
