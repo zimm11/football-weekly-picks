@@ -1485,6 +1485,52 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     now = SUNDAY_7AM;
   });
 
+  it("shows a Hands-on league's players the results so far only while an admin shares them", async () => {
+    const viewOf = async (user: string) => (await call<WeekView>(user, "GET", `/weeks/${weekId}`)).body;
+    const leagueOf = async (user: string) =>
+      (await call<LeagueDetail>(user, "GET", `/leagues/${leagueId}`)).body;
+    const share = (user: string, shareResultsSoFar: boolean) =>
+      call(user, "PATCH", `/leagues/${leagueId}`, { shareResultsSoFar });
+
+    // Off until an admin turns it on: the league and the week both say who sees them.
+    expect(await leagueOf(PLAYER)).toMatchObject({
+      management: "manual",
+      shareResultsSoFar: false,
+      resultsSoFarFor: "admins",
+    });
+    expect(await viewOf(PLAYER)).toMatchObject({ resultsSoFar: null, resultsSoFarFor: "admins" });
+    expect((await share(PLAYER, true)).status).toBe(403);
+    expect((await viewOf(PLAYER)).resultsSoFar).toBeNull();
+    expect((await share(ADMIN, true)).status).toBe(200);
+    expect(await leagueOf(PLAYER)).toMatchObject({ shareResultsSoFar: true, resultsSoFarFor: "everyone" });
+
+    // Shared, the player is sent exactly what the admin is, less the submission counts: only Thursday has
+    // locked, so the admin's Sunday pick and guess, like the player's own Monday POW, are in neither.
+    let view = await viewOf(PLAYER);
+    expect(view).toMatchObject({ submissions: null, resultsSoFarFor: "everyone", myTiebreakerTotal: 50 });
+    expect(expectOnlyLockedShown(view, now)).toEqual([pickOf(ADMIN, "thu", "home")]);
+    expect(view.resultsSoFar).toEqual((await viewOf(ADMIN)).resultsSoFar);
+    expect(view.myPicks.map((p) => p.gameId).sort()).toEqual([game.sun, game.mon].sort());
+
+    // Monday's kickoff: every pick, both POWs and both guesses.
+    now = MON;
+    view = await viewOf(PLAYER);
+    expect(expectOnlyLockedShown(view, now)).toHaveLength(4);
+    expect(view.resultsSoFar?.entries.map((e) => [e.displayName, e.powGameId, e.tiebreakerGuess])).toEqual([
+      ["Commish", game.thu, 41],
+      ["Pat", game.mon, 50],
+    ]);
+    expect(view.resultsSoFar).toEqual((await viewOf(ADMIN)).resultsSoFar);
+    // Standings still count final weeks only.
+    expect((await call<Standings>(PLAYER, "GET", `/leagues/${leagueId}/standings`)).body.weeks).toEqual([]);
+
+    // Turned off again, the player is back to their own picks; the admin sees what they did.
+    expect((await share(ADMIN, false)).status).toBe(200);
+    expect(await viewOf(PLAYER)).toMatchObject({ resultsSoFar: null, resultsSoFarFor: "admins" });
+    expect((await viewOf(ADMIN)).resultsSoFar?.picks).toHaveLength(4);
+    now = SUNDAY_7AM;
+  });
+
   it("pulls results from the provider and closes the week", async () => {
     expect((await call(ADMIN, "POST", `/weeks/${weekId}/finalize`)).status).toBe(409); // no scores yet
     expect((await call(PLAYER, "POST", `/weeks/${weekId}/results`)).status).toBe(403);

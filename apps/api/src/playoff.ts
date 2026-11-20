@@ -190,8 +190,8 @@ export function playoffRoutes(
     new Hono<{ Variables: AuthVariables }>()
       /**
        * The overall table and each player's status, from final rounds only, so nothing still in play shows: in
-       * Guillotine the players learn who is out when the round is final. (The league's admins can tell sooner from
-       * the locked POWs in a round's results so far, on the week view.)
+       * Guillotine the standings say who is out when the round is final. (Anyone can tell sooner from the locked
+       * POWs in a round's results so far, on the week view, which every player of a playoff league sees.)
        */
       .get(
         "/leagues/:leagueId/playoff/standings",

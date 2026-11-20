@@ -11,6 +11,7 @@ import { useAuth } from "../lib/auth";
 import { now as clockNow } from "../lib/clock";
 import { usePageTitle } from "../lib/pageTitle";
 import { usePullRefresh } from "../lib/pullRefresh";
+import { sharesResultsSoFar } from "../lib/resultsPresentation";
 import { useScrollRestore } from "../lib/scrollRestore";
 import { rememberSeason } from "../lib/seasonSelection";
 import { weekUnit } from "../lib/weekPresentation";
@@ -30,11 +31,12 @@ import {
 import { WeekResults } from "./WeekResults";
 
 /**
- * A commissioner's results so far for an open week (`/weeks/:id/progress`): the results page as it stands, from
+ * An open week's results so far (`/weeks/:id/progress`): the results page as it stands, from
  * `WeekView.resultsSoFar`, which holds each pick only once its game has locked (`lockedGameIds`, as the server
- * judged it; a remembered copy is drawn first and checked again every minute). Players never see it: a player,
- * or a week the server sends no results so far for, gets a short note and the way to the week; a final week
- * goes to its real results at `/weeks/:id`.
+ * judged it; a remembered copy is drawn first and checked again every minute). The server decides who is sent
+ * it: the league's commissioners, and every player in a league that runs itself or a Hands-on one that shares
+ * them (`resultsSoFarFor`). Anyone it sends nothing gets a short note and the way to the week; a final week goes
+ * to its real results at `/weeks/:id`.
  */
 export function WeekProgressScreen({ weekId }: { weekId: string }) {
   const { me } = useAuth();
@@ -89,10 +91,14 @@ export function WeekProgressScreen({ weekId }: { weekId: string }) {
   const tabBar = width < 768 && (
     <LeagueTabBar leagueId={view.leagueId} type={view.leagueType} active="results" />
   );
-  if (view.role !== "admin" || !results) {
+  const admin = view.role === "admin";
+  // Whether the whole league is sent these, or only its commissioners: the page says which.
+  const shared = sharesResultsSoFar(view);
+  if (!results) {
     // A commissioner's draft has nothing to show yet; a final week (shown here only when its check failed) has
-    // its real results; anyone else (or an older server) gets the rule.
-    const draft = view.role === "admin" && view.status === "draft";
+    // its real results; a player the server sent nothing (the league keeps them to its commissioners) gets the
+    // rule.
+    const draft = admin && view.status === "draft";
     const closed = view.status === "final";
     return (
       <View style={s.page}>
@@ -144,19 +150,23 @@ export function WeekProgressScreen({ weekId }: { weekId: string }) {
           <View style={{ gap: 6 }}>
             <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
               <Pill tone="primary">{WEEK_PHASE_LABEL[weekPhase(view.status, view.games, clockNow())]}</Pill>
-              <Pill>Commissioners only</Pill>
+              {!shared && <Pill>Commissioners only</Pill>}
             </View>
             <Title>
               {weekLabel(view.number)}{" "}
               <Text style={[type.heading, { color: colors.mutedForeground }]}>· Results so far</Text>
             </Title>
           </View>
-          <Action compact secondary href={`/weeks/${weekId}/manage`}>
-            Manage {unit}
-          </Action>
+          {admin && (
+            <Action compact secondary href={`/weeks/${weekId}/manage`}>
+              Manage {unit}
+            </Action>
+          )}
         </View>
         <Label>
-          Only commissioners see this until the {unit} is final. A pick shows once its game kicks off.
+          {shared
+            ? `Everyone in the league sees this. A pick shows once its game kicks off, and nothing counts until the ${unit} is final.`
+            : `Only commissioners see this until the ${unit} is final. A pick shows once its game kicks off.`}
           {lockedCount > 0
             ? ` ${finalCount} of ${view.games.length} ${view.games.length === 1 ? "game" : "games"} final.`
             : ""}

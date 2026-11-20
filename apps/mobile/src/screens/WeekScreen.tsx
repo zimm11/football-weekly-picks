@@ -66,6 +66,7 @@ import {
   savedDraft,
 } from "../lib/pickDraft";
 import { usePullRefresh } from "../lib/pullRefresh";
+import { sharesResultsSoFar } from "../lib/resultsPresentation";
 import { useScrollRestore } from "../lib/scrollRestore";
 import { useRemovalGuard, useUnsavedWork } from "../lib/unsaved";
 import {
@@ -431,6 +432,15 @@ export function WeekScreen({
   );
   // A league that runs itself finalizes by itself; a playoff player the guillotine put out only watches.
   const automatic = view.management === "auto";
+  // The league shows everyone each pick once its game kicks off (it runs itself, or its commissioners share
+  // them): the server's word. `soFarGames` is how many games the results so far it sent cover, for a
+  // commissioner too.
+  const shared = sharesResultsSoFar(view);
+  const soFarGames = view.status === "open" ? (view.resultsSoFar?.lockedGameIds?.length ?? 0) : 0;
+  // Everyone's picks on the games that have kicked off, for whoever the server sends them to.
+  const soFarLink = soFarGames > 0 && (
+    <WeekAction secondary compact label="See everyone's results so far" href={`/weeks/${weekId}/progress`} />
+  );
   const closed = view.playoff?.mayPick === false;
   const unit = weekUnit(view);
   const powBonus = view.powBonus ?? 5;
@@ -580,8 +590,12 @@ export function WeekScreen({
               <Text style={s.cardTitle}>Awaiting finalization</Text>
               <Text style={w.muted}>
                 {automatic
-                  ? "All final scores are in. It finalizes by itself in a few minutes, and everyone's picks are revealed then."
-                  : "All final scores are entered. Everyone's picks are revealed, and this week counts in standings, once the commissioner finalizes it."}
+                  ? shared
+                    ? "All final scores are in. It finalizes by itself in a few minutes, and counts in the standings then."
+                    : "All final scores are in. It finalizes by itself in a few minutes, and everyone's picks are revealed then."
+                  : shared
+                    ? "All final scores are entered. This week counts in standings once the commissioner finalizes it."
+                    : "All final scores are entered. Everyone's picks are revealed, and this week counts in standings, once the commissioner finalizes it."}
               </Text>
             </View>
           )}
@@ -613,6 +627,8 @@ export function WeekScreen({
               ) : (
                 tally && <View style={w.card}>{tally}</View>
               )}
+              {/* Once nothing is left to pick the sheet is only a review, and the link leads it. */}
+              {!editable.games && soFarLink}
               <Description id={notSavedId}>Not saved yet</Description>
               {foldable.length > 0 && (
                 <Pressable
@@ -712,8 +728,12 @@ export function WeekScreen({
                 )}
               </View>
               <Text style={w.muted}>
-                Everyone's picks are revealed, and your points count, when the {unit} closes.
+                {shared
+                  ? `Everyone sees a pick once its game kicks off. Your points count when the ${unit} closes.`
+                  : `Everyone's picks are revealed, and your points count, when the ${unit} closes.`}
               </Text>
+              {/* While a game can still be picked, the games to pick keep the first screen: the link waits here. */}
+              {editable.games && soFarLink}
             </>
           )}
           {error && view.status !== "open" && (

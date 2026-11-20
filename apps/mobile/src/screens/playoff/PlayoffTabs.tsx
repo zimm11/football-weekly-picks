@@ -160,7 +160,7 @@ export function PlayoffResults({ league, header, reload }: LeagueTabProps) {
         {finished.length === 0 ? (
           <Card>
             <RoundStrip weeks={league.weeks} />
-            <Label>No round is final yet. Everyone's picks show up here once one is.</Label>
+            <Label>No round is final yet. Each round is listed here once it is.</Label>
           </Card>
         ) : (
           <View style={{ gap: 8 }}>

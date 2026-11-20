@@ -199,7 +199,25 @@ test("a commissioner follows a week's results so far, then reopens the final wee
     ).toBeVisible();
     await expect(player.getByRole("link", { name: "Go to the week" })).toBeVisible();
     await expect(player.getByRole("table", { name: "Results so far" })).toHaveCount(0);
+
+    // The commissioner turns on Show players the results so far: the player gets the same page, from their own
+    // Results tab, with the game still to play held back for them too.
+    await page.getByRole("link", { name: "League", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Show players the results so far" }).click();
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.getByText("League settings saved.", { exact: true })).toBeVisible();
     await player.goto(leagueUrl);
+    await expect(player.getByRole("link", { name: "See everyone's results so far" })).toBeVisible();
+    await player.getByRole("link", { name: "Results", exact: true }).click();
+    await player.getByRole("link", { name: "Week 1 results so far", exact: true }).click();
+    await expect(player.getByText("Everyone in the league sees this.")).toBeVisible();
+    const shared = player.getByRole("table", { name: "Results so far" });
+    await expect(shared.getByRole("row", { name: /Commish/ })).toContainText("KC POW");
+    await expect(shared.getByRole("row", { name: /Pat/ })).toContainText("ATL");
+    await expect(shared.getByLabel("DAL at PHI, hidden until kickoff.", { exact: true })).toHaveCount(2);
+    await expect(player.getByRole("link", { name: "Manage week" })).toHaveCount(0);
+    await player.goto(leagueUrl);
+    await page.goto(progressUrl);
 
     // The second game is scored too, and the commissioner wins the week; Pat's recap says so.
     await page.getByRole("link", { name: "Manage week", exact: true }).click();
@@ -218,7 +236,7 @@ test("a commissioner follows a week's results so far, then reopens the final wee
     await expect(player.getByRole("table", { name: "Week results" })).toBeVisible();
     const weekUrl = player.url();
 
-    // Reopened: the picks are private from players again, and the scored games stay closed to picks.
+    // Reopened: it is an open week again, off the list of closed weeks, and the scored games stay closed to picks.
     await page.getByRole("button", { name: "Reopen week" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Reopen week" }).click();
     await expect(page.getByText("Week reopened.")).toBeVisible();

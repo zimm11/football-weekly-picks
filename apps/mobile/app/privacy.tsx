@@ -12,7 +12,7 @@ import { usePageTitle } from "../src/lib/pageTitle";
  * The sports-data company is ESPN. Players' copy never names the data provider (docs/agents/design.md, "Copy"), so this page
  * describes it instead; the companies that hold players' data for us are named.
  */
-const UPDATED = "November 18, 2026";
+const UPDATED = "November 20, 2026";
 
 const sections: LegalSection[] = [
   [
@@ -68,8 +68,9 @@ const sections: LegalSection[] = [
     [
       [
         "Members of your leagues see your display name and profile picture, your messages and reactions, and your results. They never see your email address.",
-        "In pick'em leagues, other players don't see your picks until the week (or playoff round) is final. After that the whole league sees them.",
-        "League commissioners see more while a pick'em week is being played: how many games you have picked and whether you chose a Pick of the Week; your pick on each game once that game kicks off or has a score, including whether it is your Pick of the Week; your tiebreaker guess once the tiebreaker game kicks off or has a score; and your points and place so far.",
+        "In pick'em leagues, nobody else sees a pick while you can still change it. Once the week (or playoff round) is final, the whole league sees all of them.",
+        "While a pick'em week is being played, league commissioners see how many games you have picked and whether you chose a Pick of the Week; your pick on each game once that game kicks off or has a score, including whether it is your Pick of the Week; your tiebreaker guess once the tiebreaker game kicks off or has a score; and your points and place so far.",
+        "In a league that runs itself (an Automatic weekly league, and every playoff league), the other players see the same as each game kicks off, except how many games you have picked. In a Hands-on league they do only if its commissioners have turned on Show players the results so far. A commissioner can change either at any time, including during a week.",
         "In a survivor league, your pick shows to the league once its game kicks off. A squares board is open to the whole league, so a square shows your name as soon as you claim it.",
         "A commissioner of a league you are in can add you to a new league they start. You are told, and you can leave it.",
         "When you start a thread, its title and the start of your message are emailed to the league's members who have those emails on.",

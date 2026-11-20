@@ -28,6 +28,7 @@ import {
   parseSeasonSettings,
   preferredSeasonYear,
   type Role,
+  resultsSoFarAudience,
   type Standings,
   scoreWeek,
   seasonStandings,
@@ -356,6 +357,11 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
           timeZone: league.timeZone,
           type: league.type,
           management: league.management,
+          // Pick'em only: squares and survivor have their own reveal rules, and no results so far.
+          ...((league.type === "weekly" || league.type === "playoff") && {
+            shareResultsSoFar: league.shareResultsSoFar,
+            resultsSoFarFor: resultsSoFarAudience(league),
+          }),
           role,
           inviteCode: role === "admin" ? league.inviteCode : null,
           members: await (async () => {
@@ -407,6 +413,10 @@ export function leagueRoutes(deps: AppDeps, services: AppServices) {
           if (!mayUseManagement(league.type, changes.management))
             fail(409, `${leagueTypeInfo(league.type).name} leagues run themselves.`);
         }
+        // Only a league that can be run Hands-on has the choice: the others' rule is fixed. An Automatic weekly
+        // league may set it for the day it switches back.
+        if (changes.shareResultsSoFar !== undefined && !mayUseManagement(league.type, "manual"))
+          fail(409, `${leagueTypeInfo(league.type).name} leagues don't have that setting.`);
         const renaming = changes.name !== undefined && changes.name !== league.name;
         if (renaming) await requireNotSuspended(db, c.var.user.id);
         if (renaming && changes.name)

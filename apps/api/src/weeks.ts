@@ -11,6 +11,7 @@ import {
   type GameInsights,
   hasResult,
   POW_BONUS,
+  resultsSoFarAudience,
   revealedSoFar,
   roundPoints,
   SUPER_BOWL_ROUND,
@@ -94,14 +95,21 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at
   const playoff = ctx.league.type === "playoff" ? await playoffWeekInfo(db, ctx, userId, at) : null;
   const powBonus = playoff?.powBonus ?? POW_BONUS;
   const admin = ctx.role === "admin";
-  // Until the week is final, a member reads only their own picks and guess. An admin reads everyone's: to count
-  // submissions, and on an open week for the results so far, which show a pick or guess only once its game has
-  // locked (`weekSoFar`). Nothing read here about a pick that can still change leaves this function but the
-  // submission counts.
+  // Who is sent an open week's results so far: the league's admins, and every player in a league that runs itself
+  // or a Hands-on one that shares them. Keyed on the re-read week, not `ctx.week`, which is stale in the open,
+  // reopen and finalize responses.
+  const soFarFor = resultsSoFarAudience(ctx.league);
+  const seesSoFar = week.status === "open" && (admin || soFarFor === "everyone");
+  // Until the week is final, a member reads only their own picks and guess, unless they see the results so far.
+  // An admin reads everyone's picks: to count submissions, and on an open week for the results so far. Those show
+  // a pick or guess only once its game has locked (`weekSoFar`): nothing read here about a pick that can still
+  // change leaves this function but an admin's submission counts.
   const pickScope =
-    final || admin ? eq(picks.weekId, week.id) : and(eq(picks.weekId, week.id), eq(picks.userId, userId));
+    final || admin || seesSoFar
+      ? eq(picks.weekId, week.id)
+      : and(eq(picks.weekId, week.id), eq(picks.userId, userId));
   const guessScope =
-    final || (admin && week.status === "open")
+    final || seesSoFar
       ? eq(tiebreakerGuesses.weekId, week.id)
       : and(eq(tiebreakerGuesses.weekId, week.id), eq(tiebreakerGuesses.userId, userId));
   const [gameRows, pickRows, guessRows] = await Promise.all([
@@ -109,7 +117,7 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at
     db.select().from(picks).where(pickScope),
     db.select().from(tiebreakerGuesses).where(guessScope),
   ]);
-  const members = final || admin ? await listMemberRecords(db, ctx.league.id) : [];
+  const members = final || admin || seesSoFar ? await listMemberRecords(db, ctx.league.id) : [];
   const tiebreakerGameId = effectiveTiebreakerId(week.tiebreakerGameId, gameRows);
   // A playoff league's one tiebreaker is the Super Bowl's total: the earlier rounds have none.
   const shownTiebreakerId = playoff && week.number < SUPER_BOWL_ROUND ? null : tiebreakerGameId;
@@ -142,11 +150,10 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at
     };
   }
 
-  // An admin's view of an open week: the results as they stand, from the games that have locked. Kept out of
-  // `results`, which older apps read as final. Keyed on the re-read week, not `ctx.week`, which is stale in the
-  // open, reopen and finalize responses.
+  // An open week's results as they stand, from the games that have locked, for whoever sees them. Kept out of
+  // `results`, which older apps read as final.
   let resultsSoFar: WeekView["resultsSoFar"] = null;
-  if (admin && week.status === "open") {
+  if (seesSoFar) {
     // Everyone a finalize now would score: those recorded at an earlier close (after a reopen), and those who
     // qualify now. Qualifying is judged on the revealed picks only, so it can't hint at a hidden one.
     const recorded = (await recordedParticipants(db, [week.id])).get(week.id);
@@ -211,6 +218,7 @@ export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at
       : null,
     results,
     resultsSoFar,
+    resultsSoFarFor: soFarFor,
     leagueType: ctx.league.type,
     management: ctx.league.management,
     powBonus,

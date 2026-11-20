@@ -7,6 +7,7 @@ import {
   lineFor,
   PLAYOFF_ROUNDS,
   pickPoints,
+  type ResultsSoFarAudience,
   type Side,
   type WeekPhase,
   type WeekStatus,
@@ -231,22 +232,29 @@ export function noWeekOpen(league: BetweenWeeksLeague): {
 }
 
 /*
- * Results so far: a commissioner's view of an open week (`WeekView.resultsSoFar`). The server sends each player's
- * pick only on games that have locked, and names those games (`lockedGameIds`, as the server judged them). Any
- * other game is held back rather than read as "no pick", and nothing is claimed as an outcome: no winner, no Low
- * Point Loser, no awards. What is held back is the server's word, never this device's clock: a clock running
- * ahead, or a copy remembered from before a kickoff, would otherwise say a player has no pick when they do.
+ * Results so far: an open week as it stands (`WeekView.resultsSoFar`), for whoever the server sends it to: the
+ * league's commissioners, and every player in a league that runs itself or a Hands-on one that shares them
+ * (`resultsSoFarFor`, the server's word). The server sends each player's pick only on games that have locked, and
+ * names those games (`lockedGameIds`, as the server judged them). Any other game is held back rather than read as
+ * "no pick", and nothing is claimed as an outcome: no winner, no Low Point Loser, no awards. What is held back is
+ * the server's word, never this device's clock: a clock running ahead, or a copy remembered from before a
+ * kickoff, would otherwise say a player has no pick when they do.
  */
 
+/** Whether every player of this league or week, not only its commissioners, is sent the results so far. */
+export const sharesResultsSoFar = (source: { resultsSoFarFor?: ResultsSoFarAudience }): boolean =>
+  source.resultsSoFarFor === "everyone";
+
 /**
- * The weeks the Results tab lists above the final ones for a commissioner: open weeks with a game under way or
- * every score in (`underway`, `awaiting`), latest first. None for a player, and none that hasn't kicked off.
+ * The weeks the Results tab lists above the final ones for someone who `sees` the results so far (a commissioner,
+ * or anyone when the league shares them): open weeks with a game under way or every score in (`underway`,
+ * `awaiting`), latest first. None for anyone else, and none that hasn't kicked off.
  */
 export function inProgressWeeks<T extends { number: number; status: WeekStatus; phase: WeekPhase }>(
   weeks: T[],
-  admin: boolean,
+  sees: boolean,
 ): T[] {
-  if (!admin) return [];
+  if (!sees) return [];
   return weeks
     .filter((w) => w.status === "open" && (w.phase === "underway" || w.phase === "awaiting"))
     .sort((a, b) => b.number - a.number);

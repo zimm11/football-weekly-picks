@@ -48,6 +48,7 @@ import { useReducedMotion } from "../lib/motion";
 import { notifyDone, notifyError } from "../lib/notify";
 import { usePageTitle } from "../lib/pageTitle";
 import { usePullRefresh } from "../lib/pullRefresh";
+import { sharesResultsSoFar } from "../lib/resultsPresentation";
 import { useScrollRestore } from "../lib/scrollRestore";
 import { rememberSeason } from "../lib/seasonSelection";
 import { confirmDiscard } from "../lib/unsaved";
@@ -233,6 +234,9 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
   const automatic = view.management === "auto";
   const playoff = view.leagueType === "playoff";
   const unit = weekUnit(view);
+  // The whole league already sees each pick once its game kicks off: finalizing and reopening reveal and hide
+  // nothing, so the copy below doesn't say they do.
+  const shared = sharesResultsSoFar(view);
   const finalizeAction = (primary: boolean) => (
     <Action
       secondary={!primary}
@@ -242,8 +246,12 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
         confirm(
           `Finalize the ${unit}?`,
           playoff
-            ? "Everyone's picks will be revealed, and the standings updated."
-            : "Everyone's picks and the winner will be revealed.",
+            ? shared
+              ? "The standings will be updated."
+              : "Everyone's picks will be revealed, and the standings updated."
+            : shared
+              ? "The winner will be named, and the standings updated."
+              : "Everyone's picks and the winner will be revealed.",
           `Finalize ${unit}`,
           () => {
             void act("finalize", `/weeks/${weekId}/finalize`);
@@ -385,7 +393,9 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                   ? `${missing} of ${view.games.length} games still need a final score.`
                   : automatic
                     ? "All final scores are entered. It finalizes by itself in a few minutes, or finalize it now."
-                    : "All final scores are entered. Finalize this week to reveal everyone's picks to the league and update season standings."}{" "}
+                    : shared
+                      ? "All final scores are entered. Finalize this week to name the winner and update season standings."
+                      : "All final scores are entered. Finalize this week to reveal everyone's picks to the league and update season standings."}{" "}
                 {automatic
                   ? "Results fill in automatically as games end, never over a score you typed."
                   : "Auto-filling results updates scores only; spreads stay as they were when the week opened."}
@@ -406,7 +416,10 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
           )}
           {view.status === "final" && !automatic && (
             <Label>
-              Reopen to correct a score or spread. Picks are hidden from players again until you close it.
+              Reopen to correct a score or spread.{" "}
+              {shared
+                ? "The week leaves the standings until you close it."
+                : "Picks are hidden from players again until you close it."}{" "}
               Spreads stay as they were when the week opened unless you edit them by hand.
             </Label>
           )}
@@ -423,7 +436,9 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
               onPress={() =>
                 confirm(
                   "Reopen this week?",
-                  "Picks will be hidden from players again until the week is finalized.",
+                  shared
+                    ? "It leaves the standings until it is finalized again."
+                    : "Picks will be hidden from players again until the week is finalized.",
                   "Reopen week",
                   () => {
                     void act("reopen", `/weeks/${weekId}/reopen`);
@@ -497,7 +512,8 @@ export function ManageWeekScreen({ weekId }: { weekId: string }) {
                 </View>
               ))}
             </View>
-            {/* Everyone's picks on the games that have kicked off, scored as they stand: commissioners only. */}
+            {/* Everyone's picks on the games that have kicked off, scored as they stand. Who has picked, above,
+                stays the commissioners' alone even when the league shares the results so far. */}
             <Action secondary href={`/weeks/${weekId}/progress`}>
               See results so far
             </Action>

@@ -6,7 +6,7 @@ import { usePageTitle } from "../src/lib/pageTitle";
  * The Terms of use. Works signed out, like How to play; the App Store listing links here. It describes what the
  * app does today: when a rule, a limit or the moderation flow changes, change this text and `UPDATED` with it.
  */
-const UPDATED = "November 18, 2026";
+const UPDATED = "November 20, 2026";
 
 const sections: LegalSection[] = [
   [
@@ -26,8 +26,8 @@ const sections: LegalSection[] = [
     "Your league and its commissioners",
     [
       "Each league is run by its commissioners: players like you, starting with whoever created the league, not the people who run POW Pick'em. A league can have several, all with the same powers, and always keeps at least one; a commissioner can make another member a commissioner. In a league set to run itself, the app does the weekly chores.",
-      "Commissioners can edit spreads, point values and scores, close weeks, enter a survivor pick for a player, put a guest's name on a square, manage the invite link, remove members, and add a league's members to a new league they start. They review reports about their league's members and can remove messages and mute a member in their league. In pick'em they see each of your picks once its game kicks off or has a score, before the rest of the league does; before then, only whether you have picked. We don't settle disagreements inside a league.",
-      "Pick'em picks stay private from other players until the week is final; after that, everyone in the league sees them, with the results and the standings. A survivor pick shows once its game kicks off, and a squares board is open to the whole league.",
+      "Commissioners can edit spreads, point values and scores, close weeks, enter a survivor pick for a player, put a guest's name on a square, manage the invite link, remove members, and add a league's members to a new league they start. They review reports about their league's members and can remove messages and mute a member in their league. In pick'em they see each of your picks once its game kicks off or has a score, and before then only whether you have picked. In a Hands-on league they also decide whether the other players see picks as games kick off or only once the week is final. We don't settle disagreements inside a league.",
+      "A pick'em pick stays private while you can still change it. In a league that runs itself, everyone in the league sees it once its game kicks off; in a Hands-on league, once the week is final, or from kickoff if the commissioners have turned that on. The standings count final weeks only. A survivor pick shows once its game kicks off, and a squares board is open to the whole league.",
     ],
   ],
   [

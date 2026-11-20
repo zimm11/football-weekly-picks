@@ -26,6 +26,7 @@ import {
   noWeekOpen,
   type RecapMood,
   recapTitle,
+  sharesResultsSoFar,
   standingLine,
   weeklyRecapHeadline,
 } from "../../lib/resultsPresentation";
@@ -132,7 +133,9 @@ export function PicksPanel({
               {automatic
                 ? `All scores are in. The ${unit} finalizes by itself in a few minutes.`
                 : admin
-                  ? "All final scores are entered. Finalize the week to reveal picks to everyone and update standings."
+                  ? sharesResultsSoFar(league)
+                    ? "All final scores are entered. Finalize the week to name the winner and update standings."
+                    : "All final scores are entered. Finalize the week to reveal picks to everyone and update standings."
                   : "All scores are in. Your commissioner will finalize the week to publish results."}
             </Label>
             {admin && !automatic && (
@@ -209,11 +212,13 @@ export function PicksPanel({
   );
 }
 /**
- * For a commissioner, a row for each week (or round) under way, above the final ones on the Results tab: its
- * results so far (`/weeks/:id/progress`), marked in progress and commissioners only. Nothing for a player.
+ * A row for each week (or round) under way, above the final ones on the Results tab: its results so far
+ * (`/weeks/:id/progress`), marked in progress. For everyone in a league that shares them (one that runs itself,
+ * or a Hands-on one set to); otherwise for its commissioners, marked as theirs alone, and nothing for a player.
  */
 export function InProgressRows({ league }: { league: LeagueDetail }) {
-  const weeks = inProgressWeeks(league.weeks, league.role === "admin");
+  const everyone = sharesResultsSoFar(league);
+  const weeks = inProgressWeeks(league.weeks, everyone || league.role === "admin");
   if (!weeks.length) return null;
   return (
     <View style={{ gap: 8 }}>
@@ -221,7 +226,7 @@ export function InProgressRows({ league }: { league: LeagueDetail }) {
         <RowLink
           key={week.id}
           href={`/weeks/${week.id}/progress`}
-          label={`${weekLabel(week.number)} results so far, commissioners only`}
+          label={`${weekLabel(week.number)} results so far${everyone ? "" : ", commissioners only"}`}
         >
           <View style={{ flex: 1, gap: 4 }}>
             {/* The pill sits beside the name, so the row keeps the final rows' height on a phone. */}
@@ -229,7 +234,11 @@ export function InProgressRows({ league }: { league: LeagueDetail }) {
               <Text style={[s.subtitle, { fontSize: 24 }]}>{weekLabel(week.number)}</Text>
               <Pill tone="primary">In progress</Pill>
             </View>
-            <Text style={s.muted}>Results so far · Only commissioners see this</Text>
+            <Text style={s.muted}>
+              {everyone
+                ? "Results so far · Picks show as games kick off"
+                : "Results so far · Only commissioners see this"}
+            </Text>
           </View>
         </RowLink>
       ))}

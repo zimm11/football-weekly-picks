@@ -22,7 +22,8 @@ export function HowToPlayManagement() {
           Eastern the week's games and that morning's lines come in and it opens for picks, all at once, so
           the spreads you pick against are never days old (they freeze then). Final scores fill in as games
           end, and the week finalizes after its last game, usually Monday night. You get a notification when a
-          week opens and when it's final.
+          week opens and when it's final. Everyone sees each pick once its game kicks off, with the points so
+          far, on the Results tab.
         </Item>
         <Item title="What the commissioner can still do">
           Edit spreads and points until a week's first kickoff, choose the tiebreaker game, add or remove a
@@ -33,8 +34,9 @@ export function HowToPlayManagement() {
         </Item>
         <Item title="Hands-on">
           Full control of each week for commissioners who want it: they import or build the slate, open it,
-          and press Finalize week. A commissioner can switch between the two at any time in the League tab's
-          settings; automation picks the weeks up as they stand.
+          and press Finalize week. Players see each other's picks once the week is final, or as games kick off
+          if a commissioner turns on Show players the results so far. A commissioner can switch between the
+          two at any time in the League tab's settings; automation picks the weeks up as they stand.
         </Item>
       </Card>
     </View>
@@ -48,7 +50,7 @@ export function HowToPlayPlayoff() {
       <Heading title="Playoff pick'em" icon="trophy" />
       <Body muted>
         The weekly game over the four playoff rounds, with one champion after the Super Bowl. Pick every game
-        against the spread; each game locks at kickoff.
+        against the spread; each game locks at kickoff, and everyone's pick on it shows from then.
       </Body>
       <Card>
         <Item title="Rounds and points">
@@ -58,7 +60,7 @@ export function HowToPlayPlayoff() {
           {`A Pick of the Week (POW) is optional each round before the Super Bowl. A winning one adds ${PLAYOFF_POW_BONUS.traditional} points.`}
         </Item>
         <Item title="Guillotine">
-          {`A POW is required every round before the Super Bowl, and a winning one adds ${PLAYOFF_POW_BONUS.guillotine} point. If your POW loses, or you have none when the round's last game kicks off, you're out of picking from the next round. A push keeps you in. Your picks that round still count, you keep your points and your place, and you can still guess the Super Bowl's total. You see your own POW result as soon as its game ends; the other players learn who is out when the round is final, though commissioners see each POW once its game kicks off. Joining after a round has locked means no POW for it, so you're out of picking. The Super Bowl has one game and no POW, so nobody goes out in it.`}
+          {`A POW is required every round before the Super Bowl, and a winning one adds ${PLAYOFF_POW_BONUS.guillotine} point. If your POW loses, or you have none when the round's last game kicks off, you're out of picking from the next round. A push keeps you in. Your picks that round still count, you keep your points and your place, and you can still guess the Super Bowl's total. Everyone sees each POW once its game kicks off, so a losing one shows as soon as its game ends; Standings marks who is out once the round is final. Joining after a round has locked means no POW for it, so you're out of picking. The Super Bowl has one game and no POW, so nobody goes out in it.`}
         </Item>
         <Item title="The champion">
           Most points after the Super Bowl, then most games won, then the closest guess at the Super Bowl's
