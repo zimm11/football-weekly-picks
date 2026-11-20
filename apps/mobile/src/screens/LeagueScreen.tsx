@@ -300,7 +300,7 @@ export function LeagueBottomBar() {
 }
 
 /**
- * The league's header at the top of a tab: the name row with "All leagues" and the season selector,
+ * The league's header at the top of a tab: the name row with the way back and the season selector,
  * the tab row on wide screens, a failed reload, and the Start a new season card while it is open.
  */
 export function LeagueTabHeader({ tab }: { tab: LeagueTabId }) {
@@ -418,13 +418,11 @@ function LeagueSkeleton({ wide }: { wide: boolean }) {
   return (
     <View accessible accessibilityLabel="Loading league" accessibilityState={{ busy: true }} style={s.page}>
       <View style={[s.content, { flex: 1, gap: layout.pageGap }]}>
-        {/* As `LeagueFrame` draws it: the "All leagues" row, the league's name, then the tab row. */}
+        {/* As `LeagueFrame` draws it: the back arrow beside the league's name, then the tab row. */}
         <View style={{ gap: layout.pageGap }}>
-          <View>
-            <View style={{ height: 44, justifyContent: "center" }}>
-              <SkeletonBlock width={84} height={14} />
-            </View>
-            <SkeletonBlock width={220} height={24} style={{ maxWidth: "70%", marginVertical: 2 }} />
+          <View style={{ height: 44, flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <SkeletonBlock width={20} height={20} />
+            <SkeletonBlock width={220} height={24} style={{ maxWidth: "70%" }} />
           </View>
           {wide && (
             <View
