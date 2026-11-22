@@ -205,6 +205,27 @@ describe("the compact row of a game the player can no longer change", () => {
     expect(row).toMatchObject({ pick: "Eagles PK", result: "Won +1" });
     expect(row.label).toBe("DAL at PHI, final 13–20, your pick: Eagles (PK), won 1 point");
   });
+  it("says live with the score while the game is being played, and nothing else changes", () => {
+    const live = { homeScore: 10, awayScore: 14, period: 3, clock: "4:12", state: "playing" as const };
+    const row = lockedGameRow(locked, { sides: { g: "home" }, pow: "g" }, { ...weekly, live });
+    expect(row).toMatchObject({ live, outcome: "pending", score: null, result: null, covered: null });
+    expect(row.label).toBe("DAL at PHI, live 14–10, your pick: Eagles (-3.5), POW");
+    expect(lockedGameRow(locked, { sides: {}, pow: null }, { ...weekly, live }).label).toBe(
+      "DAL at PHI, live 14–10, no pick",
+    );
+    // Without live state the row is as it always was.
+    expect(lockedGameRow(locked, { sides: {}, pow: null }, { ...weekly, live: null })).toMatchObject({
+      live: null,
+      label: "DAL at PHI, locked, no pick",
+    });
+    expect(lockedGameRow(locked, { sides: {}, pow: null }, weekly).live).toBeNull();
+  });
+  it("is never live once the game has a result", () => {
+    const live = { homeScore: 10, awayScore: 14, period: 4, clock: "0:30", state: "playing" as const };
+    const row = lockedGameRow(final(10, 27), { sides: { g: "home" }, pow: null }, { ...weekly, live });
+    expect(row).toMatchObject({ live: null, score: "10–27", result: "Won +2" });
+    expect(row.label).toBe("DAL at PHI, final 10–27, your pick: Eagles (-3.5), won 2 points");
+  });
   it("shows no POW in a playoff round without one, even one saved before", () => {
     const superBowl = { hasPow: false, powBonus: 1 };
     const row = lockedGameRow(final(10, 27), { sides: { g: "home" }, pow: "g" }, superBowl);

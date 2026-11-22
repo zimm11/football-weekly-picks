@@ -11,8 +11,9 @@ import { providerWeeks } from "../src/weekOps";
 
 /*
  * What the automatic pick'em API tests share: a database with its own players, a scripted feed (counting what it
- * is asked), a clock the test moves, and a way to run one type's automation for the test's own leagues only, the
- * way the cron does (its due query, then each league), without touching other leagues in the database.
+ * is asked, and failing on demand), a clock the test moves, and a way to run one type's automation for the test's
+ * own leagues only, the way the cron does (its due query, then each league), without touching other leagues in the
+ * database.
  */
 
 const publicConfig = { supabaseUrl: "http://localhost", supabasePublishableKey: "test" };
@@ -22,13 +23,15 @@ export function pickemSetup(names: string[]) {
   const users: string[] = names.map(() => randomUUID());
   const feed = new Map<string, ProviderGame[]>();
   const asked: string[] = [];
+  // `feedDown` makes every read of the feed fail, as an outage would.
+  const state = { now: new Date("2026-11-20T12:00:00Z"), feedDown: false };
   const nfl: NflProvider = {
     async getWeek(year, week) {
       asked.push(`${year}:${week}`);
+      if (state.feedDown) throw new Error("offline");
       return (feed.get(`${year}:${week}`) ?? []).map((g) => ({ ...g }));
     },
   };
-  const state = { now: new Date("2026-11-20T12:00:00Z") };
   const email: EmailDeps = {
     mailer: { send: async () => {} },
     appUrl: "https://picks.test",

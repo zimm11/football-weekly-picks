@@ -47,7 +47,7 @@ const playerSteps = [
   ],
   [
     "Check results and the season race",
-    "As each game ends, its result shows on your pick sheet: Won with the points you earned, Lost, or Push. Your week so far adds up your points, record, and POW; it's unofficial until the week is final. In an Automatic league, or a Hands-on one whose commissioners turn it on, Results also lists the week in progress: everyone's picks on the games that have kicked off, and the points so far. Once the week is final, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
+    "Once a game kicks off it folds to one row on your pick sheet. While it is being played the row says Live: tap it for the score and the game clock. As each game ends, its result shows there: Won with the points you earned, Lost, or Push. Your week so far adds up your points, record, and POW; it's unofficial until the week is final. In an Automatic league, or a Hands-on one whose commissioners turn it on, Results also lists the week in progress: everyone's picks on the games that have kicked off, and the standings so far, which move as each game ends. Once the week is final, a recap shows how you finished the next time you open the league. Open Results to see everyone's picks, the weekly winner, and the awards. Open Standings to track season points, POW wins, and your progress week by week.",
   ],
 ];
 /** Weekly pick'em, for admins of a Hands-on league (an Automatic league does all of this by itself). */

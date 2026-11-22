@@ -29,6 +29,10 @@ export type HarnessGame = {
   status?: "scheduled" | "in_progress" | "final";
   period?: number;
   liveScore?: { home: number; away: number };
+  /** While `in_progress`: absent reads as being played. The pick sheet shows the score from `liveScore`. */
+  liveState?: "playing" | "halftime" | "end_of_period";
+  /** The game clock as the feed prints it ("4:12"), while it is being played. */
+  clock?: string;
   periodScores?: Partial<Record<"q1" | "half" | "q3" | "final", { home: number; away: number }>>;
 };
 

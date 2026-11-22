@@ -1,0 +1,67 @@
+{
+  "events": [
+    {
+      "id": "401873072",
+      "date": "2026-11-22T18:00Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "17",
+              "team": {
+                "abbreviation": "DET",
+                "id": "8"
+              },
+              "linescores": [
+                {
+                  "value": 0.0,
+                  "period": 1
+                },
+                {
+                  "value": 10.0,
+                  "period": 2
+                },
+                {
+                  "value": 7.0,
+                  "period": 3
+                }
+              ]
+            },
+            {
+              "homeAway": "away",
+              "score": "14",
+              "team": {
+                "abbreviation": "TB",
+                "id": "27"
+              },
+              "linescores": [
+                {
+                  "value": 0.0,
+                  "period": 1
+                },
+                {
+                  "value": 7.0,
+                  "period": 2
+                },
+                {
+                  "value": 7.0,
+                  "period": 3
+                }
+              ]
+            }
+          ],
+          "status": {
+            "displayClock": "0:00",
+            "period": 3,
+            "type": {
+              "name": "STATUS_END_PERIOD",
+              "state": "in",
+              "completed": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

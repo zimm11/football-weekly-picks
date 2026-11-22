@@ -2,6 +2,7 @@ import {
   coveringSide,
   formatLine,
   type Game,
+  type GameLive,
   LEAGUE_TYPE_INFO,
   lineFor,
   pickPoints,
@@ -140,14 +141,17 @@ export type PickOutcome = "won" | "lost" | "push" | "pending" | "none";
  * What the pick sheet's compact row says about a game the player can no longer change (it has kicked off or
  * has a result): the saved pick against its line, the POW, the final score and the outcome, and the row's
  * accessible name, which carries all of it in words ("won", "lost", "push") so nothing rests on color.
+ * `live` is the game's live state as `liveFor` (`lib/liveGame.ts`) passed it, never `game.live`: the row then
+ * says "live" with the score in its name, and is never live once the game has a result.
  */
 export function lockedGameRow(
   game: Game,
   saved: Pick<PickDraft, "sides" | "pow">,
-  { hasPow, powBonus }: { hasPow: boolean; powBonus?: number },
+  { hasPow, powBonus, live = null }: { hasPow: boolean; powBonus?: number; live?: GameLive | null },
 ) {
   const scored = { ...game, kickoff: new Date(game.kickoff) };
   const covered = coveringSide(scored);
+  const playing = covered === null ? live : null;
   const side = saved.sides[game.id];
   // A playoff Super Bowl has no POW, and scoring ignores one saved before.
   const pow = hasPow && !!side && saved.pow === game.id;
@@ -175,7 +179,12 @@ export function lockedGameRow(
         : "";
   // The line in brackets ("Chiefs (-3.5)"), so the row's name never contains a team button's ("Chiefs -3.5").
   const named = team && `${teamName(team)} (${line === 0 ? "PK" : `${line > 0 ? "+" : ""}${line}`})`;
-  const label = `${matchup(game)}, ${score ? `final ${score}` : "locked"}, ${named ? `your pick: ${named}${pow ? ", POW" : ""}` : "no pick"}${said}`;
+  const state = score
+    ? `final ${score}`
+    : playing
+      ? `live ${playing.awayScore}–${playing.homeScore}`
+      : "locked";
+  const label = `${matchup(game)}, ${state}, ${named ? `your pick: ${named}${pow ? ", POW" : ""}` : "no pick"}${said}`;
   // The scoreboard line: which side covered (each side's score in full ink), "push", or null before a result.
-  return { team, pick, pow, outcome, earned, score, result, label, covered };
+  return { team, pick, pow, outcome, earned, score, result, label, covered, live: playing };
 }

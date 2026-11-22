@@ -1,0 +1,282 @@
+{
+  "events": [
+    {
+      "id": "401873070",
+      "date": "2026-11-22T18:00Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "20",
+              "team": {
+                "abbreviation": "BUF",
+                "id": "2"
+              },
+              "linescores": [
+                {
+                  "value": 6.0,
+                  "period": 1
+                },
+                {
+                  "value": 14.0,
+                  "period": 2
+                }
+              ]
+            },
+            {
+              "homeAway": "away",
+              "score": "3",
+              "team": {
+                "abbreviation": "MIA",
+                "id": "15"
+              },
+              "linescores": [
+                {
+                  "value": 0.0,
+                  "period": 1
+                },
+                {
+                  "value": 3.0,
+                  "period": 2
+                }
+              ]
+            }
+          ],
+          "status": {
+            "displayClock": "1:29",
+            "period": 2,
+            "type": {
+              "name": "STATUS_IN_PROGRESS",
+              "state": "in",
+              "completed": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "401873072",
+      "date": "2026-11-22T18:00Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "10",
+              "team": {
+                "abbreviation": "DET",
+                "id": "8"
+              },
+              "linescores": [
+                {
+                  "value": 0.0,
+                  "period": 1
+                },
+                {
+                  "value": 10.0,
+                  "period": 2
+                }
+              ]
+            },
+            {
+              "homeAway": "away",
+              "score": "7",
+              "team": {
+                "abbreviation": "TB",
+                "id": "27"
+              },
+              "linescores": [
+                {
+                  "value": 0.0,
+                  "period": 1
+                },
+                {
+                  "value": 7.0,
+                  "period": 2
+                }
+              ]
+            }
+          ],
+          "status": {
+            "displayClock": "0:00",
+            "period": 2,
+            "type": {
+              "name": "STATUS_HALFTIME",
+              "state": "in",
+              "completed": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "401873067",
+      "date": "2026-11-22T18:00Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "24",
+              "team": {
+                "abbreviation": "KC",
+                "id": "12"
+              },
+              "linescores": [
+                {
+                  "value": 14.0,
+                  "period": 1
+                },
+                {
+                  "value": 10.0,
+                  "period": 2
+                }
+              ]
+            },
+            {
+              "homeAway": "away",
+              "score": "7",
+              "team": {
+                "abbreviation": "ARI",
+                "id": "22"
+              },
+              "linescores": [
+                {
+                  "value": 0.0,
+                  "period": 1
+                },
+                {
+                  "value": 7.0,
+                  "period": 2
+                }
+              ]
+            }
+          ],
+          "status": {
+            "displayClock": "0:11",
+            "period": 2,
+            "type": {
+              "name": "STATUS_IN_PROGRESS",
+              "state": "in",
+              "completed": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "401873074",
+      "date": "2026-11-22T21:05Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "0",
+              "team": {
+                "abbreviation": "LAC",
+                "id": "24"
+              },
+              "linescores": []
+            },
+            {
+              "homeAway": "away",
+              "score": "0",
+              "team": {
+                "abbreviation": "NYJ",
+                "id": "20"
+              },
+              "linescores": []
+            }
+          ],
+          "status": {
+            "displayClock": "0:00",
+            "period": 0,
+            "type": {
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false
+            }
+          },
+          "odds": [
+            {
+              "spread": -3.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "401873066",
+      "date": "2026-11-20T01:15Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "26",
+              "team": {
+                "abbreviation": "HOU",
+                "id": "34"
+              },
+              "linescores": [
+                {
+                  "value": 7.0,
+                  "period": 1
+                },
+                {
+                  "value": 10.0,
+                  "period": 2
+                },
+                {
+                  "value": 9.0,
+                  "period": 3
+                },
+                {
+                  "value": 0.0,
+                  "period": 4
+                }
+              ]
+            },
+            {
+              "homeAway": "away",
+              "score": "3",
+              "team": {
+                "abbreviation": "IND",
+                "id": "11"
+              },
+              "linescores": [
+                {
+                  "value": 3.0,
+                  "period": 1
+                },
+                {
+                  "value": 0.0,
+                  "period": 2
+                },
+                {
+                  "value": 0.0,
+                  "period": 3
+                },
+                {
+                  "value": 0.0,
+                  "period": 4
+                }
+              ]
+            }
+          ],
+          "status": {
+            "displayClock": "0:00",
+            "period": 4,
+            "type": {
+              "name": "STATUS_FINAL",
+              "state": "post",
+              "completed": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

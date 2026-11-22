@@ -371,6 +371,21 @@ export type InvitePreview = {
   memberCount?: number;
 };
 
+/**
+ * A game being played, as the schedule feed has it now: public data, never stored and never a result (a game's
+ * `homeScore` and `awayScore` stay null until it is final).
+ */
+export type GameLive = {
+  homeScore: number;
+  awayScore: number;
+  /** The period under way: 1–4, then 5 and up for overtime. Null when the feed doesn't say. */
+  period: number | null;
+  /** The game clock as the feed prints it ("4:12"). Null when it doesn't say, or at a break. */
+  clock: string | null;
+  /** Being played, at halftime, or at the break after another period. */
+  state: "playing" | "halftime" | "end_of_period";
+};
+
 export type Game = {
   id: string;
   homeTeam: string;
@@ -381,6 +396,11 @@ export type Game = {
   points: number;
   homeScore: number | null;
   awayScore: number | null;
+  /**
+   * The score and clock while the game is being played, on an open week's `GET /weeks/:id` only. Absent or null
+   * when it isn't under way or the feed doesn't say (and from an older API): the app then shows it as locked.
+   */
+  live?: GameLive | null;
 };
 
 export type Pick = { gameId: string; side: Side; isPow: boolean };

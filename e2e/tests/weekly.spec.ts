@@ -173,6 +173,10 @@ test("a commissioner follows a week's results so far, then reopens the final wee
     await page.getByRole("link", { name: "Week 1 results so far, commissioners only" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Week 1 · Results so far" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Summary so far" })).toBeVisible();
+    // Where everyone stands on the scored game: the commissioner's covering POW on top, Pat's lost pick under it.
+    const standings = page.getByRole("table", { name: "Standings so far" });
+    await expect(standings.getByRole("row").nth(1)).toContainText("Commish");
+    await expect(standings.getByRole("row", { name: /Pat/ })).toContainText("0–1");
     const soFar = page.getByRole("table", { name: "Results so far" });
     const commishRow = soFar.getByRole("row", { name: /Commish/ });
     const patRow = soFar.getByRole("row", { name: /Pat/ });

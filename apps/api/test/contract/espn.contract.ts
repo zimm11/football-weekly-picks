@@ -108,6 +108,38 @@ describe("ESPN scoreboard", () => {
     );
   });
 
+  // The parser reads a clock it can't use as no clock rather than failing (the scoreboard is shared by imports,
+  // results and squares), so only these checks notice when `displayClock` changes.
+  it("prints a game clock on every game, before kickoff and after the end", () => {
+    const schema = z.object({
+      events: z.array(
+        z.object({
+          id: z.string(),
+          competitions: z.array(z.object({ status: z.object({ displayClock: z.string() }) })).min(1),
+        }),
+      ),
+    });
+    expectShape(schema, finished.raw, `Game clocks for ${lastSeason} week 18`);
+    if (upcoming) expectShape(schema, upcoming.raw, `Game clocks for ${upcoming.year} week ${upcoming.week}`);
+  });
+
+  it("gives each game under way its live score, and a clock while it is being played", (ctx) => {
+    const underway = upcoming?.games.filter((g) => g.status === "in_progress") ?? [];
+    // The scheduled run is at 12:00 UTC, when no game is being played: this only runs on a game day.
+    if (underway.length === 0) return ctx.skip("No game is under way right now");
+    const problems: string[] = [];
+    for (const g of underway) {
+      const name = `${g.awayTeam} @ ${g.homeTeam} (${g.externalId})`;
+      if (!g.liveScore) problems.push(`${name}: under way with no score`);
+      if (g.homeScore !== null) problems.push(`${name}: under way with a final score`);
+      if (!g.period || g.period < 1) problems.push(`${name}: under way in period ${g.period}`);
+      if (!g.liveState) problems.push(`${name}: under way with no live state`);
+      if (g.liveState === "playing" && !g.clock)
+        problems.push(`${name}: being played with no readable clock`);
+    }
+    expectNone(problems, "Games under way the pick sheet reads wrongly");
+  });
+
   it("gives spreads as the home team's line, in half points", (ctx) => {
     if (!upcoming) return ctx.skip("Offseason: no lines posted");
     const lines = oddsWithFavorite(upcoming.raw);

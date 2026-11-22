@@ -69,6 +69,33 @@ describe("dev harness", () => {
     expect((await call("POST", "/api/dev/jobs", { leagueIds: ["not-a-uuid"] })).status).toBe(400);
     expect(runs).toHaveLength(2);
 
+    // A game being played keeps its scripted clock and state ("3rd quarter, 4:12"), which an unknown key would lose.
+    const live = {
+      externalId: "402",
+      homeTeam: "PHI",
+      awayTeam: "DAL",
+      kickoff: "2027-01-16T18:00:00Z",
+      status: "in_progress",
+      period: 3,
+      liveScore: { home: 17, away: 10 },
+      liveState: "playing",
+      clock: "4:12",
+    };
+    expect((await call("PUT", "/api/dev/feed/2027/20", { games: [live] })).status).toBe(200);
+    expect((await harness.nfl.getWeek(2027, 20))[0]).toMatchObject({
+      status: "in_progress",
+      period: 3,
+      liveScore: { home: 17, away: 10 },
+      liveState: "playing",
+      clock: "4:12",
+    });
+    expect((await call("PUT", "/api/dev/feed/2027/20", { games: [{ ...live, clock: "soon" }] })).status).toBe(
+      400,
+    );
+    expect(
+      (await call("PUT", "/api/dev/feed/2027/20", { games: [{ ...live, liveState: "delayed" }] })).status,
+    ).toBe(400);
+
     expect((await call("PUT", "/api/dev/feed/2027/23", { games: [] })).status).toBe(400);
     expect((await call("PUT", "/api/dev/clock", { now: "tomorrow" })).status).toBe(400);
 

@@ -9,6 +9,7 @@ import {
   effectiveTiebreakerId,
   type Game,
   type GameInsights,
+  type GameLive,
   hasResult,
   POW_BONUS,
   resultsSoFarAudience,
@@ -48,9 +49,9 @@ import type { ProviderGame } from "./nfl";
 import { playoffSubmission, playoffWeekInfo } from "./playoff";
 import type { AppServices } from "./services";
 import {
-  fillFinishedGames,
   finalizeProblem,
   finalizeWeek,
+  followGamesUnderway,
   type GameRow,
   gamesOf,
   importSlate,
@@ -85,6 +86,22 @@ const toGame = (g: GameRow): Game => ({
   homeScore: g.homeScore,
   awayScore: g.awayScore,
 });
+
+/**
+ * Puts the feed's live scores on a built view's games: only on an open week (judged on the view, since automation
+ * may have just closed it) and only on games with no result (a score may have been entered since the feed was
+ * read). The pick sheet's GET alone carries them; every other route's view has none.
+ */
+function withLive(view: WeekView, live: Map<string, GameLive>): WeekView {
+  if (view.status !== "open" || live.size === 0) return view;
+  return {
+    ...view,
+    games: view.games.map((g) => {
+      const state = live.get(g.id);
+      return state && g.homeScore === null ? { ...g, live: state } : g;
+    }),
+  };
+}
 
 export async function buildWeekView(db: Db, ctx: WeekContext, userId: string, at: Date): Promise<WeekView> {
   // Re-read the week: the caller may have just changed it.
@@ -442,14 +459,17 @@ export function weekRoutes(
         const requestId = c.get("requestId");
         // A league that runs itself takes its next step first (throttled), so nobody waits for the cron.
         await services.advanceLeagueOnRead(ctx.league, requestId);
-        await fillFinishedGames(
+        // One clock for the rest of the read, so the games judged under way are the ones the view shows locked.
+        const at = now();
+        // Results for games just over, and the live score of games being played, from one read of the feed.
+        const live = await followGamesUnderway(
           db,
           services.results,
           { id: ctx.week.id, status: ctx.week.status, year: ctx.season.year, number: ctx.week.number },
-          now(),
+          at,
           requestId,
         );
-        return c.json(await buildWeekView(db, ctx, c.var.user.id, now()));
+        return c.json(withLive(await buildWeekView(db, ctx, c.var.user.id, at), live));
       })
       /** The player has been shown this closed week's recap. See `recapWeekId` on the league. */
       .post("/weeks/:weekId/recap/seen", auth, weekParam, async (c) => {

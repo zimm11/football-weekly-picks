@@ -4,7 +4,7 @@
 // who is asking, which is the caller's job.
 
 import { games, weekRecapViews, weeks } from "@picks/db";
-import { defaultPoints, hasResult, isPostseasonWeek } from "@picks/shared";
+import { defaultPoints, type GameLive, hasResult, isPostseasonWeek } from "@picks/shared";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { recordWeekParticipants, type Store } from "./context";
 import { logError } from "./logging";
@@ -13,17 +13,17 @@ import type { NflProvider, ProviderGame } from "./nfl";
 export type GameRow = typeof games.$inferSelect;
 
 /**
- * How long after kickoff a game could first be over. Before then there is no point asking the provider for
- * its result. NFL games run about three hours; none finishes in two and a half.
+ * How long after kickoff a game could first be over. Before then automation has no point asking the provider
+ * for its result. NFL games run about three hours; none finishes in two and a half.
  */
 export const SHORTEST_GAME_MS = 150 * 60_000;
 
 /** How often an open week's results are fetched from the provider at most, however many players are looking. */
 export const RESULTS_REFRESH_MS = 60_000;
 
-/** A provider game that kicked off long enough ago to be over and still has no result here. */
-export const awaitingResult = (g: GameRow, at: Date) =>
-  g.externalId !== null && !hasResult(g) && at.getTime() - g.kickoff.getTime() >= SHORTEST_GAME_MS;
+/** A provider game that has kicked off and has no result here: the feed has its live score, or its result. */
+export const underway = (g: GameRow, at: Date) =>
+  g.externalId !== null && !hasResult(g) && g.kickoff.getTime() <= at.getTime();
 
 /**
  * A game's points when its kickoff moves: a game still worth its old slot's default takes the new slot's (a
@@ -192,22 +192,51 @@ export function providerWeeks(nfl: NflProvider, now: () => Date): ProviderWeeks 
 }
 
 /**
- * Fills in results for an open week's games as they end. Nothing is fetched unless a game has been going long
- * enough to be over and still has no result. A provider failure changes nothing: the admin can still pull
- * results or type scores in.
+ * A game being played as the feed has it, for the pick sheet. Never stored, and never a result: the game's own
+ * scores stay null until it is final. Null unless the feed says the game is in progress and gives its score.
  */
-export async function fillFinishedGames(
+export function gameLive(game: ProviderGame): GameLive | null {
+  if (game.status !== "in_progress" || !game.liveScore) return null;
+  const state = game.liveState ?? "playing";
+  return {
+    homeScore: game.liveScore.home,
+    awayScore: game.liveScore.away,
+    period: game.period && game.period > 0 ? game.period : null,
+    clock: state === "playing" ? (game.clock ?? null) : null,
+    state,
+  };
+}
+
+/**
+ * Follows an open week's games under way, from one read of the provider (behind its once-a-minute throttle):
+ * fills in results for the games the feed says are over, never over a score already entered, and returns the
+ * live score of each game being played, by game id. Nothing is fetched unless a provider game has kicked off
+ * with no result. A provider failure changes nothing and returns no live scores: the admin can still pull results
+ * or type scores in.
+ */
+export async function followGamesUnderway(
   db: Store,
   results: ProviderWeeks,
   week: { id: string; status: string; year: number; number: number },
   at: Date,
   requestId?: string,
-) {
-  if (week.status !== "open") return;
+): Promise<Map<string, GameLive>> {
+  const live = new Map<string, GameLive>();
+  if (week.status !== "open") return live;
   const gameRows = await gamesOf(db, week.id);
-  if (!gameRows.some((g) => awaitingResult(g, at))) return;
+  const playing = gameRows.filter((g) => underway(g, at));
+  if (playing.length === 0) return live;
   const provided = await results(week.year, week.number, requestId);
-  if (provided) await writeFinals(db, gameRows, provided, { overwrite: false });
+  if (!provided) return live;
+  await writeFinals(db, gameRows, provided, { overwrite: false });
+  const feed = new Map(provided.map((g) => [g.externalId, g]));
+  for (const game of playing) {
+    const listed = game.externalId ? feed.get(game.externalId) : undefined;
+    // A game the feed has just called final was written above and has a result now, not a live score.
+    const state = listed && listed.homeScore === null ? gameLive(listed) : null;
+    if (state) live.set(game.id, state);
+  }
+  return live;
 }
 
 /** Why an open week can't be finalized yet, or null when it can: every game needs a final score. */

@@ -28,6 +28,13 @@ const gameSchema = z.object({
   status: z.enum(["scheduled", "in_progress", "final"]).optional(),
   period: z.number().int().min(0).optional(),
   liveScore: periodScore.optional(),
+  /** While `in_progress`: the pick sheet's live score reads as being played unless this says it is at a break. */
+  liveState: z.enum(["playing", "halftime", "end_of_period"]).optional(),
+  /** The game clock as the feed prints it ("4:12"), while it is being played. */
+  clock: z
+    .string()
+    .regex(/^\d{1,2}:\d{2}$/)
+    .optional(),
   periodScores: z
     .object({ q1: periodScore, half: periodScore, q3: periodScore, final: periodScore })
     .partial()
