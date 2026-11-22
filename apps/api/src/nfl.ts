@@ -1,4 +1,4 @@
-import { SQUARE_PERIODS, type SquarePeriod } from "@picks/shared";
+import { type GameLive, SQUARE_PERIODS, type SquarePeriod } from "@picks/shared";
 import { z } from "zod";
 
 /** A cumulative score: both teams' points so far. */
@@ -27,7 +27,17 @@ export type ProviderGame = {
   periodScores?: Partial<Record<SquarePeriod, PeriodScore>>;
   /** The score so far while the game is under way (a squares board marks the square that would win now). */
   liveScore?: PeriodScore;
+  /** While the game is under way: being played, at halftime, or at the break after another period. */
+  liveState?: LiveState;
+  /**
+   * The game clock as the feed prints it ("4:12"), while the game is being played. Absent at a break (where the
+   * feed prints "0:00"), before kickoff, after the end, and when the feed sends something that isn't a clock.
+   */
+  clock?: string;
 };
+
+/** Where a game under way stands. */
+export type LiveState = GameLive["state"];
 
 /** Where schedules, spreads and results come from. Tests inject a fake. */
 export type NflProvider = {
@@ -82,6 +92,12 @@ export const espnScoreboardSchema = z.object({
               status: z.object({
                 /** The period under way: 0 before kickoff. */
                 period: z.number().optional(),
+                /**
+                 * The game clock ("4:12"; "0:00" before kickoff, at a break and after the end). Read only for the
+                 * pick sheet's live score, so anything else in its place reads as no clock rather than failing the
+                 * whole scoreboard, which imports, results and squares all share.
+                 */
+                displayClock: z.string().optional().catch(undefined),
                 type: z.object({
                   completed: z.boolean(),
                   /** pre, in or post. */
@@ -170,6 +186,23 @@ function statusOf(type: { completed: boolean; state?: string }): ProviderGame["s
   return undefined;
 }
 
+/** A game clock as the feed prints it: minutes and seconds. */
+const CLOCK = /^\d{1,2}:\d{2}$/;
+
+/**
+ * A game under way's state and clock. Any status name but the two breaks reads as being played (a delay, say, or
+ * a name the feed adds later), so a new name never hides a game's live score. At a break there is no clock.
+ */
+function liveOf(
+  name: string | undefined,
+  displayClock: string | undefined,
+): Pick<ProviderGame, "liveState" | "clock"> {
+  const liveState: LiveState =
+    name === "STATUS_HALFTIME" ? "halftime" : name === "STATUS_END_PERIOD" ? "end_of_period" : "playing";
+  const clock = liveState === "playing" ? displayClock?.trim() : undefined;
+  return clock && CLOCK.test(clock) ? { liveState, clock } : { liveState };
+}
+
 export function parseEspnScoreboard(json: unknown): ProviderGame[] {
   const games: ProviderGame[] = [];
   for (const event of espnScoreboardSchema.parse(json).events) {
@@ -181,6 +214,7 @@ export function parseEspnScoreboard(json: unknown): ProviderGame[] {
     // A postseason game is listed before its teams are known; it is imported once both are.
     if (isPlaceholder(home.team) || isPlaceholder(away.team)) continue;
     const final = competition.status.type.completed && home.score !== undefined && away.score !== undefined;
+    const status = statusOf(competition.status.type);
     games.push({
       externalId: event.id,
       homeTeam: home.team.abbreviation,
@@ -189,12 +223,13 @@ export function parseEspnScoreboard(json: unknown): ProviderGame[] {
       spread: competition.odds?.[0]?.spread ?? null,
       homeScore: final ? (home.score ?? null) : null,
       awayScore: final ? (away.score ?? null) : null,
-      status: statusOf(competition.status.type),
+      status,
       period: competition.status.period,
       periodScores: periodScoresOf(home, away, competition.status),
       ...(competition.status.type.state === "in" && home.score !== undefined && away.score !== undefined
         ? { liveScore: { home: home.score, away: away.score } }
         : {}),
+      ...(status === "in_progress" && liveOf(competition.status.type.name, competition.status.displayClock)),
     });
   }
   return games.sort((a, b) => a.kickoff.getTime() - b.kickoff.getTime());

@@ -14,7 +14,7 @@ import {
   weekLabel,
 } from "@picks/shared";
 import { matchup } from "./pickDraft";
-import type { PickOutcome } from "./weekPresentation";
+import { formatRecord, type PickOutcome } from "./weekPresentation";
 
 /*
  * How results, standings and the recap are laid out and worded, as pure functions: the stat tiles' rows, the
@@ -355,6 +355,58 @@ export function revealedGames(
 ): Game[] {
   if (!provisional) return games;
   return games.filter((game) => lockedGameIds.includes(game.id));
+}
+
+/** One player's row in the standings so far. */
+export type StandingsSoFarRow = {
+  userId: string;
+  rank: number;
+  displayName: string;
+  avatarId: number | null;
+  removed: boolean;
+  /** "W–L", with pushes when there are any. */
+  record: string;
+  points: number;
+  mine: boolean;
+};
+
+/**
+ * The standings so far on an open week's results so far: each player's place, W–L and points as they stand, from
+ * the server's entries in the order it sent them (rank-sorted; a shared rank stays shared). Only what those entries
+ * carry, and nothing final: no winner. Named for the week, or for the round in a playoff league, since a round's
+ * table is not the playoff standings (those add up every round). Null until a game has a result: before that
+ * everyone is level on 0 at rank 1, which says nothing.
+ */
+export function standingsSoFar(
+  entries: {
+    userId: string;
+    rank: number;
+    displayName: string;
+    avatarId?: number | null;
+    removed: boolean;
+    points: number;
+    wins: number;
+    losses: number;
+    pushes: number;
+  }[],
+  games: { homeScore: number | null; awayScore: number | null }[],
+  { userId, playoff = false, number }: { userId?: string; playoff?: boolean; number: number },
+): { label: string; rows: StandingsSoFarRow[] } | null {
+  if (!entries.length || !games.some((game) => game.homeScore !== null && game.awayScore !== null))
+    return null;
+  return {
+    label: playoff ? `${weekLabel(number)} standings so far` : "Standings so far",
+    rows: entries.map((entry) => ({
+      userId: entry.userId,
+      rank: entry.rank,
+      displayName: entry.displayName,
+      avatarId: entry.avatarId ?? null,
+      removed: entry.removed,
+      record: formatRecord(entry),
+      points: entry.points,
+      mine: entry.userId === userId,
+    })),
+  };
 }
 
 /**

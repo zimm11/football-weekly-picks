@@ -16,6 +16,7 @@ import {
   sharedName,
   sharesResultsSoFar,
   standingLine,
+  standingsSoFar,
   statColumns,
   tileRows,
   weeklyRecapHeadline,
@@ -360,6 +361,93 @@ describe("results so far", () => {
     expect(revealedGames(games, { provisional: true, lockedGameIds: [] })).toEqual([]);
     expect(revealedGames(games, { provisional: true })).toEqual([]);
     expect(revealedGames(games, { provisional: false })).toEqual(games);
+  });
+
+  describe("standings so far", () => {
+    const entry = (userId: string, rank: number, points: number, over = {}) => ({
+      userId,
+      rank,
+      displayName: userId.toUpperCase(),
+      avatarId: 3,
+      removed: false,
+      points,
+      wins: 0,
+      losses: 0,
+      pushes: 0,
+      ...over,
+    });
+    const scored = [game({ homeScore: 27, awayScore: 20 }), game({ id: "g2" })];
+
+    it("says nothing until a game has a result, when everyone is level on 0", () => {
+      const level = [entry("sam", 1, 0), entry("pat", 1, 0)];
+      expect(standingsSoFar(level, [game(), game({ id: "g2" })], { userId: "sam", number: 3 })).toBeNull();
+      // Half a score is no result.
+      expect(standingsSoFar(level, [game({ homeScore: 7 })], { userId: "sam", number: 3 })).toBeNull();
+      expect(standingsSoFar([], scored, { userId: "sam", number: 3 })).toBeNull();
+    });
+
+    it("keeps the server's order and its shared ranks, and marks the signed-in player", () => {
+      const table = standingsSoFar(
+        [
+          entry("pat", 1, 7, { wins: 2, losses: 1 }),
+          entry("sam", 1, 7, { wins: 2, losses: 0, pushes: 1 }),
+          entry("lee", 3, 0, { wins: 0, losses: 3, removed: true, avatarId: undefined }),
+        ],
+        scored,
+        { userId: "sam", number: 3 },
+      );
+      expect(table?.label).toBe("Standings so far");
+      expect(table?.rows).toEqual([
+        {
+          userId: "pat",
+          rank: 1,
+          displayName: "PAT",
+          avatarId: 3,
+          removed: false,
+          record: "2–1",
+          points: 7,
+          mine: false,
+        },
+        {
+          userId: "sam",
+          rank: 1,
+          displayName: "SAM",
+          avatarId: 3,
+          removed: false,
+          record: "2–0–1",
+          points: 7,
+          mine: true,
+        },
+        {
+          userId: "lee",
+          rank: 3,
+          displayName: "LEE",
+          avatarId: null,
+          removed: true,
+          record: "0–3",
+          points: 0,
+          mine: false,
+        },
+      ]);
+      // Someone not in the week marks nobody.
+      expect(standingsSoFar([entry("pat", 1, 7)], scored, { number: 3 })?.rows[0]?.mine).toBe(false);
+    });
+
+    it("names a playoff round's table for the round, never the playoff standings or the results so far", () => {
+      const rows = [entry("pat", 1, 2)];
+      expect(standingsSoFar(rows, scored, { playoff: true, number: 19 })?.label).toBe(
+        "Wild Card standings so far",
+      );
+      expect(standingsSoFar(rows, scored, { playoff: true, number: 22 })?.label).toBe(
+        "Super Bowl standings so far",
+      );
+      // Locators find tables by a name's substring: this one must never take the cards' "Results so far".
+      for (const number of [3, 19, 20, 21, 22])
+        for (const playoff of [false, true])
+          expect(
+            standingsSoFar(rows, scored, { playoff, number })?.label.toLowerCase().includes("results so far"),
+          ).toBe(false);
+    });
   });
 
   it("puts the commissioner's own POW as it stands", () => {

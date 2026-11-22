@@ -261,7 +261,8 @@ tab for each.
    (checked at most once a minute), and each player's sheet marks their pick **Won** (with the points
    earned), **Lost**, or **Push**, and its status card keeps a tally of points, record, POW and picks still to play. On the sheet a game that has
    kicked off (or has a result) shrinks to one row with the player's pick and how it did; tap it for the
-   full card. Games already locked when the sheet opens fold behind **N games locked** while there is still
+   full card. While an imported game is being played its row is marked **Live**, and the opened card shows
+   the score and the game clock, about a minute behind. Games already locked when the sheet opens fold behind **N games locked** while there is still
    something to pick, so the games to pick come first. An open pick sheet refreshes
    itself every minute while games are in progress. To fetch results right away, press **Auto-fill
    results** in **Manage week**; it replaces any hand-entered score. Or enter both scores for
@@ -269,7 +270,8 @@ tab for each.
    **Enter score** on the game to record a result early. Results imports update games originally imported from ESPN;
    manually added games need manually entered scores. Recording a result closes that game to picks
    immediately. As the commissioner, open **Results** (or the link from **Manage week**) for the results so far:
-   each player's pick on every game that has kicked off or has a result, and the points and places as they stand.
+   each player's pick on every game that has kicked off or has a result, and the points and places as they stand
+   (once a game has a result, a **Standings so far** table leads the page).
    In this Hands-on league players don't see it until you turn on **Show players the results so far** in the
    **League** tab's settings (try it, then look at the player's **Results** tab); in a league that runs itself
    every player does. Season standings, the recap and awards wait for the week to be final.

@@ -1373,7 +1373,7 @@ describe.skipIf(!process.env.DATABASE_URL)("with a database (requires `pnpm db:s
     expect(view.results).toBeNull();
     expect(JSON.stringify(view)).not.toContain(ADMIN);
 
-    // With nothing else over yet (Sunday's game hasn't kicked off), the provider isn't asked again.
+    // With no other game under way (Sunday's hasn't kicked off), the provider isn't asked again.
     const settled = providerCalls;
     later(RESULTS_REFRESH_MS);
     await scores();

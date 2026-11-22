@@ -2,6 +2,7 @@
 import {
   formatLine,
   type Game,
+  type GameLive,
   lineFor,
   type Side,
   scoreSoFar,
@@ -41,6 +42,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FadeIn } from "../components/FadeIn";
 import { Icon } from "../components/Icon";
+import { LiveMark } from "../components/LiveMark";
 import { NotFound } from "../components/NotFound";
 import { disabledOpacity, hoverFill, pressTile, ringInside } from "../components/pressState";
 import { SkeletonBlock } from "../components/SkeletonBlock";
@@ -53,6 +55,7 @@ import { now as clockNow } from "../lib/clock";
 import { haptics } from "../lib/haptics";
 import { offerHomeScreen } from "../lib/homeScreen";
 import { onlyDigits } from "../lib/leagueLogic";
+import { type LiveScores, liveClock, liveFor, liveLabel, liveScores } from "../lib/liveGame";
 import { dropLoadCache, loadCacheGeneration, readLoadCache, writeLoadCache } from "../lib/loadCache";
 import { duration, easing, usePop, useReducedMotion, webTransition } from "../lib/motion";
 import { usePageTitle } from "../lib/pageTitle";
@@ -86,6 +89,7 @@ import {
 import { LeagueFrame, LeagueTabBar } from "./LeagueChrome";
 import { MatchupSheet } from "./MatchupSheet";
 import { PlayoffStatusLine } from "./playoff/PlayoffStatus";
+import { srOnly } from "./SeasonDashboard";
 import { WeekResults } from "./WeekResults";
 import { WeekAction, WeekBadge, w } from "./weekUi";
 
@@ -135,6 +139,10 @@ export function WeekScreen({
   // as the screen mounts: a mount drawn from it doesn't fade in.
   const [cached] = useState(() => readLoadCache<WeekView>(cacheKey));
   const [view, setView] = useState<WeekView>();
+  // Games being played, from the latest `GET /weeks/:id` answer and stamped with when it came: kept apart from
+  // `view`, which can also come from the load cache (written by other screens too) or a pick save's response,
+  // either of any age. Shown only through `liveFor`, which drops it once it is a few minutes old.
+  const [live, setLive] = useState<LiveScores>();
   const [draft, setDraft] = useState<PickDraft>(EMPTY);
   const [error, setError] = useState<string>();
   // The failed load's HTTP status: 404 is a week that is gone or not the player's to see.
@@ -231,6 +239,7 @@ export function WeekScreen({
     try {
       const next = await request<WeekView>(`/weeks/${weekId}`);
       if (active.current && serial.current === id) {
+        setLive(liveScores(next, clockNow()));
         accept(next, false, startedAt);
         setError(undefined);
         setErrorStatus(undefined);
@@ -267,6 +276,9 @@ export function WeekScreen({
   }, []);
   useFocusEffect(
     useCallback(() => {
+      // The tick below stops while the screen is out of view: catch up first, so a live score isn't judged
+      // fresh against an old clock.
+      setNow(clockNow());
       void load();
       const resume = AppState.addEventListener("change", (state) => {
         if (state === "active") {
@@ -354,6 +366,7 @@ export function WeekScreen({
       const startedAt = loadCacheGeneration();
       const latest = await request<WeekView>(`/weeks/${weekId}`);
       if (!active.current) return;
+      setLive(liveScores(latest, clockNow()));
       if (latest.status !== "open") {
         accept(latest, true, startedAt);
         setMessage(`This ${weekUnit(latest)} is no longer accepting picks.`);
@@ -509,7 +522,11 @@ export function WeekScreen({
       return (
         <LockedGame
           game={game}
-          row={lockedGameRow(game, saved, { hasPow, powBonus: view.powBonus })}
+          row={lockedGameRow(game, saved, {
+            hasPow,
+            powBonus: view.powBonus,
+            live: liveFor(game, live, now),
+          })}
           timeZone={view.timeZone}
           guess={isTiebreaker && saved.total !== "" ? saved.total : undefined}
           expanded={expanded.has(game.id)}
@@ -1146,8 +1163,9 @@ function GuessRow({
 /**
  * A game the player can no longer change, as one compact scoreboard row: each team's abbreviation and score
  * (the side that covered in full ink), the outcome (Won/Lost/Push, in words and icons, never color alone) or
- * Locked, then the pick with its POW and, at the right, Final or the kickoff time. Tapping it opens the full
- * card below the row, read-only, Stats & news included; tapping again closes it.
+ * Locked (Live while it is being played), then the pick with its POW and, at the right, Final or the kickoff
+ * time. Tapping it opens the full card below the row, read-only, Stats & news included, with a live game's
+ * score and clock above the team buttons; tapping again closes it.
  */
 function LockedGame({
   game,
@@ -1213,12 +1231,12 @@ function LockedGame({
             >
               {row.result}
             </Badge>
+          ) : row.score ? null : row.live ? (
+            <LiveMark />
           ) : (
-            !row.score && (
-              <Badge small inline icon="lock">
-                Locked
-              </Badge>
-            )
+            <Badge small inline icon="lock">
+              Locked
+            </Badge>
           )}
           <Chevron open={expanded} />
         </View>
@@ -1254,9 +1272,44 @@ function LockedGame({
       </Pressable>
       {expanded && (
         <FadeIn from={-4} style={s.lockedBody}>
+          {row.live && <LiveLine game={game} live={row.live} />}
           {children}
         </FadeIn>
       )}
+    </View>
+  );
+}
+
+/**
+ * A game being played, in its opened card above the team buttons: Live, where the game stands ("Q3 4:12") and
+ * both scores. One line of one height whatever it says, so the card doesn't shift as it changes. Plain text, at
+ * most a few minutes old, redrawn with the minute's reload; not a live region, which would speak every minute.
+ * Screen readers read it as one sentence (`liveLabel`).
+ */
+function LiveLine({ game, live }: { game: Game; live: GameLive }) {
+  const clock = liveClock(live).shown;
+  const label = liveLabel(game, live);
+  const side = (team: string, points: number) => (
+    <View style={s.liveTeam}>
+      <Text style={[s.abbr, { color: colors.mutedForeground }]}>{team}</Text>
+      <Text style={[s.abbr, tabular]}>{points}</Text>
+    </View>
+  );
+  return (
+    <View {...(web ? {} : { accessible: true, accessibilityLabel: label })} style={s.liveLine}>
+      {web && <Text style={srOnly}>{label}</Text>}
+      <View aria-hidden={web} style={s.liveStart}>
+        <LiveMark />
+        {clock && (
+          <Text numberOfLines={1} style={[s.liveClock, tabular]}>
+            {clock}
+          </Text>
+        )}
+      </View>
+      <View aria-hidden={web} style={s.liveScores}>
+        {side(game.awayTeam, live.awayScore)}
+        {side(game.homeTeam, live.homeScore)}
+      </View>
     </View>
   );
 }
@@ -1484,6 +1537,11 @@ const s = StyleSheet.create({
   scoreLine: { flexDirection: "row", alignItems: "center", flex: 1, gap: 16, minWidth: 0 },
   scoreTeam: { flexDirection: "row", alignItems: "center", gap: 6 },
   lockedBody: { paddingHorizontal: cardPad, paddingBottom: cardPad, gap: space.sm },
+  liveLine: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 24, paddingHorizontal: 2 },
+  liveStart: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 },
+  liveClock: { ...type.small, fontFamily: fonts.medium, color: colors.foreground, flexShrink: 1 },
+  liveScores: { flexDirection: "row", alignItems: "center", gap: 16, flexShrink: 0 },
+  liveTeam: { flexDirection: "row", alignItems: "center", gap: 6 },
   abbr: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 20, color: colors.foreground },
   rowPick: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 18, color: colors.foreground },
   lostPick: { textDecorationLine: "line-through", color: colors.mutedForeground },

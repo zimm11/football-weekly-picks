@@ -72,6 +72,24 @@ test("an Automatic weekly league opens, scores and finalizes its week by itself"
   await page.getByRole("button", { name: "Save picks" }).click();
   await expect(page.getByText("Picks saved.")).toBeVisible();
 
+  // Thursday night, third quarter: the game's row says it is live, and opened, its score and clock.
+  await setFeedWeek(request, 2027, 3, [
+    { ...week3()[0], status: "in_progress", period: 3, clock: "4:12", liveScore: { home: 17, away: 10 } },
+    week3()[1],
+  ] as HarnessGame[]);
+  await setClock(request, "2027-09-24T02:00:00Z");
+  await page.goto(leagueUrl);
+  // Locked while the Monday game is still to play, so it starts behind the fold.
+  await page.getByRole("button", { name: "1 game locked" }).click();
+  await page.getByRole("button", { name: "NYG at DAL, live 10–17, your pick: Cowboys (-3)" }).click();
+  await expect(page.getByText("Q3 4:12")).toBeVisible();
+  await expect(page.getByText("Live: NYG 10, DAL 17, 3rd quarter, 4:12 left")).toBeAttached();
+  // A save's answer carries no live score: the one on screen stays.
+  await page.getByLabel(/^Tiebreaker: total points scored in/).fill("46");
+  await page.getByRole("button", { name: "Save picks" }).click();
+  await expect(page.getByText("Picks saved.")).toBeVisible();
+  await expect(page.getByText("Q3 4:12")).toBeVisible();
+
   // The results arrive from the feed after Monday night's game, and the week finalizes by itself.
   await setFeedWeek(request, 2027, 3, week3(true));
   await setClock(request, "2027-09-28T06:00:00Z");

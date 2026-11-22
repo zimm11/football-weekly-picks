@@ -13,7 +13,7 @@ import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Avatar } from "../components/Avatar";
 import { Icon } from "../components/Icon";
 import { TeamLogo } from "../components/TeamLogo";
-import { tabular } from "../components/theme";
+import { tabular, type } from "../components/theme";
 import { colors, fonts } from "../components/ui";
 import { matchup } from "../lib/pickDraft";
 import {
@@ -23,12 +23,15 @@ import {
   resultPickCell,
   resultsTileLabels,
   revealedGames,
+  type StandingsSoFarRow,
   sharedName,
+  standingsSoFar,
   statColumns,
   tileRows,
 } from "../lib/resultsPresentation";
 import { formatRecord, ordinal, rowsOf } from "../lib/weekPresentation";
 import { StatTile } from "./leagueUi";
+import { StickyTable } from "./SeasonDashboard";
 import { WeekBadge, WeekCaption, w } from "./weekUi";
 
 type Results = NonNullable<WeekView["results"]>;
@@ -37,7 +40,8 @@ type Results = NonNullable<WeekView["results"]>;
  * from `view.results` once the week is final; `provisional` draws the results so far on an open week instead
  * (`view.resultsSoFar`, sent to whoever may see them), claiming nothing final: no winner, no Low Point Loser, no
  * awards, and a game the server didn't reveal (not in its `lockedGameIds`) held back, never "no pick". Never the
- * device's clock.
+ * device's clock. So far, once a game has a result, a standings table (place, W–L, points as they stand) comes
+ * before the cards (`standingsSoFar`).
  */
 export function WeekResults({
   view,
@@ -126,6 +130,31 @@ export function WeekResults({
       : []),
   ];
   const shownGames = revealedGames(view.games, { provisional, lockedGameIds });
+  // Results so far only, once a game has a result: where everyone stands, from the entries the cards draw.
+  const standings = provisional
+    ? standingsSoFar(results.entries, view.games, { userId, playoff, number: view.number })
+    : null;
+  // One row per player, laid out as cards.
+  const cards = (
+    <View role="table" aria-label={provisional ? "Results so far" : "Week results"} style={{ gap: 12 }}>
+      {results.entries.map((entry) => (
+        <PlayerResult
+          key={entry.userId}
+          entry={entry}
+          results={results}
+          games={view.games}
+          actual={actual}
+          mine={entry.userId === userId}
+          playoff={playoff}
+          hasTiebreaker={hasTiebreaker}
+          powBonus={view.powBonus}
+          provisional={provisional}
+          lockedGameIds={lockedGameIds}
+          tiebreakerLocked={tiebreakerLocked}
+        />
+      ))}
+    </View>
+  );
   return (
     <View style={{ gap: 16 }}>
       <View role="region" aria-label={provisional ? "Summary so far" : "Week summary"} style={{ gap: 8 }}>
@@ -141,25 +170,34 @@ export function WeekResults({
           </View>
         ))}
       </View>
-      {/* One row per player, laid out as cards. */}
-      <View role="table" aria-label={provisional ? "Results so far" : "Week results"} style={{ gap: 12 }}>
-        {results.entries.map((entry) => (
-          <PlayerResult
-            key={entry.userId}
-            entry={entry}
-            results={results}
-            games={view.games}
-            actual={actual}
-            mine={entry.userId === userId}
-            playoff={playoff}
-            hasTiebreaker={hasTiebreaker}
-            powBonus={view.powBonus}
-            provisional={provisional}
-            lockedGameIds={lockedGameIds}
-            tiebreakerLocked={tiebreakerLocked}
-          />
-        ))}
-      </View>
+      {standings ? (
+        <>
+          <View style={{ gap: 12 }}>
+            <WeekCaption>{standings.label}</WeekCaption>
+            {/* Fits a 320px phone: 160 for the player, 70 + 54 for the stats, in 288 of content. */}
+            <StickyTable
+              label={standings.label}
+              columns={[
+                { title: "W–L", width: 70 },
+                { title: "Pts", width: 54 },
+              ]}
+              rows={standings.rows.map((row) => ({
+                id: row.userId,
+                mine: row.mine,
+                name: <StandingsName row={row} />,
+                // Plain values, so the iPhone reads each cell as "Pts: 8".
+                values: [row.record, row.points],
+              }))}
+            />
+          </View>
+          <View style={{ gap: 12 }}>
+            <WeekCaption>Player by player</WeekCaption>
+            {cards}
+          </View>
+        </>
+      ) : (
+        cards
+      )}
       {!provisional && <WeekAwardCards view={view} />}
       {(!provisional || shownGames.length > 0) && (
         <View style={{ gap: 12 }}>
@@ -174,6 +212,25 @@ export function WeekResults({
           ))}
         </View>
       )}
+    </View>
+  );
+}
+
+/**
+ * The standings so far's player cell, as the season table draws its own: the place right-aligned in a fixed width
+ * so the avatars line up, then the avatar and name (bold for the signed-in player, as on the cards).
+ */
+function StandingsName({ row }: { row: StandingsSoFarRow }) {
+  return (
+    <View style={[w.row, { gap: 8 }]}>
+      <Text style={[s.tableRank, { width: 24, textAlign: "right" }]}>{row.rank}</Text>
+      <Avatar avatarId={row.avatarId} name={row.displayName} size={28} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text numberOfLines={2} style={[s.tableName, row.mine && { fontFamily: fonts.bold }]}>
+          {row.displayName}
+        </Text>
+        {row.removed && <Text style={s.tableRemoved}>No longer in the league</Text>}
+      </View>
     </View>
   );
 }
@@ -518,6 +575,9 @@ const s = StyleSheet.create({
   mine: { backgroundColor: colors.raised },
   playerHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
   rank: { fontFamily: fonts.displayBold, fontSize: 18, color: colors.mutedForeground, ...tabular },
+  tableRank: { ...type.statSmall, ...tabular, fontSize: 18, lineHeight: 20, color: colors.mutedForeground },
+  tableName: { ...type.small, lineHeight: 18, fontFamily: fonts.medium, color: colors.foreground },
+  tableRemoved: { ...type.micro, fontFamily: fonts.body, color: colors.mutedForeground },
   playerName: { fontFamily: fonts.medium, fontSize: 18, lineHeight: 22, color: colors.foreground },
   cell: { fontFamily: fonts.body, fontSize: 16, lineHeight: 22, color: colors.foreground },
   points: {

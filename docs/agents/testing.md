@@ -40,5 +40,6 @@ A journey that needs the feed or time to move by itself (a week, round, board or
 
 - Playwright starts the Worker with `DEV_HARNESS=1`, which replaces ESPN with the scripted feed (an unscripted week has no games) and shifts the Worker's clock. It serves `/api/dev/*` outside the API.
 - The `simulated` project runs these files one at a time after the parallel projects, since the clock and feed are shared by the whole Worker (`--project=simulated --no-deps` runs them alone).
-- Reset the harness before and after each test, move the clock only forward of real time (play a future season), and reload the page after moving it.
+- Reset the harness before and after each test, move the clock only forward of real time (play a future season), and reload the page after moving it. The feed's answer is kept for a minute by the Worker's clock, so after scripting a change to a week already read, move the clock on at least a minute.
+- A game being played is `status: "in_progress"` with `liveScore`, `period`, and optionally `clock` ("4:12") and `liveState` (`halftime`, `end_of_period`); the harness drops a field its schema doesn't name, so a new provider field goes in `devHarness.ts` and `harness.ts` too.
 - Pass `runJobs` the journey's own league ids (`leagueIdOf(page.url())`): automation advances only those, since the future clock would otherwise play the seeded leagues forward (finalizing their weeks, drawing their boards) until the next `pnpm db:reset`.
