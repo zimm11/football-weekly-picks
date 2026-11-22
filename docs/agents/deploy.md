@@ -5,7 +5,7 @@ The README has the runbooks ("Deployment", "Email", "Push notifications", "Monit
 ## Workflows (`.github/workflows/`)
 
 - Workflow actions are pinned to full commit SHAs with the version in a trailing comment (a tag can be moved; a SHA can't); Dependabot updates both. The `main` ruleset requires `check` and `e2e` to pass before a merge.
-- `ci.yml` runs on PRs. Job `check`: Gitleaks history scan, lint, typecheck (including the Worker against its runtime types), migration drift check, unit + script tests, the app's tests and iOS JavaScript bundle, and `pnpm build`. Job `e2e`: local Supabase, DB-backed API tests, Playwright against the Worker.
+- `ci.yml` runs on PRs. Job `check`: Gitleaks history scan, lint, typecheck (including the Worker against its runtime types), migration drift check, unit + script tests, the app's tests and iOS JavaScript bundle, and `pnpm build`. Job `e2e`: local Supabase, DB-backed API tests, Playwright against the Worker. Its browser install retries, because Ubuntu's package mirrors fail now and then and a failed `e2e` on main skips the deploy.
 - `deploy.yml` runs on push to main: CI → connection-string check → `supabase db push` → `pnpm build` → `wrangler deploy` → `scripts/check-live.mjs` (polls `$APP_URL/api/health`). A failed live check doesn't undo the deploy; `wrangler rollback` does, and rollback doesn't undo migrations.
 - `uptime.yml` checks health every 15 minutes and opens one `uptime` issue per outage. `contract.yml` runs `pnpm test:contract` daily and opens a `feed-contract` issue on failure.
 
